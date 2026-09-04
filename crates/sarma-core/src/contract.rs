@@ -78,9 +78,18 @@ macro_rules! invariant {
 ///
 /// Kept as a function rather than inlined into each macro so that the message
 /// has a single shape, and so that a breakpoint here catches every kind.
+///
+/// # Panics
+///
+/// Panics when `enabled` is true and `holds` is false. That is the entire
+/// purpose: see the module documentation for why stopping is the safe direction.
 #[doc(hidden)]
 #[inline]
 #[track_caller]
+#[allow(
+    clippy::panic,
+    reason = "turning a broken belief into a panic is this function's job"
+)]
 pub fn check(
     enabled: bool,
     holds: bool,

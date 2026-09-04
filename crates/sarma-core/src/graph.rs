@@ -35,11 +35,21 @@ use crate::resource::Resource;
 /// each returning function; boxing it would trade a real diagnostic for a lint
 /// on a path that runs once per plan, not once per resource.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum GraphError {
+    /// Two declarations claimed one address.
     #[error("{0} was declared twice")]
     Duplicate(Address),
+    /// A declared dependency names something that is not here.
     #[error("{from} depends on {to}, which is not in the graph")]
-    Dangling { from: Address, to: Address },
+    Dangling {
+        /// The resource that declared the dependency.
+        from: Address,
+        /// The address it named, which is absent.
+        to: Address,
+    },
+    /// Ordering is impossible. Carries everything a cycle holds up, not only
+    /// the cycle proper.
     #[error("dependencies form a cycle: {}", .0.iter().map(ToString::to_string).collect::<Vec<_>>().join(" -> "))]
     Cycle(Vec<Address>),
 }
@@ -51,6 +61,7 @@ pub enum GraphError {
 /// can be at the same depth — and is worth naming so that plan output can say so
 /// instead of implying an order that is not there.
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum StageKind {
     /// Everything in this stage is reachable through an API.
     Control,
@@ -68,6 +79,7 @@ pub struct Stage {
 }
 
 impl Stage {
+    /// What sort of work this stage is made of.
     pub fn kind(&self) -> &StageKind {
         &self.kind
     }
@@ -85,6 +97,8 @@ pub struct Graph {
 }
 
 impl Graph {
+    /// An empty graph.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -94,6 +108,10 @@ impl Graph {
     /// Two declarations of one address are not a merge to be resolved but a
     /// question with two answers, and picking either would be a guess about
     /// which one the author meant.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GraphError::Duplicate`] if this address is already present.
     #[allow(
         clippy::result_large_err,
         reason = "diagnostics beat a lint on a cold path"
@@ -107,14 +125,20 @@ impl Graph {
         Ok(())
     }
 
+    /// How many resources are in the graph.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.resources.len()
     }
 
+    /// Whether the graph holds nothing.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.resources.is_empty()
     }
 
+    /// The resource at `address`, if it is here.
+    #[must_use]
     pub fn get(&self, address: &Address) -> Option<&Resource> {
         self.resources.get(address)
     }
@@ -123,6 +147,17 @@ impl Graph {
     ///
     /// Kahn's algorithm, over sorted collections throughout so that the answer —
     /// including the cycle report — is the same on every machine and every run.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GraphError::Dangling`] if a declared dependency names a
+    /// resource that is not in the graph, and [`GraphError::Cycle`] if the
+    /// dependencies cannot be ordered at all.
+    ///
+    /// # Panics
+    ///
+    /// Panics if a contract is violated — that is, if this function's own
+    /// bookkeeping has become inconsistent. See [`crate::contract`].
     ///
     // ENFORCES: INV-GRAPH-001
     // ENFORCES: INV-GRAPH-002
@@ -180,7 +215,7 @@ impl Graph {
             }
 
             placed += level.len();
-            stages.push(self.stage_from(level));
+            stages.push(Self::stage_from(level));
             ready.extend(next);
         }
 
@@ -212,7 +247,7 @@ impl Graph {
         Ok(stages)
     }
 
-    fn stage_from(&self, level: Vec<&Address>) -> Stage {
+    fn stage_from(level: Vec<&Address>) -> Stage {
         let mut targets = BTreeSet::new();
         let mut has_control = false;
 

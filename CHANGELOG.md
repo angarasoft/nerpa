@@ -23,7 +23,19 @@ without ceremony until the first stage is complete.
 - `docs/CODING_STANDARDS.md`, split into what the gate enforces and what review
   does.
 
+- Decision records in `docs/decisions/`, immutable once accepted and superseded
+  rather than edited. Eight of them, including the reversal that replaced lazy
+  planning with a single pass.
+- `docs/DOCUMENTATION.md`: which kind of documentation answers which question,
+  where each lives, and what the gate checks.
+- `cargo xtask docs`: decision numbering, required sections, both directions of
+  every supersession, then rustdoc with warnings denied.
+
 ### Changed
+
+- Workspace lints set to their strictest: `unsafe` forbidden, `missing_docs`
+  denied, clippy `pedantic` and `cargo` denied, and targeted bans on `unwrap`,
+  `panic`, indexing and lossy casts. Sixty-two findings, all fixed.
 
 - Licence is Apache-2.0. The provider ecosystem has to be written by people who
   are not the author, and nobody writes a plugin while wondering whether it has

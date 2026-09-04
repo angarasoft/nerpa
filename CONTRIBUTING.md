@@ -15,10 +15,13 @@ That is the whole gate: formatting, clippy with warnings denied, both test
 configurations, this repository's own rules, and the invariant registry. CI runs
 the same command and nothing else, so what passes locally passes there.
 
-Individual steps are available as `cargo xtask fmt`, `lint`, `test` and
-`invariants` when a full run is more than you need.
+Individual steps are available as `cargo xtask fmt`, `lint`, `test`,
+`invariants` and `docs` when a full run is more than you need.
 
-What each rule is and why it exists: [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md).
+What each rule is and why it exists:
+[docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md). Which documentation a change
+has to bring with it: [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md). Why anything
+is the way it is: [docs/decisions/](docs/decisions/).
 
 ## Two layers of correctness
 

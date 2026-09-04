@@ -14,6 +14,7 @@
 //!   cargo xtask lint        clippy, then this repository's own rules
 //!   cargo xtask test        the test suites, with and without contracts
 //!   cargo xtask invariants  docs/invariants.toml against the code, both ways
+//!   cargo xtask docs        decision records, then rustdoc with warnings denied
 //! ```
 //!
 //! # Why not a Makefile
@@ -23,8 +24,13 @@
 //! a program with no types, no tests and no compiler — and it is the thing that
 //! guards the guarantees the product is sold on.
 
+// This is a command line tool. Reporting to the terminal is its output, not a
+// debugging leftover.
+#![allow(clippy::print_stderr, reason = "the gate reports what it is doing")]
+
 use std::process::ExitCode;
 
+mod docs;
 mod invariants;
 mod lint;
 mod shell;
@@ -38,6 +44,7 @@ tasks:
   lint        clippy with warnings denied, then repository rules
   test        the suites, with and without contracts
   invariants  docs/invariants.toml against the code, in both directions
+  docs        decision records, then rustdoc with warnings denied
 ";
 
 fn main() -> ExitCode {
@@ -48,6 +55,7 @@ fn main() -> ExitCode {
         Some("lint") => lint(),
         Some("test") => test(),
         Some("invariants") => invariants::check(),
+        Some("docs") => docs::check(),
         Some(unknown) => Err(format!("unknown task {unknown:?}\n\n{USAGE}")),
         None => Err(USAGE.to_owned()),
     };
@@ -65,7 +73,8 @@ fn ci() -> Result<(), String> {
     fmt()?;
     lint()?;
     test()?;
-    invariants::check()
+    invariants::check()?;
+    docs::check()
 }
 
 fn fmt() -> Result<(), String> {

@@ -3,6 +3,11 @@
 //! These are the tests that must not be relaxed. Every case here is a property
 //! the state format depends on, and state files outlive the code that wrote them.
 
+// Tests are allowed to be blunt. An `unwrap` here is an expectation, indexing is
+// a claim about shape, and a panic is how a failure gets reported. The rules that
+// ban all three apply to code that runs against somebody's infrastructure — see
+// docs/CODING_STANDARDS.md.
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 use sarma_core::address::{AddressError, address};
 use sarma_core::{Address, ExecutionDomain, Kind, Name, Provider, Slot, Target};
 

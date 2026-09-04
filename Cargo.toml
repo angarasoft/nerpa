@@ -9,6 +9,11 @@ rust-version = "1.98"
 license = "Apache-2.0"
 authors = ["Anishchuk Sergei <anishukserg@gmail.com>"]
 repository = "https://github.com/anishukserg/sarma"
+homepage = "https://github.com/anishukserg/sarma"
+documentation = "https://docs.rs/sarma-core"
+readme = "README.md"
+keywords = ["infrastructure", "configuration", "iac", "provisioning"]
+categories = ["command-line-utilities", "config", "development-tools"]
 
 [workspace.dependencies]
 # No version on a path dependency: the workspace resolves it by path, and a
@@ -17,6 +22,60 @@ sarma-core = { path = "crates/sarma-core" }
 
 thiserror = "2.0"
 toml = "1.1"
+
+# Lint levels live here, at the workspace, and they are set now rather than
+# later on purpose. Turning a strict lint on across a thousand lines is an
+# afternoon; across fifty thousand it is a mechanical change nobody reviews and
+# a temptation to sprinkle `allow` until it goes quiet.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+missing_debug_implementations = "deny"
+unreachable_pub = "deny"
+elided_lifetimes_in_paths = "deny"
+trivial_casts = "deny"
+trivial_numeric_casts = "deny"
+unused_qualifications = "deny"
+unused_lifetimes = "deny"
+single_use_lifetimes = "deny"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "deny"
+unescaped_backticks = "deny"
+
+[workspace.lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+cargo = { level = "deny", priority = -1 }
+
+# A tool that changes production must not have a way to stop without saying why.
+#
+# `expect` is deliberately not banned alongside `unwrap`. Denying both pushes
+# people towards `unwrap_or_default()`, which turns an impossible case into a
+# wrong answer instead of a loud stop — strictly worse. `unwrap` says "this
+# cannot fail" and gives nobody a reason; `expect` says the same and leaves the
+# reason in the panic message. `cargo xtask lint` is the second net.
+unwrap_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+indexing_slicing = "deny"
+
+# Debugging leftovers.
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+
+# Conversions that can silently lose information have no place near a plan hash.
+as_conversions = "deny"
+cast_possible_truncation = "deny"
+cast_lossless = "deny"
+
+# Two pedantic lints that fight the way this code is written, rather than
+# improving it. `module_name_repetitions` would rename `graph::GraphError` to
+# something worse, and `must_use_candidate` wants an attribute on every getter.
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
 
 [profile.release]
 lto = true

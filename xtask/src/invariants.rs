@@ -6,7 +6,7 @@
 //! a deleted anchor or an invented identifier fails the gate.
 //!
 //! The idea, and the `// ENFORCES:` anchor in the spirit of `// SAFETY:`, are
-//! taken from AngaraBase's invariant registry — without the generated regions,
+//! taken from `AngaraBase`'s invariant registry — without the generated regions,
 //! matrices and baselines that a project with several hundred invariants needs
 //! and one with eleven does not.
 
@@ -65,7 +65,7 @@ fn list_field(entry: &toml::Table, name: &str, id: &str) -> Result<Vec<String>, 
 }
 
 /// Checks the registry against the code, in both directions.
-pub fn check() -> Result<(), String> {
+pub(crate) fn check() -> Result<(), String> {
     let entries = registry()?;
     let sources = lint::all_sources();
     let root = shell::root();
@@ -165,11 +165,16 @@ pub fn check() -> Result<(), String> {
 }
 
 fn well_formed(id: &str) -> bool {
-    let parts: Vec<&str> = id.split('-').collect();
-    parts.len() == 3
-        && parts[0] == "INV"
-        && !parts[1].is_empty()
-        && parts[1].chars().all(|ch| ch.is_ascii_uppercase())
-        && parts[2].len() == 3
-        && parts[2].chars().all(|ch| ch.is_ascii_digit())
+    let mut parts = id.split('-');
+    let (Some(prefix), Some(area), Some(number), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return false;
+    };
+
+    prefix == "INV"
+        && !area.is_empty()
+        && area.chars().all(|ch| ch.is_ascii_uppercase())
+        && number.len() == 3
+        && number.chars().all(|ch| ch.is_ascii_digit())
 }

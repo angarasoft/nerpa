@@ -22,6 +22,7 @@ use crate::value::Value;
 /// people do edit machines during an incident, and the edit is usually the only
 /// record of what the incident was.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+#[non_exhaustive]
 // ENFORCES: INV-DRIFT-001
 pub enum Protection {
     /// Drift is corrected: the declaration wins.
@@ -52,6 +53,11 @@ impl Resource {
     }
 
     /// Sets one attribute, replacing any previous value.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `name` is empty. See [`crate::contract`].
+    #[must_use]
     pub fn with(mut self, name: impl Into<String>, value: impl Into<Value>) -> Self {
         let name = name.into();
         requires!(
@@ -68,6 +74,11 @@ impl Resource {
     /// Dependencies that follow from an attribute referring to another
     /// resource's output are discovered, not declared; this is for the ordering
     /// that the values alone do not reveal.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `other` is this resource's own address. See [`crate::contract`].
+    #[must_use]
     pub fn after(mut self, other: Address) -> Self {
         requires!(
             other != self.address,
@@ -79,27 +90,33 @@ impl Resource {
     }
 
     /// Marks the resource as one that must not be silently overwritten.
+    #[must_use]
     pub fn merge_on_drift(mut self) -> Self {
         self.protection = Protection::Merge;
         self
     }
 
+    /// Where this resource lives.
     pub fn address(&self) -> &Address {
         &self.address
     }
 
+    /// Everything declared about it, by name.
     pub fn attributes(&self) -> &BTreeMap<String, Value> {
         &self.attributes
     }
 
+    /// One declared attribute, if it was set.
     pub fn attribute(&self, name: &str) -> Option<&Value> {
         self.attributes.get(name)
     }
 
+    /// What this resource must be applied after.
     pub fn depends_on(&self) -> &BTreeSet<Address> {
         &self.depends_on
     }
 
+    /// What Sarma may do when the machine disagrees with the declaration.
     pub fn protection(&self) -> Protection {
         self.protection
     }

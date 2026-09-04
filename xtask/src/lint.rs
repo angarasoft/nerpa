@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::shell;
 
 /// Every `.rs` file in the workspace, tests included.
-pub fn all_sources() -> Vec<(PathBuf, String)> {
+pub(crate) fn all_sources() -> Vec<(PathBuf, String)> {
     let mut found = Vec::new();
     for crate_root in ["crates", "xtask"] {
         walk(&shell::root().join(crate_root), &mut found);
@@ -22,7 +22,7 @@ pub fn all_sources() -> Vec<(PathBuf, String)> {
 ///
 /// Tests get more latitude: a test that panics is reporting a failure, and a
 /// test that unwraps is stating an expectation.
-pub fn library_sources() -> Vec<(PathBuf, String)> {
+pub(crate) fn library_sources() -> Vec<(PathBuf, String)> {
     let mut found = all_sources();
     found.retain(|(path, _)| {
         !path
@@ -51,7 +51,7 @@ fn walk(directory: &Path, found: &mut Vec<(PathBuf, String)>) {
     }
 }
 
-pub fn repository_rules() -> Result<(), String> {
+pub(crate) fn repository_rules() -> Result<(), String> {
     let sources = library_sources();
     let mut complaints = Vec::new();
 
@@ -104,7 +104,7 @@ fn missing_module_docs(path: &str, text: &str) -> Vec<String> {
     }
 }
 
-pub fn display(path: &Path) -> String {
+pub(crate) fn display(path: &Path) -> String {
     path.strip_prefix(shell::root())
         .unwrap_or(path)
         .display()

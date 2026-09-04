@@ -33,26 +33,43 @@ use std::fmt;
 use crate::{ensures, requires};
 
 /// Anything that can go wrong while reading an address from text.
+///
+/// Non-exhaustive because new ways of writing an address wrongly will be found,
+/// and adding a variant should not break every caller that matches on this. The
+/// attribute cannot be added later without a major version.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[non_exhaustive]
 pub enum AddressError {
+    /// Nothing before the first `:`.
     #[error("address is missing the provider prefix (expected `provider:kind.name`): {0:?}")]
     NoProvider(String),
+    /// Nothing shaped like `kind.name` after the provider.
     #[error("address is missing the resource kind (expected `provider:kind.name`): {0:?}")]
     NoKind(String),
+    /// A component was present but held nothing.
     #[error("{component} is empty in {address:?}")]
     Empty {
+        /// Which part of the grammar was empty.
         component: &'static str,
+        /// The text it was read from.
         address: String,
     },
+    /// A component could be read as a command line option.
     #[error("{component} {value:?} starts with `-`, which could be read as a command line option")]
     LeadingDash {
+        /// Which part of the grammar offended.
         component: &'static str,
+        /// What it held.
         value: String,
     },
+    /// A component held a character its charset does not permit.
     #[error("{component} {value:?} contains {ch:?}, which is not allowed here")]
     BadCharacter {
+        /// Which part of the grammar offended.
         component: &'static str,
+        /// What it held.
         value: String,
+        /// The first character that is not allowed.
         ch: char,
     },
 }
@@ -107,6 +124,11 @@ macro_rules! segment {
 
         impl $name {
             /// Reads one component, rejecting anything the grammar does not allow.
+            ///
+            /// # Errors
+            ///
+            /// Returns [`AddressError`] if the component is empty, begins with
+            /// `-`, or holds a character its charset does not permit.
             pub fn new(value: impl Into<String>) -> Result<Self, AddressError> {
                 let value = value.into();
                 validate($label, &value, $charset)?;
@@ -195,33 +217,40 @@ impl Address {
     }
 
     /// Builds an address for a resource that only exists on `target`.
+    #[must_use]
     pub fn on(mut self, target: Target) -> Self {
         self.target = Some(target);
         self
     }
 
     /// Distinguishes this instance from its siblings under the same declaration.
+    #[must_use]
     pub fn in_slot(mut self, slot: Slot) -> Self {
         self.slot = Some(slot);
         self
     }
 
+    /// Who owns the resource kind.
     pub fn provider(&self) -> &Provider {
         &self.provider
     }
 
+    /// What sort of thing this is.
     pub fn kind(&self) -> &Kind {
         &self.kind
     }
 
+    /// What the configuration calls this one.
     pub fn name(&self) -> &Name {
         &self.name
     }
 
+    /// The key telling this instance from its siblings, if it has one.
     pub fn slot(&self) -> Option<&Slot> {
         self.slot.as_ref()
     }
 
+    /// The node this resource lives on, if it lives on one.
     pub fn target(&self) -> Option<&Target> {
         self.target.as_ref()
     }
@@ -243,7 +272,7 @@ impl fmt::Display for Address {
 impl std::str::FromStr for Address {
     type Err = AddressError;
 
-    /// Reads an address back from the form [`Display`] writes.
+    /// Reads an address back from the form [`fmt::Display`] writes.
     ///
     /// The separators are picked so that this needs no lookahead: `:` first
     /// splits off the provider, `@` then splits off the node, and only after
@@ -295,6 +324,17 @@ impl std::str::FromStr for Address {
 ///
 /// For tests and for literals written in Sarma's own source, where a bad address
 /// is a bug in this repository rather than bad input from a user.
+///
+/// # Panics
+///
+/// Panics if `text` is empty or does not parse. That is the point: a malformed
+/// literal in this repository should stop its own tests rather than travel
+/// onward as a `Result` somebody handles by guessing.
+#[must_use]
+#[allow(
+    clippy::panic,
+    reason = "a malformed literal here is a bug in this repository"
+)]
 pub fn address(text: &str) -> Address {
     requires!(!text.is_empty());
     text.parse()

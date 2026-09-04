@@ -13,11 +13,20 @@ use std::fmt;
 /// attributes must produce the same bytes, and hash map iteration order would
 /// make that untrue on alternate Tuesdays.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+/// Non-exhaustive: provider schemas will want types this does not have yet, and
+/// adding one should not be a breaking change for everybody matching on it.
+#[non_exhaustive]
 pub enum Value {
+    /// A string.
     Text(String),
+    /// A signed integer. There is no floating point on purpose: a plan is
+    /// hashed, and two bit patterns that compare equal would not hash equal.
     Integer(i64),
+    /// A boolean.
     Boolean(bool),
+    /// An ordered sequence.
     List(Vec<Value>),
+    /// An ordered mapping. Ordered because a plan is hashed.
     Map(BTreeMap<String, Value>),
 }
 

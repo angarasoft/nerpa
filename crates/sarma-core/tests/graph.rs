@@ -1,8 +1,13 @@
 //! Ordering, and the two ways a graph can be wrong.
 
-use sarma_core::Resource;
+// Tests are allowed to be blunt. An `unwrap` here is an expectation, indexing is
+// a claim about shape, and a panic is how a failure gets reported. The rules that
+// ban all three apply to code that runs against somebody's infrastructure — see
+// docs/CODING_STANDARDS.md.
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 use sarma_core::address::address;
 use sarma_core::graph::{Graph, GraphError, StageKind};
+use sarma_core::{Resource, Target};
 
 fn graph_of(resources: Vec<Resource>) -> Graph {
     let mut graph = Graph::new();
@@ -61,7 +66,7 @@ fn a_stage_reports_which_nodes_it_touches() {
     let StageKind::Target(nodes) = stages[1].kind() else {
         panic!("second stage runs on nodes, got {:?}", stages[1].kind());
     };
-    let names: Vec<&str> = nodes.iter().map(|node| node.as_str()).collect();
+    let names: Vec<&str> = nodes.iter().map(Target::as_str).collect();
     assert_eq!(names, ["web-01", "web-02"]);
 }
 

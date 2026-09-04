@@ -12,13 +12,38 @@ Moving a rule from the second table to the first is always a welcome change.
 | Rule | Checked by |
 | --- | --- |
 | Formatting, 100 columns | `cargo fmt --check` |
-| No clippy warnings, at all | `cargo clippy` with `-D warnings` |
+| No `unsafe`, anywhere, ever | `unsafe_code = "forbid"` |
+| Every public item is documented | `missing_docs` |
+| Every fallible function documents `# Errors`, every panicking one `# Panics` | clippy `pedantic` |
+| No clippy warning from `pedantic` or `cargo`, at all | `cargo clippy` with `-D warnings` |
+| No `unwrap`, `panic!`, `todo!`, `unimplemented!` or slice indexing in library code | clippy, denied at the workspace |
+| No lossy or silent numeric conversion | `as_conversions`, `cast_possible_truncation` |
+| No `dbg!`, no printing from a library | `dbg_macro`, `print_stdout`, `print_stderr` |
+| No broken or private intra-doc links | `rustdoc` lints, `cargo xtask docs` |
 | Tests pass with contracts compiled in, and without them | `cargo xtask test` |
 | No bare `unwrap()` outside tests | `cargo xtask lint` |
 | Every module opens with `//!` documentation | `cargo xtask lint` |
 | Every enforced invariant names code and tests that exist | `cargo xtask invariants` |
 | Every `// ENFORCES:` anchor names a registered invariant | `cargo xtask invariants` |
+| Decision records are numbered, complete, and name a cost | `cargo xtask docs` |
+| Every supersession points both ways | `cargo xtask docs` |
 | Dependency licences are on the allowlist | `cargo deny` |
+
+Every relaxation of these carries a written reason at the point of relaxation,
+never a blanket `allow` at the top of a file. Tests may use `unwrap`, indexing
+and `panic!`, because there an unwrap is an expectation and a panic is how a
+failure is reported; `contract` may panic because that is its purpose; `xtask`
+may print because that is its output. Each of those says so where it is.
+
+### Public API, decided once
+
+`#[non_exhaustive]` goes on every error enum and on every type expected to grow —
+`AddressError`, `GraphError`, `Value`, `StageKind`, `Protection`. It cannot be
+added later without a major version, so it is added now.
+
+Two types are deliberately exhaustive: `ExecutionDomain` has two variants because
+the architecture claims there are two, and making it extensible would weaken the
+claim rather than the type.
 
 ## Enforced by review
 
