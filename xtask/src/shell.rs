@@ -58,3 +58,39 @@ fn run(args: &[&str], denied: Denied) -> Result<(), String> {
         Err(format!("cargo {} failed", args.join(" ")))
     }
 }
+
+/// Runs an external cargo subcommand, saying how to get it when it is absent.
+///
+/// Every tool this project uses is reached through `cargo xtask`, so a missing
+/// one has to explain itself here rather than fail with "no such command".
+pub(crate) fn cargo_tool(subcommand: &str, install: &str, args: &[&str]) -> Result<(), String> {
+    let mut all = vec![subcommand];
+    all.extend_from_slice(args);
+
+    // Checked before running, not after. Deciding this from a failed run means a
+    // tool that ran fine and found real problems gets reported as missing, which
+    // is how the first mutation run described itself.
+    if !installed(subcommand) {
+        return Err(format!(
+            "cargo-{subcommand} is not installed. Get it with:\n    {install}"
+        ));
+    }
+    run(&all, Denied::None)
+}
+
+/// Asks cargo, not the binary.
+///
+/// A cargo subcommand is invoked as `cargo-thing thing ...` — cargo passes its
+/// own name through as the first argument, and several of them reject being run
+/// without it. Probing `cargo-thing --version` therefore reports a perfectly
+/// well installed tool as missing, which is what this function did on its first
+/// outing and why a mutation run silently never happened.
+fn installed(subcommand: &str) -> bool {
+    let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
+    Command::new(cargo)
+        .args([subcommand, "--version"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}

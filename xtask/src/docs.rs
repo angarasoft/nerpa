@@ -66,13 +66,14 @@ fn read_records() -> Result<Vec<Record>, String> {
     Ok(records)
 }
 
-/// Verifies the decision records, then that the API documentation builds clean.
-pub(crate) fn check() -> Result<(), String> {
-    let records = read_records()?;
+/// Everything that can be judged from the records alone, with no filesystem.
+///
+/// Returns one line per complaint. Empty means the records are sound.
+fn audit(records: &[Record]) -> Vec<String> {
     let mut complaints = Vec::new();
     let mut seen: BTreeMap<u16, String> = BTreeMap::new();
 
-    for record in &records {
+    for record in records {
         let file = &record.file;
 
         if let Some(other) = seen.insert(record.number, file.clone()) {
@@ -103,7 +104,7 @@ pub(crate) fn check() -> Result<(), String> {
             Some(status) => match status.strip_prefix("superseded by ") {
                 None => complaints.push(format!("{file}: unknown status {status:?}")),
                 Some(successor) => {
-                    complaints.extend(check_supersession(record, successor, &records));
+                    complaints.extend(check_supersession(record, successor, records));
                 }
             },
         }
@@ -117,6 +118,13 @@ pub(crate) fn check() -> Result<(), String> {
         }
     }
 
+    complaints
+}
+
+/// Verifies the decision records, then that the API documentation builds clean.
+pub(crate) fn check() -> Result<(), String> {
+    let records = read_records()?;
+    let complaints = audit(&records);
     if !complaints.is_empty() {
         return Err(complaints.join("\n"));
     }
@@ -151,5 +159,121 @@ fn check_supersession(record: &Record, successor: &str, records: &[Record]) -> V
             "{}: says it supersedes {:04}, but never mentions it",
             later.file, record.number
         )]
+    }
+}
+
+// The gate is only worth what its failures are worth, so each rule is shown a
+// record that breaks it.
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "tests may be blunt: an unwrap is an expectation and an index is a claim about shape"
+)]
+mod tests {
+    use super::{Record, audit};
+
+    fn record(number: u16, status: &str, extra: &str) -> Record {
+        Record {
+            number,
+            file: format!("{number:04}-a-decision.md"),
+            text: format!(
+                "# {number:04}. A decision\n\n- Status: {status}\n- Date: 2026-09-04\n\n\
+                 ## Context\n\nSomething was true.\n\n\
+                 ## Decision\n\nSomething was decided.\n\n\
+                 ## Consequences\n\nIt buys one thing. The cost is another.\n{extra}"
+            ),
+        }
+    }
+
+    #[test]
+    fn sound_records_are_quiet() {
+        let records = vec![record(1, "accepted", ""), record(2, "accepted", "")];
+        assert_eq!(audit(&records), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_supersession_pointing_nowhere_is_reported() {
+        let records = vec![
+            record(1, "superseded by 0099", ""),
+            record(2, "accepted", ""),
+        ];
+        let complaints = audit(&records);
+        assert!(
+            complaints
+                .iter()
+                .any(|line| line.contains("does not exist")),
+            "{complaints:?}"
+        );
+    }
+
+    #[test]
+    fn a_supersession_the_successor_never_mentions_is_reported() {
+        let records = vec![
+            record(1, "superseded by 0002", ""),
+            record(2, "accepted", ""),
+        ];
+        let complaints = audit(&records);
+        assert!(
+            complaints
+                .iter()
+                .any(|line| line.contains("never mentions")),
+            "{complaints:?}"
+        );
+    }
+
+    #[test]
+    fn a_supersession_named_at_both_ends_is_quiet() {
+        let records = vec![
+            record(1, "superseded by 0002", ""),
+            record(2, "accepted", "\nReplaces 0001.\n"),
+        ];
+        assert_eq!(audit(&records), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_missing_section_is_reported() {
+        let mut records = vec![record(1, "accepted", "")];
+        records[0].text = records[0].text.replace("## Decision", "## Something Else");
+        let complaints = audit(&records);
+        assert!(
+            complaints.iter().any(|line| line.contains("## Decision")),
+            "{complaints:?}"
+        );
+    }
+
+    #[test]
+    fn consequences_that_never_name_a_cost_are_reported() {
+        let mut records = vec![record(1, "accepted", "")];
+        records[0].text = records[0]
+            .text
+            .replace("The cost is another.", "It is all upside.");
+        let complaints = audit(&records);
+        assert!(
+            complaints.iter().any(|line| line.contains("name a cost")),
+            "{complaints:?}"
+        );
+    }
+
+    #[test]
+    fn a_gap_in_the_numbering_is_reported() {
+        let records = vec![record(1, "accepted", ""), record(3, "accepted", "")];
+        let complaints = audit(&records);
+        assert!(
+            complaints.iter().any(|line| line.contains("skip from")),
+            "{complaints:?}"
+        );
+    }
+
+    #[test]
+    fn an_unknown_status_is_reported() {
+        let records = vec![record(1, "mostly agreed", "")];
+        let complaints = audit(&records);
+        assert!(
+            complaints
+                .iter()
+                .any(|line| line.contains("unknown status")),
+            "{complaints:?}"
+        );
     }
 }

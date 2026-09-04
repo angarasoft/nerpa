@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Mutation testing is minutes, not seconds, so it runs nightly rather than on
+    # every push. A gate people learn to skip is worse than no gate.
+    - cron: "0 3 * * *"
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,6 +22,7 @@ jobs:
       # No toolchain is named here on purpose: rust-toolchain.toml is the single
       # place the version is decided, and a second one would drift from it.
       - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-deny
 
       # One entry point, and the same one a developer runs before pushing. A CI
       # file that grows its own list of steps ends up checking something subtly
@@ -25,9 +30,22 @@ jobs:
       - name: Gate
         run: cargo xtask ci
 
-  deny:
-    name: dependencies
+  mutants:
+    name: mutants
+    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@cargo-mutants
+
+      - name: Mutation testing
+        run: cargo xtask mutants
+
+      # The surviving mutants are the whole point of the run, so keep them even
+      # when — especially when — the job fails.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mutants
+          path: mutants.out

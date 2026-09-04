@@ -37,6 +37,16 @@ without ceremony until the first stage is complete.
 - `docs/TESTING.md` and exit criteria in `ROADMAP.md` that can be executed rather
   than judged.
 
+- Tests for the gate itself: every check now takes its input as data and is shown
+  a fixture that breaks it, so no rule is trusted without having been watched
+  fail.
+- `cargo xtask mutants` and `cargo xtask deny`. Every tool the project uses is
+  reached through `xtask`, including the ones living outside the workspace.
+- Tests closing every gap the first mutation run found: the charset rule per
+  alternative, `is_control` asserted both ways, `Graph::len`/`is_empty`/`get`,
+  the cycle report against a graph holding resources it does not block, and the
+  identifier rule one condition at a time.
+
 ### Changed
 
 - Workspace lints set to their strictest: `unsafe` forbidden, `missing_docs`

@@ -149,3 +149,33 @@ fn addresses_are_built_as_well_as_parsed() {
 
     assert_eq!(built, address("os:package.python:3.11@web-01"));
 }
+
+/// Each alternative in the charsets is its own case. Mutation testing found this
+/// gap: with only "lowercase passes, uppercase fails" written down, narrowing the
+/// rule to reject digits or underscores broke nothing.
+#[test]
+fn vocabulary_components_accept_digits_and_underscores() {
+    for text in ["os", "yandex", "s3", "my_provider", "vpc2"] {
+        assert!(
+            Provider::new(text).is_ok(),
+            "{text} should be a valid provider"
+        );
+    }
+    for text in ["package", "compute_instance", "subnet6"] {
+        assert!(Kind::new(text).is_ok(), "{text} should be a valid kind");
+    }
+}
+
+#[test]
+fn chosen_components_accept_every_character_the_grammar_allows() {
+    for text in ["nginx", "nginx.conf", "web-01", "web_01", "db2", "a.b-c_d9"] {
+        assert!(Name::new(text).is_ok(), "{text} should be a valid name");
+        assert!(Target::new(text).is_ok(), "{text} should be a valid target");
+    }
+}
+
+#[test]
+fn a_control_resource_says_so_when_asked() {
+    assert!(address("yandex:instance.db").domain().is_control());
+    assert!(!address("os:package.nginx@web-01").domain().is_control());
+}

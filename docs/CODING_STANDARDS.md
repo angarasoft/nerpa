@@ -27,7 +27,8 @@ Moving a rule from the second table to the first is always a welcome change.
 | Every `// ENFORCES:` anchor names a registered invariant | `cargo xtask invariants` |
 | Decision records are numbered, complete, and name a cost | `cargo xtask docs` |
 | Every supersession points both ways | `cargo xtask docs` |
-| Dependency licences are on the allowlist | `cargo deny` |
+| Dependency licences and advisories | `cargo xtask deny` |
+| Every gate rule has a fixture that makes it fire | `cargo test -p xtask` |
 
 Every relaxation of these carries a written reason at the point of relaxation,
 never a blanket `allow` at the top of a file. Tests may use `unwrap`, indexing

@@ -1,0 +1,45 @@
+# Mutation testing asks the only question coverage cannot: if the code were
+# wrong, would anything notice. A surviving mutant is a line no test constrains.
+#
+# Minutes rather than seconds, so this runs nightly and on demand, never on the
+# commit path.
+
+# The line drawn here: **decision logic is mutated, plumbing is not.** A function
+# whose only job is to read the filesystem and hand data to a decision has
+# nothing to constrain that a fixture could reach, and mutating it produces
+# survivors that can only be silenced by tests of the filesystem itself. The
+# decisions those functions feed — `audit`, `well_formed`, the rules in `lint` —
+# stay in scope, and that is where the value is.
+#
+# The patterns match cargo-mutants' own description of a mutant, which spells a
+# trait implementation out in full: `<impl fmt::Display for Value>::fmt`, not
+# `impl Display`. Written the obvious way these silently match nothing, which is
+# how the first run came back with nine survivors in formatting code.
+exclude_re = [
+    # Formatting: a changed message is not a changed behaviour.
+    "::fmt",
+    # Plumbing: reads the filesystem, decides nothing.
+    "(all_sources|library_sources|read_records|repository_rules)",
+    "\\bwalk\\b",
+    "\\bdisplay ->",
+    # The task entry points only sequence the checks above and print a summary.
+    # Their remaining mutants invert `if !complaints.is_empty()` or miscount the
+    # line that gets printed — the first is caught by the gate running at all on a
+    # sound repository, and the second is cosmetic.
+    "\\bin check\\b",
+    "replace check -> Result",
+]
+
+# Contracts panic by design. A mutant that removes a panic from `check` is
+# reporting that contracts were not load-bearing in that test, which the
+# without-contracts suite already establishes.
+#
+# xtask's `main` and `shell` are orchestration: they decide nothing and only
+# sequence subprocesses.
+exclude_globs = [
+    "**/contract.rs",
+    "xtask/src/main.rs",
+    "xtask/src/shell.rs",
+]
+
+timeout_multiplier = 4.0

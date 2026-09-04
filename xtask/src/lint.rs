@@ -76,8 +76,7 @@ fn bare_unwrap(path: &str, text: &str) -> Vec<String> {
     // itself. The rule still applies to this file like any other.
     let needle = concat!(".unwrap", "()");
 
-    text.lines()
-        .enumerate()
+    code_lines(text)
         .filter(|(_, line)| line.contains(needle) && !line.trim_start().starts_with("//"))
         .map(|(index, line)| {
             format!(
@@ -87,6 +86,18 @@ fn bare_unwrap(path: &str, text: &str) -> Vec<String> {
             )
         })
         .collect()
+}
+
+/// Everything up to an inline test module.
+///
+/// Tests get the same latitude here as tests in a `tests/` directory do: an
+/// unwrap is an expectation and a fixture may hold anything at all. This assumes
+/// the convention that `#[cfg(test)] mod tests` comes last in a file, which is
+/// where Rust puts it and where `cargo fmt` leaves it.
+fn code_lines(text: &str) -> impl Iterator<Item = (usize, &str)> {
+    text.lines()
+        .enumerate()
+        .take_while(|(_, line)| line.trim() != "#[cfg(test)]")
 }
 
 /// A module without a `//!` header is a module whose purpose lives only in
@@ -109,4 +120,75 @@ pub(crate) fn display(path: &Path) -> String {
         .unwrap_or(path)
         .display()
         .to_string()
+}
+
+// A rule nobody has watched fire is not a rule.
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "tests may be blunt: an unwrap is an expectation and an index is a claim about shape"
+)]
+mod tests {
+    use super::{bare_unwrap, missing_module_docs};
+
+    #[test]
+    fn a_bare_unwrap_is_reported_with_its_line() {
+        let source = "//! A module.\nfn main() {\n    let x = thing().unwrap();\n}\n";
+
+        let complaints = bare_unwrap("src/thing.rs", source);
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(
+            complaints[0].starts_with("src/thing.rs:3:"),
+            "{complaints:?}"
+        );
+    }
+
+    #[test]
+    fn expect_and_unwrap_or_are_left_alone() {
+        let source = "//! A module.\nlet a = x.expect(\"why\");\nlet b = y.unwrap_or_default();\n";
+
+        assert!(bare_unwrap("src/thing.rs", source).is_empty());
+    }
+
+    #[test]
+    fn an_unwrap_inside_a_comment_is_not_code() {
+        let source = "//! A module.\n// never write x.unwrap() here\n";
+
+        assert!(bare_unwrap("src/thing.rs", source).is_empty());
+    }
+
+    #[test]
+    fn code_after_an_inline_test_module_is_not_code() {
+        let source = concat!(
+            "//! A module.\n",
+            "fn real() { thing().unwrap(); }\n",
+            "#[cfg(test)]\n",
+            "mod tests {\n",
+            "    fn a_test() { thing().unwrap(); }\n",
+            "}\n"
+        );
+
+        let complaints = bare_unwrap("src/thing.rs", source);
+        assert_eq!(
+            complaints.len(),
+            1,
+            "only the line above the test module counts"
+        );
+        assert!(
+            complaints[0].starts_with("src/thing.rs:2:"),
+            "{complaints:?}"
+        );
+    }
+
+    #[test]
+    fn a_module_without_a_header_is_reported() {
+        let complaints = missing_module_docs("src/thing.rs", "use std::fs;\n");
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+    }
+
+    #[test]
+    fn a_module_header_after_blank_lines_still_counts() {
+        assert!(missing_module_docs("src/thing.rs", "\n\n//! A module.\n").is_empty());
+    }
 }

@@ -15,7 +15,14 @@
 //!   cargo xtask test        the test suites, with and without contracts
 //!   cargo xtask invariants  docs/invariants.toml against the code, both ways
 //!   cargo xtask docs        decision records, then rustdoc with warnings denied
+//!   cargo xtask deny        dependency licences and advisories
+//!
+//!   cargo xtask mutants     mutation testing — minutes, so not on the commit path
 //! ```
+//!
+//! Everything this project uses is reached through here, including tools that
+//! live outside the workspace. A second way to run a check is a second thing to
+//! keep in step with CI, and it never is.
 //!
 //! # Why not a Makefile
 //!
@@ -45,6 +52,8 @@ tasks:
   test        the suites, with and without contracts
   invariants  docs/invariants.toml against the code, in both directions
   docs        decision records, then rustdoc with warnings denied
+  deny        dependency licences and advisories
+  mutants     mutation testing (minutes; not part of ci)
 ";
 
 fn main() -> ExitCode {
@@ -56,6 +65,8 @@ fn main() -> ExitCode {
         Some("test") => test(),
         Some("invariants") => invariants::check(),
         Some("docs") => docs::check(),
+        Some("deny") => deny(),
+        Some("mutants") => mutants(),
         Some(unknown) => Err(format!("unknown task {unknown:?}\n\n{USAGE}")),
         None => Err(USAGE.to_owned()),
     };
@@ -74,7 +85,19 @@ fn ci() -> Result<(), String> {
     lint()?;
     test()?;
     invariants::check()?;
-    docs::check()
+    docs::check()?;
+    deny()
+}
+
+fn deny() -> Result<(), String> {
+    shell::cargo_tool("deny", "cargo install cargo-deny --locked", &["check"])
+}
+
+/// Deliberately not part of `ci`: it is minutes rather than seconds, and a gate
+/// people learn to skip is worse than no gate. Nightly in CI, by hand when a
+/// test suite has just been reorganised.
+fn mutants() -> Result<(), String> {
+    shell::cargo_tool("mutants", "cargo install cargo-mutants --locked", &[])
 }
 
 fn fmt() -> Result<(), String> {

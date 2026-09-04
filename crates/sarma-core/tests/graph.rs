@@ -7,7 +7,7 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 use sarma_core::address::address;
 use sarma_core::graph::{Graph, GraphError, StageKind};
-use sarma_core::{Resource, Target};
+use sarma_core::{Resource, Target, Value};
 
 fn graph_of(resources: Vec<Resource>) -> Graph {
     let mut graph = Graph::new();
@@ -118,4 +118,49 @@ fn one_address_cannot_be_declared_twice() {
         graph.insert(Resource::new(address("yandex:instance.db"))),
         Err(GraphError::Duplicate(_))
     ));
+}
+
+#[test]
+fn a_graph_reports_what_it_holds() {
+    let empty = Graph::new();
+    assert!(empty.is_empty());
+    assert_eq!(empty.len(), 0);
+    assert_eq!(empty.get(&address("yandex:instance.db")), None);
+
+    let graph = graph_of(vec![
+        Resource::new(address("yandex:instance.db")).with("cores", 8),
+        Resource::new(address("yandex:disk.spare")),
+    ]);
+
+    assert!(!graph.is_empty());
+    assert_eq!(graph.len(), 2);
+    assert_eq!(
+        graph
+            .get(&address("yandex:instance.db"))
+            .and_then(|found| found.attribute("cores")),
+        Some(&Value::Integer(8))
+    );
+    assert_eq!(graph.get(&address("yandex:instance.absent")), None);
+}
+
+/// The report names what a cycle holds up, and nothing else. Mutation testing
+/// found this: every earlier cycle test used a graph where every resource was
+/// stuck, so widening the filter to include untangled ones changed no assertion.
+#[test]
+fn a_cycle_report_leaves_out_resources_it_does_not_hold_up() {
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.a@web-01")).after(address("os:file.b@web-01")),
+        Resource::new(address("os:file.b@web-01")).after(address("os:file.a@web-01")),
+        Resource::new(address("yandex:disk.unrelated")),
+    ]);
+
+    let Err(GraphError::Cycle(stuck)) = graph.stages() else {
+        panic!("the cycle must be refused");
+    };
+    let named: Vec<String> = stuck.iter().map(ToString::to_string).collect();
+    assert_eq!(
+        named,
+        ["os:file.a@web-01", "os:file.b@web-01"],
+        "unrelated resources crept in"
+    );
 }

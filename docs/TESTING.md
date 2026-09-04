@@ -1,8 +1,8 @@
 # Testing
 
 Why the suite is shaped the way it is:
-[0015](decisions/0015-test-by-guarantee-and-converge-twice.md). This is how to
-work in it.
+[0015](decisions/0015-test-by-guarantee-and-converge-twice.md) and
+[0016](decisions/0016-prove-the-gate-can-fail.md). This is how to work in it.
 
 ## The suite is indexed by guarantee, not by module
 
@@ -25,7 +25,8 @@ A test name is a sentence about a guarantee.
 | Provider, recorded | one real cloud API, replayed | `cargo test`, every commit |
 | Provider, live | the same, against the real account | on demand, costs money |
 | Executor | one container per supported distribution | CI, every commit |
-| Mutation | whether the suite means anything | nightly |
+| Gate | that every check can go red | `cargo test -p xtask`, every commit |
+| Mutation | whether the suite means anything | nightly, `cargo xtask mutants` |
 
 ### Property tests, where an example would lie
 
@@ -60,6 +61,55 @@ and it applies to authors outside this repository too.
 Real providers are additionally tested against recorded HTTP exchanges: recorded
 once against the live account, replayed in CI. Recordings go stale — refreshing
 them needs an account and money, and that is a known, accepted cost.
+
+## The gate is tested too
+
+A check nobody has watched fail is a green light of unknown provenance. So the
+checks take their input as data — registry text, decision records, source text —
+with the filesystem at the edges, and **every rule has a test that feeds it
+something wrong and asserts the specific complaint**: a missing anchor, a renamed
+test, an invented identifier, a supersession pointing nowhere, consequences that
+never name a cost.
+
+Adding a rule to `xtask` means adding the fixture that breaks it, in the same
+commit. A rule without one is not enforced, it is decorative.
+
+## Mutation testing
+
+```console
+$ cargo xtask mutants
+```
+
+It alters the code and asks whether anything notices. A surviving mutant is a
+line no test constrains, whatever coverage says about it — and coverage is not
+tracked here for exactly that reason.
+
+Minutes rather than seconds, so it is nightly in CI and on demand locally, never
+on the commit path: a gate people learn to skip is worse than no gate. Run it by
+hand after reorganising a test suite, which is when tests most often stop
+constraining what they used to.
+
+The line drawn in `.cargo/mutants.toml` is **decision logic is mutated, plumbing
+is not**. A function whose only job is to read the filesystem and hand data to a
+decision has nothing a fixture could constrain, and mutating it produces
+survivors that can only be silenced by testing the filesystem. The decisions
+those functions feed stay in scope, and that is where the value is. Display code
+is out because a changed message is not a changed behaviour, and `contract.rs` is
+out because a mutant removing a deliberate panic only reports that contracts were
+not load-bearing in that test — which the without-contracts suite already
+establishes.
+
+The first run is worth recording, because it is the argument for doing this at
+all: **62 survivors of 153**. Nine were in formatting code the configuration was
+supposed to exclude and did not, because the exclusion pattern was written the
+obvious way rather than the way cargo-mutants describes a mutant. The rest were
+real: `Graph::len`, `is_empty` and `get` had no test at all; `is_control` was only
+ever asserted false; the charset rule could be narrowed to reject digits and
+underscores without failing anything; and the cycle report could be widened to
+name resources it does not hold up, because every cycle fixture had all its
+resources stuck.
+
+After those tests were written, `crates/` has no survivors.
 
 ## Contracts are not tests
 
