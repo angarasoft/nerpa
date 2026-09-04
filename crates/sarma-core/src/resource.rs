@@ -22,6 +22,7 @@ use crate::value::Value;
 /// people do edit machines during an incident, and the edit is usually the only
 /// record of what the incident was.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+// ENFORCES: INV-DRIFT-001
 pub enum Protection {
     /// Drift is corrected: the declaration wins.
     #[default]

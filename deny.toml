@@ -1,0 +1,37 @@
+# Taken from AngaraBase, cut down to what a project with one dependency needs.
+# The allowlist is the point: a licence that is not on it stops the build rather
+# than being noticed during an audit two years later.
+
+[graph]
+all-features = true
+
+[advisories]
+unmaintained = "workspace"
+yanked = "deny"
+
+[licenses]
+version = 2
+allow = [
+  # Sarma itself.
+  "AGPL-3.0-only",
+  # Dependency licences below. Nothing copyleft belongs here: sarma is AGPL by
+  # choice, and a dependency that imposes it removes the choice.
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "MIT",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Zlib",
+]
+
+[bans]
+# Two versions of one crate in the tree means two copies of its bugs and two
+# things to patch when an advisory lands.
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

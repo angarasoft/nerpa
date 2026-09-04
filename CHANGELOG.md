@@ -13,3 +13,8 @@ without ceremony until the first stage is complete.
 - Resources: attributes, declared ordering, and whether drift on them may be
   overwritten or has to be merged by a person.
 - Contract macros, on in release builds.
+- The resource graph: staging by topological level, deterministic cycle
+  reporting, and refusal of dangling or duplicated declarations.
+- An invariant registry in `docs/invariants.toml`, checked in both directions
+  against `// ENFORCES:` anchors in the code.
+- `cargo-deny` configuration, with a licence allowlist that fails the build.

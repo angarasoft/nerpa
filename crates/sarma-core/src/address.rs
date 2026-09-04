@@ -75,6 +75,7 @@ impl Charset {
     }
 }
 
+// ENFORCES: INV-ADDR-002
 fn validate(component: &'static str, value: &str, charset: Charset) -> Result<(), AddressError> {
     if value.is_empty() {
         return Err(AddressError::Empty {
@@ -169,6 +170,7 @@ segment!(
     "The node a resource lives on, for the `target` domain."
 );
 
+// ENFORCES: INV-ADDR-001
 /// The identity of one resource.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Address {
@@ -275,6 +277,7 @@ impl std::str::FromStr for Address {
             target,
         };
 
+        // ENFORCES: INV-ADDR-003
         // Round-tripping is not a nicety here. The plan hash is taken over
         // canonical text, so a value that prints differently from the way it
         // parsed would produce two hashes for one plan and quietly invalidate a

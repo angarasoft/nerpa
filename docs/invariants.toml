@@ -1,0 +1,133 @@
+# The invariant registry.
+#
+# An invariant is a guarantee Sarma must hold under every circumstance, and
+# whose violation means a wrong change to somebody's infrastructure. Writing
+# them down here rather than only in prose makes them traceable: each one names
+# the code that enforces it and the tests that prove it, and `tests/invariants.rs`
+# fails if either end of that link rots.
+#
+# The reverse edge is an `// ENFORCES: INV-...` comment at the code site, in the
+# spirit of `// SAFETY:`. The registry test checks both directions — every
+# enforced invariant is anchored in code, and every anchor names a real id.
+#
+# `status`:
+#   enforced — code and tests exist today
+#   planned  — decided in the architecture, not yet built
+
+[[invariant]]
+id = "INV-ADDR-001"
+status = "enforced"
+statement = "A resource address contains no index."
+rationale = """
+An ordinal position in a list is not an identity. Removing an entry from the \
+middle renumbers everything after it, and a planner that believes those numbers \
+proposes destroying live resources that merely moved. There is no field and no \
+constructor that could hold one."""
+enforced_by = ["crates/sarma-core/src/address.rs"]
+tests = ["slots_let_two_versions_coexist", "addresses_are_built_as_well_as_parsed"]
+
+[[invariant]]
+id = "INV-ADDR-002"
+status = "enforced"
+statement = "No component of an address begins with `-`."
+rationale = """
+Addresses are interpolated into SSH command lines and provider invocations. A \
+name that reads as an option is a remote code execution waiting for a careless \
+call site, so the type refuses to hold one."""
+enforced_by = ["crates/sarma-core/src/address.rs"]
+tests = ["nothing_can_be_mistaken_for_a_command_line_option"]
+
+[[invariant]]
+id = "INV-ADDR-003"
+status = "enforced"
+statement = "Address text round-trips: parsing then printing yields the input."
+rationale = """
+The plan hash is taken over canonical text. A value that printed differently \
+from the way it parsed would produce two hashes for one plan and invalidate a \
+signature that was given in good faith."""
+enforced_by = ["crates/sarma-core/src/address.rs"]
+tests = ["every_shape_round_trips"]
+
+[[invariant]]
+id = "INV-DOMAIN-001"
+status = "enforced"
+statement = "Execution domain is derived from the address, never stored beside it."
+rationale = """
+A separate field is a second source of truth, and the two can disagree. The \
+planner would then look for a node the address says is not there, or skip one \
+that is."""
+enforced_by = ["crates/sarma-core/src/domain.rs"]
+tests = ["control_resources_have_no_node", "target_resources_name_the_node_they_live_on"]
+
+[[invariant]]
+id = "INV-GRAPH-001"
+status = "enforced"
+statement = "The resource graph is acyclic, and a cycle is reported deterministically."
+rationale = """
+A cycle is a configuration error, not a runtime condition, so it must be found \
+before anything is touched. Reporting it the same way every time matters because \
+the report is what somebody debugs at three in the morning."""
+enforced_by = ["crates/sarma-core/src/graph.rs"]
+tests = ["a_cycle_is_reported_with_every_resource_in_it", "cycle_reports_do_not_depend_on_insertion_order"]
+
+[[invariant]]
+id = "INV-GRAPH-002"
+status = "enforced"
+statement = "Every declared dependency names a resource that exists in the graph."
+rationale = """
+A dangling edge means the planner would silently ignore an ordering somebody \
+asked for. Failing closed is the only safe reading."""
+enforced_by = ["crates/sarma-core/src/graph.rs"]
+tests = ["a_dependency_on_a_missing_resource_is_refused"]
+
+[[invariant]]
+id = "INV-PLAN-001"
+status = "planned"
+statement = "An unresolved value never determines which resources exist."
+rationale = """
+This is what makes a single planning pass possible at all. Branching or \
+iterating over a deferred handle is rejected at evaluation time, so the set of \
+resources is known before anything happens even when individual values are not."""
+enforced_by = []
+tests = []
+
+[[invariant]]
+id = "INV-PLAN-002"
+status = "planned"
+statement = "Planning is one pass; stages belong to execution."
+rationale = """
+Two planning passes would mean a plan that is only partly known, which cannot be \
+signed as a whole. Stages order the work; they do not order the thinking."""
+enforced_by = []
+tests = []
+
+[[invariant]]
+id = "INV-STATE-001"
+status = "planned"
+statement = "State holds references to secrets and digests of their values, never the values."
+rationale = """
+Terraform state carries passwords in clear text, which is why it needs whole-file \
+encryption and still leaks through every backup. A state that never held the \
+value has nothing to leak."""
+enforced_by = []
+tests = []
+
+[[invariant]]
+id = "INV-DRIFT-001"
+status = "planned"
+statement = "A resource marked for merging is never overwritten without a person."
+rationale = """
+Portage's CONFIG_PROTECT, and for the same reason: people edit machines during \
+incidents, and the edit is often the only record of what the incident was."""
+enforced_by = ["crates/sarma-core/src/resource.rs"]
+tests = ["drift_is_corrected_unless_the_resource_asks_to_be_merged"]
+
+[[invariant]]
+id = "INV-TRUST-001"
+status = "planned"
+statement = "No run proceeds without an actor identity; static keys are not a mode."
+rationale = """
+Not a recommendation but an absence: there is no code path that reads a long-lived \
+key, so no deadline can produce one."""
+enforced_by = []
+tests = []
