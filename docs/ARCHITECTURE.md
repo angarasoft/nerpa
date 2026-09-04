@@ -49,6 +49,15 @@ unknown but empty.
 Unresolved values are marked and carry a reference to the resource that will
 supply them. They never determine which resources exist.
 
+A reference is unresolved in the text, not in the world: if the resource it reads
+from already exists, the value is known and compared like any other. That is what
+makes a second run empty, and a tool whose second run is not empty is not
+convergent.
+
+Deletions are not planned yet. A resource that is no longer declared has to go,
+but ordering its removal needs to know what depended on it, and that lives in
+state — which does not exist yet.
+
 ## Observed state — [0011](decisions/0011-observed-state-in-three-tiers.md)
 
 Three tiers, cheapest first: a fingerprint that lets an unchanged node be skipped

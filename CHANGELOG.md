@@ -65,6 +65,15 @@ without ceremony until the first stage is complete.
   syntax tree before evaluation, because Starlark answers them without consulting
   the value. Truthiness is recorded and the whole run refused.
 
+- The planner: desired and observed state into a plan, in one walk of the graph.
+  Creates, updates and replacements, with the attribute that forced a replacement
+  named rather than left to be inferred.
+- `Observed`, `Schema` and the plan types — `Plan`, `PlanStage`, `Change`,
+  `AttributeDelta`, `Confidence`, `BlastRadius`. Ordered throughout, because a
+  plan is going to be hashed and signed.
+- References resolve against what already exists, which is what makes a second
+  run empty.
+
 ### Changed
 
 - Workspace lints set to their strictest: `unsafe` forbidden, `missing_docs`

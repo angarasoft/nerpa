@@ -44,6 +44,12 @@
 //! * [`attribute`] — what a declaration says, including values that do not exist yet.
 //! * [`graph`] — the desired-state graph, and the stages it is applied in.
 //! * [`inventory`] — where the nodes come from.
+//! * [`observed`] — what the world looks like, read before planning starts.
+//! * [`schema`] — which attributes cannot be changed in place.
+//! * [`planner`] — desired and observed state, in one pass, into a plan.
+//!   Called as `planner::plan`, not re-exported: a `plan` function beside a
+//!   `plan` module reads as an accident.
+//! * [`plan`] — what a run intends to do.
 //! * [`resource`] — a node of the desired-state graph.
 //! * [`value`] — attribute values.
 //! * [`contract`] — the runtime assertions and the reasoning behind them.
@@ -54,7 +60,11 @@ pub mod contract;
 pub mod domain;
 pub mod graph;
 pub mod inventory;
+pub mod observed;
+pub mod plan;
+pub mod planner;
 pub mod resource;
+pub mod schema;
 pub mod value;
 
 pub use address::{Address, AddressError, Kind, Name, Provider, Slot, Target};
@@ -62,5 +72,8 @@ pub use attribute::{Attribute, Reference};
 pub use domain::ExecutionDomain;
 pub use graph::{Graph, GraphError, Stage, StageKind};
 pub use inventory::{Inventory, Provenance};
+pub use observed::Observed;
+pub use plan::{AttributeDelta, BlastRadius, Change, ChangeKind, Confidence, Plan, PlanStage};
 pub use resource::{Protection, Resource};
+pub use schema::Schema;
 pub use value::Value;
