@@ -8,8 +8,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::address::Address;
+use crate::attribute::Attribute;
 use crate::requires;
-use crate::value::Value;
 
 /// What Sarma may do when reality has drifted from the declaration.
 ///
@@ -36,7 +36,7 @@ pub enum Protection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Resource {
     address: Address,
-    attributes: BTreeMap<String, Value>,
+    attributes: BTreeMap<String, Attribute>,
     depends_on: BTreeSet<Address>,
     protection: Protection,
 }
@@ -54,18 +54,31 @@ impl Resource {
 
     /// Sets one attribute, replacing any previous value.
     ///
+    /// Takes a settled value or a [`Reference`](crate::attribute::Reference) to
+    /// one that does not exist yet. A reference also becomes an edge in the
+    /// graph, so nobody has to declare that ordering a second time.
+    ///
     /// # Panics
     ///
-    /// Panics if `name` is empty. See [`crate::contract`].
+    /// Panics if `name` is empty, or if the attribute reads from this resource's
+    /// own address. See [`crate::contract`].
     #[must_use]
-    pub fn with(mut self, name: impl Into<String>, value: impl Into<Value>) -> Self {
+    pub fn with(mut self, name: impl Into<String>, value: impl Into<Attribute>) -> Self {
         let name = name.into();
+        let value = value.into();
         requires!(
             !name.is_empty(),
             "attribute of {} has an empty name",
             self.address
         );
-        self.attributes.insert(name, value.into());
+        requires!(
+            value
+                .reference()
+                .is_none_or(|reference| reference.source() != &self.address),
+            "attribute {name} of {} reads from itself",
+            self.address
+        );
+        self.attributes.insert(name, value);
         self
     }
 
@@ -102,12 +115,12 @@ impl Resource {
     }
 
     /// Everything declared about it, by name.
-    pub fn attributes(&self) -> &BTreeMap<String, Value> {
+    pub fn attributes(&self) -> &BTreeMap<String, Attribute> {
         &self.attributes
     }
 
     /// One declared attribute, if it was set.
-    pub fn attribute(&self, name: &str) -> Option<&Value> {
+    pub fn attribute(&self, name: &str) -> Option<&Attribute> {
         self.attributes.get(name)
     }
 

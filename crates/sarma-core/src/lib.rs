@@ -41,20 +41,26 @@
 //! * [`address`] — resource identity, and the grammar it is written in.
 //! * [`domain`] — where a resource's state can be read, and why that does not
 //!   force planning to happen in waves.
+//! * [`attribute`] — what a declaration says, including values that do not exist yet.
 //! * [`graph`] — the desired-state graph, and the stages it is applied in.
+//! * [`inventory`] — where the nodes come from.
 //! * [`resource`] — a node of the desired-state graph.
 //! * [`value`] — attribute values.
 //! * [`contract`] — the runtime assertions and the reasoning behind them.
 
 pub mod address;
+pub mod attribute;
 pub mod contract;
 pub mod domain;
 pub mod graph;
+pub mod inventory;
 pub mod resource;
 pub mod value;
 
 pub use address::{Address, AddressError, Kind, Name, Provider, Slot, Target};
+pub use attribute::{Attribute, Reference};
 pub use domain::ExecutionDomain;
 pub use graph::{Graph, GraphError, Stage, StageKind};
+pub use inventory::{Inventory, Provenance};
 pub use resource::{Protection, Resource};
 pub use value::Value;

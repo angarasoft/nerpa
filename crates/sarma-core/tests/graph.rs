@@ -7,11 +7,19 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 use sarma_core::address::address;
 use sarma_core::graph::{Graph, GraphError, StageKind};
-use sarma_core::{Resource, Target, Value};
+use sarma_core::{Attribute, ExecutionDomain, Provenance, Reference, Resource, Target, Value};
 
+/// Builds a graph and declares every node its resources mention as already
+/// existing.
+///
+/// For tests that are not about where nodes come from. The ones that are build
+/// their inventory by hand, because that is what they are testing.
 fn graph_of(resources: Vec<Resource>) -> Graph {
     let mut graph = Graph::new();
     for resource in resources {
+        if let ExecutionDomain::Target(target) = resource.address().domain() {
+            graph.preexisting(target);
+        }
         graph.insert(resource).expect("distinct addresses");
     }
     graph
@@ -137,7 +145,8 @@ fn a_graph_reports_what_it_holds() {
     assert_eq!(
         graph
             .get(&address("yandex:instance.db"))
-            .and_then(|found| found.attribute("cores")),
+            .and_then(|found| found.attribute("cores"))
+            .and_then(Attribute::known),
         Some(&Value::Integer(8))
     );
     assert_eq!(graph.get(&address("yandex:instance.absent")), None);
@@ -162,5 +171,128 @@ fn a_cycle_report_leaves_out_resources_it_does_not_hold_up() {
         named,
         ["os:file.a@web-01", "os:file.b@web-01"],
         "unrelated resources crept in"
+    );
+}
+
+#[test]
+fn an_attribute_reading_from_another_resource_is_an_ordering() {
+    let graph = graph_of(vec![
+        Resource::new(address("yandex:instance.db")),
+        Resource::new(address("yandex:instance.web")).with(
+            "upstream",
+            Reference::to(address("yandex:instance.db"), "ip"),
+        ),
+    ]);
+
+    let stages = graph.stages().expect("acyclic");
+    assert_eq!(stages.len(), 2, "the reader waits for what it reads");
+    assert_eq!(stages[0].addresses(), [address("yandex:instance.db")]);
+    assert_eq!(stages[1].addresses(), [address("yandex:instance.web")]);
+}
+
+#[test]
+fn two_references_to_one_resource_are_still_one_ordering() {
+    let graph = graph_of(vec![
+        Resource::new(address("yandex:instance.db")),
+        Resource::new(address("yandex:instance.web"))
+            .with("host", Reference::to(address("yandex:instance.db"), "ip"))
+            .with("port", Reference::to(address("yandex:instance.db"), "port")),
+    ]);
+
+    let stages = graph
+        .stages()
+        .expect("counting an edge twice would strand the reader");
+    assert_eq!(stages.len(), 2);
+    assert_eq!(stages[1].addresses(), [address("yandex:instance.web")]);
+}
+
+#[test]
+fn a_reference_to_a_resource_that_is_not_here_is_refused() {
+    let graph = graph_of(vec![Resource::new(address("yandex:instance.web")).with(
+        "upstream",
+        Reference::to(address("yandex:instance.absent"), "ip"),
+    )]);
+
+    let Err(GraphError::MissingReference { attribute, .. }) = graph.stages() else {
+        panic!("a reference into thin air must be refused");
+    };
+    assert_eq!(attribute, "upstream");
+}
+
+#[test]
+fn everything_on_a_node_waits_for_whatever_creates_it() {
+    let mut graph = Graph::new();
+    graph
+        .insert(Resource::new(address("yandex:instance.web")))
+        .expect("first");
+    graph
+        .insert(Resource::new(address("os:package.nginx@web-01")))
+        .expect("second");
+    graph.managed_by(
+        Target::new("web-01").unwrap(),
+        address("yandex:instance.web"),
+    );
+
+    let stages = graph.stages().expect("acyclic");
+    assert_eq!(stages.len(), 2, "the package cannot go first");
+    assert_eq!(stages[0].addresses(), [address("yandex:instance.web")]);
+    assert_eq!(stages[1].addresses(), [address("os:package.nginx@web-01")]);
+}
+
+#[test]
+fn a_node_that_was_already_there_adds_no_ordering() {
+    let mut graph = Graph::new();
+    graph
+        .insert(Resource::new(address("os:package.nginx@web-01")))
+        .expect("only");
+    graph.preexisting(Target::new("web-01").unwrap());
+
+    let stages = graph.stages().expect("acyclic");
+    assert_eq!(
+        stages.len(),
+        1,
+        "nothing must happen before touching a machine that exists"
+    );
+}
+
+/// Fail closed. Ordering a resource last because nobody said where its machine
+/// comes from would be a guess dressed up as a decision.
+#[test]
+fn a_resource_on_a_node_nobody_declared_is_refused() {
+    let mut graph = Graph::new();
+    graph
+        .insert(Resource::new(address("os:package.nginx@web-01")))
+        .expect("only");
+
+    let Err(GraphError::UnknownNode { target, .. }) = graph.stages() else {
+        panic!("an unplaceable resource must be refused");
+    };
+    assert_eq!(target.as_str(), "web-01");
+}
+
+#[test]
+fn the_inventory_reports_what_it_was_told() {
+    let mut graph = Graph::new();
+    assert!(graph.inventory().is_empty());
+
+    graph.preexisting(Target::new("web-01").unwrap());
+    graph.managed_by(
+        Target::new("web-02").unwrap(),
+        address("yandex:instance.web"),
+    );
+
+    assert!(!graph.inventory().is_empty(), "two nodes were declared");
+    assert_eq!(graph.inventory().len(), 2);
+    assert_eq!(
+        graph
+            .inventory()
+            .provenance(&Target::new("web-02").unwrap()),
+        Some(&Provenance::Managed(address("yandex:instance.web")))
+    );
+    assert_eq!(
+        graph
+            .inventory()
+            .provenance(&Target::new("web-09").unwrap()),
+        None
     );
 }

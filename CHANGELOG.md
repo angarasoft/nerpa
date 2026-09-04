@@ -47,6 +47,15 @@ without ceremony until the first stage is complete.
   the cycle report against a graph holding resources it does not block, and the
   identifier rule one condition at a time.
 
+- Unresolved values: an attribute holds either a settled value or a reference to
+  the resource that will supply one. `Value` stays settled-only, because it is
+  also what observed state is made of and an observed value is never unknown.
+- An inventory saying where each node comes from, and edges derived from it: a
+  resource on a node is ordered after whatever creates that node, and a resource
+  on a node nobody declared is refused.
+- Edges derived from references, so ordering no longer depends on remembering to
+  declare it.
+
 ### Changed
 
 - Workspace lints set to their strictest: `unsafe` forbidden, `missing_docs`

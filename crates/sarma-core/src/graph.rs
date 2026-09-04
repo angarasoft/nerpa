@@ -22,9 +22,10 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use crate::address::Address;
+use crate::address::{Address, Target};
 use crate::domain::ExecutionDomain;
 use crate::ensures;
+use crate::inventory::{Inventory, Provenance};
 use crate::resource::Resource;
 
 /// Why a graph could not be built or ordered.
@@ -48,6 +49,24 @@ pub enum GraphError {
         /// The address it named, which is absent.
         to: Address,
     },
+    /// An attribute reads from a resource that is not here.
+    #[error("{from} reads {attribute} from {to}, which is not in the graph")]
+    MissingReference {
+        /// The resource whose attribute could not be resolved.
+        from: Address,
+        /// The attribute that named the missing resource.
+        attribute: String,
+        /// The address it named.
+        to: Address,
+    },
+    /// A resource lives on a node the inventory has never heard of.
+    #[error("{resource} lives on {target}, which nothing in the inventory provides")]
+    UnknownNode {
+        /// The resource that could not be placed.
+        resource: Address,
+        /// The node it names.
+        target: Target,
+    },
     /// Ordering is impossible. Carries everything a cycle holds up, not only
     /// the cycle proper.
     #[error("dependencies form a cycle: {}", .0.iter().map(ToString::to_string).collect::<Vec<_>>().join(" -> "))]
@@ -66,7 +85,7 @@ pub enum StageKind {
     /// Everything in this stage is reachable through an API.
     Control,
     /// Everything in this stage runs on nodes, named here.
-    Target(BTreeSet<crate::address::Target>),
+    Target(BTreeSet<Target>),
     /// Both, at the same depth and independent of each other.
     Mixed,
 }
@@ -94,6 +113,7 @@ impl Stage {
 #[derive(Debug, Clone, Default)]
 pub struct Graph {
     resources: BTreeMap<Address, Resource>,
+    inventory: Inventory,
 }
 
 impl Graph {
@@ -143,6 +163,94 @@ impl Graph {
         self.resources.get(address)
     }
 
+    /// Declares that `resource` brings `target` into existence.
+    pub fn managed_by(&mut self, target: Target, resource: Address) {
+        self.inventory.managed_by(target, resource);
+    }
+
+    /// Declares that `target` is already there and Sarma does not create it.
+    pub fn preexisting(&mut self, target: Target) {
+        self.inventory.preexisting(target);
+    }
+
+    /// Where the nodes come from.
+    #[must_use]
+    pub fn inventory(&self) -> &Inventory {
+        &self.inventory
+    }
+
+    /// Every ordering the graph implies, as `(dependent, dependency)`.
+    ///
+    /// Three sources, and only one of them is written by hand. An explicit
+    /// `after` says what the data does not reveal; an attribute reading from
+    /// another resource is an ordering whether or not anybody noticed it; and
+    /// anything living on a node comes after whatever creates that node.
+    ///
+    // ENFORCES: INV-GRAPH-002
+    // ENFORCES: INV-GRAPH-003
+    // ENFORCES: INV-GRAPH-004
+    #[allow(
+        clippy::result_large_err,
+        reason = "diagnostics beat a lint on a cold path"
+    )]
+    fn edges(&self) -> Result<Vec<(&Address, &Address)>, GraphError> {
+        let mut edges = Vec::new();
+
+        for (address, resource) in &self.resources {
+            for dependency in resource.depends_on() {
+                let (known, _) = self.resources.get_key_value(dependency).ok_or_else(|| {
+                    GraphError::Dangling {
+                        from: address.clone(),
+                        to: dependency.clone(),
+                    }
+                })?;
+                edges.push((address, known));
+            }
+
+            for (name, attribute) in resource.attributes() {
+                let Some(reference) = attribute.reference() else {
+                    continue;
+                };
+                let (known, _) = self
+                    .resources
+                    .get_key_value(reference.source())
+                    .ok_or_else(|| GraphError::MissingReference {
+                        from: address.clone(),
+                        attribute: name.clone(),
+                        to: reference.source().clone(),
+                    })?;
+                edges.push((address, known));
+            }
+
+            if let ExecutionDomain::Target(target) = address.domain() {
+                // Fail closed. If Sarma cannot say where a machine comes from it
+                // cannot say when to touch it, and ordering the resource last
+                // would be a guess dressed up as a decision.
+                match self.inventory.provenance(&target) {
+                    None => {
+                        return Err(GraphError::UnknownNode {
+                            resource: address.clone(),
+                            target,
+                        });
+                    }
+                    Some(Provenance::Preexisting) => {}
+                    Some(Provenance::Managed(provider)) => {
+                        let (known, _) =
+                            self.resources.get_key_value(provider).ok_or_else(|| {
+                                GraphError::Dangling {
+                                    from: address.clone(),
+                                    to: provider.clone(),
+                                }
+                            })?;
+                        edges.push((address, known));
+                    }
+                }
+            }
+        }
+
+        Ok(edges)
+    }
+
     /// Orders the graph into stages, or explains why it cannot be ordered.
     ///
     /// Kahn's algorithm, over sorted collections throughout so that the answer —
@@ -151,7 +259,9 @@ impl Graph {
     /// # Errors
     ///
     /// Returns [`GraphError::Dangling`] if a declared dependency names a
-    /// resource that is not in the graph, and [`GraphError::Cycle`] if the
+    /// resource that is not in the graph, [`GraphError::MissingReference`] if an
+    /// attribute reads from one, [`GraphError::UnknownNode`] if a resource lives
+    /// on a node the inventory does not know, and [`GraphError::Cycle`] if the
     /// dependencies cannot be ordered at all.
     ///
     /// # Panics
@@ -173,19 +283,13 @@ impl Graph {
             .collect();
         let mut dependents: BTreeMap<&Address, BTreeSet<&Address>> = BTreeMap::new();
 
-        for (address, resource) in &self.resources {
-            for dependency in resource.depends_on() {
-                let Some((known, _)) = self.resources.get_key_value(dependency) else {
-                    return Err(GraphError::Dangling {
-                        from: address.clone(),
-                        to: dependency.clone(),
-                    });
-                };
-                if dependents.entry(known).or_default().insert(address) {
-                    *indegree
-                        .get_mut(address)
-                        .expect("address came from this map") += 1;
-                }
+        // Two references to one resource are one ordering, so an edge already
+        // recorded must not be counted twice or the node never becomes ready.
+        for (dependent, dependency) in self.edges()? {
+            if dependents.entry(dependency).or_default().insert(dependent) {
+                *indegree
+                    .get_mut(dependent)
+                    .expect("address came from this map") += 1;
             }
         }
 

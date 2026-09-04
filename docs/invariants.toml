@@ -81,6 +81,36 @@ enforced_by = ["crates/sarma-core/src/graph.rs"]
 tests = ["a_dependency_on_a_missing_resource_is_refused"]
 
 [[invariant]]
+id = "INV-GRAPH-003"
+status = "enforced"
+statement = "An attribute reading from another resource is an edge in the graph."
+rationale = """
+Ordering that depends on somebody remembering to declare it is where ordering \
+bugs come from. If a value is read from another resource, the reader waits for \
+it whether or not anyone noticed."""
+enforced_by = ["crates/sarma-core/src/graph.rs", "crates/sarma-core/src/attribute.rs"]
+tests = [
+  "an_attribute_reading_from_another_resource_is_an_ordering",
+  "two_references_to_one_resource_are_still_one_ordering",
+]
+
+[[invariant]]
+id = "INV-GRAPH-004"
+status = "enforced"
+statement = "Everything on a node is ordered after whatever brings that node into existence."
+rationale = """
+A target-domain address names its node as text, and nothing in that text says \
+who creates it. Without the inventory edge the package would be free to run \
+before the machine exists — and a resource whose node nobody declared is refused \
+rather than ordered last, because that would be a guess dressed up as a decision."""
+enforced_by = ["crates/sarma-core/src/graph.rs"]
+tests = [
+  "everything_on_a_node_waits_for_whatever_creates_it",
+  "a_resource_on_a_node_nobody_declared_is_refused",
+  "a_node_that_was_already_there_adds_no_ordering",
+]
+
+[[invariant]]
 id = "INV-PLAN-001"
 status = "planned"
 statement = "An unresolved value never determines which resources exist."
