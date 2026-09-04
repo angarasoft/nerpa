@@ -1,12 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/sarma-core"]
+members = ["crates/sarma-core", "xtask"]
 
 [workspace.package]
 version = "0.0.1"
 edition = "2024"
 rust-version = "1.98"
-license = "AGPL-3.0-only"
+license = "Apache-2.0"
 authors = ["Anishchuk Sergei <anishukserg@gmail.com>"]
 repository = "https://github.com/anishukserg/sarma"
 

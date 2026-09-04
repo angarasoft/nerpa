@@ -18,3 +18,13 @@ without ceremony until the first stage is complete.
 - An invariant registry in `docs/invariants.toml`, checked in both directions
   against `// ENFORCES:` anchors in the code.
 - `cargo-deny` configuration, with a licence allowlist that fails the build.
+- `cargo xtask` as the single gate: formatting, clippy, both test configurations,
+  repository rules and the invariant registry. CI runs it and nothing else.
+- `docs/CODING_STANDARDS.md`, split into what the gate enforces and what review
+  does.
+
+### Changed
+
+- Licence is Apache-2.0. The provider ecosystem has to be written by people who
+  are not the author, and nobody writes a plugin while wondering whether it has
+  become a derivative work.

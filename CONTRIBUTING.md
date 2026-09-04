@@ -8,12 +8,17 @@ notes below apply.
 ## Building and checking
 
 ```console
-$ cargo test
-$ cargo fmt --all -- --check
-$ cargo clippy --all-targets --all-features
+$ cargo xtask ci
 ```
 
-CI runs all three with warnings denied, so a warning is a failure.
+That is the whole gate: formatting, clippy with warnings denied, both test
+configurations, this repository's own rules, and the invariant registry. CI runs
+the same command and nothing else, so what passes locally passes there.
+
+Individual steps are available as `cargo xtask fmt`, `lint`, `test` and
+`invariants` when a full run is more than you need.
+
+What each rule is and why it exists: [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md).
 
 ## Two layers of correctness
 
@@ -38,7 +43,12 @@ back out six months later.
 
 ## Copyright
 
-Contributions are accepted under a contributor licence agreement. This is not
-bureaucracy for its own sake: sarma is AGPL-3.0 with commercial licences
-available, and offering those requires the author to hold the rights to the
-whole work. Without a CLA that option closes the first time a patch is merged.
+Contributions are accepted under a contributor licence agreement.
+
+This is not bureaucracy for its own sake, and it is worth being blunt about what
+it is for. The engine is Apache-2.0 and stays Apache-2.0. The planned
+coordination plane — grants, third-party approval, the audit chain — is intended
+to be a separate component under a different licence, and offering that requires
+the author to hold the rights to the whole work. A CLA is the only part of this
+that cannot be added afterwards: without one, the first merged patch settles the
+question permanently.

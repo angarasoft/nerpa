@@ -1,0 +1,5 @@
+[alias]
+# `cargo xtask` rather than a Makefile: the checks are compiled and typed, they
+# run anywhere cargo runs, and they cannot drift away from the code they check
+# because they live in the same workspace.
+xtask = "run --package xtask --quiet --"

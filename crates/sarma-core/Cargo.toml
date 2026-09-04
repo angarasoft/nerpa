@@ -19,7 +19,3 @@ strict-contracts = []
 
 [dependencies]
 thiserror = { workspace = true }
-
-[dev-dependencies]
-# Only the registry test reads TOML; nothing in the library does.
-toml = { workspace = true }

@@ -73,7 +73,16 @@ first build.
 
 ## License
 
-AGPL-3.0-only. Using sarma, including inside a company, costs nothing and
-requires nothing. Offering it to others as a service means publishing the source
-of the service you built on it. A commercial license without that obligation is
-available from the author.
+Apache-2.0. Use it, ship it, build products on it, run it as a service — none of
+that owes anybody anything.
+
+That is a deliberate choice rather than an oversight. The provider ecosystem this
+tool is designed around has to be written by people who are not the author, and
+nobody writes a plugin while wondering whether it has become a derivative work.
+
+Said plainly so that nobody has to guess later: the engine is Apache-2.0 and
+stays that way. A coordination plane — grants, third-party approval, the audit
+chain, policy for several operators at once — is planned as a separate,
+separately licensed component, because that is what an organisation pays for and
+a single engineer does not need. Contributions are taken under a CLA so that
+this split remains possible; see [CONTRIBUTING.md](CONTRIBUTING.md).
