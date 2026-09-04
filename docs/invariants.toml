@@ -179,6 +179,32 @@ tests = [
 ]
 
 [[invariant]]
+id = "INV-STATE-002"
+status = "enforced"
+statement = "A resource is removed before whatever it depended on."
+rationale = """
+Removal order cannot come from the configuration, because the configuration that \
+described the dependency is exactly what was deleted. It comes from the edges \
+recorded when the resource was last applied. The other way round takes a network \
+down before the machine on it."""
+enforced_by = ["crates/sarma-core/src/state.rs"]
+tests = [
+  "what_depended_on_a_thing_is_removed_before_the_thing",
+  "a_resource_removed_from_the_configuration_is_removed_from_the_machine",
+]
+
+[[invariant]]
+id = "INV-STATE-003"
+status = "enforced"
+statement = "A resource that moved is found where it was, not where it should be."
+rationale = """
+Reading at the new declared location finds nothing and proposes making a second \
+resource, abandoning the first. Only state remembers where Sarma left it, and \
+without that a change of location is silently a duplication."""
+enforced_by = ["crates/sarma-core/src/run.rs"]
+tests = ["moving_a_file_replaces_it_and_takes_the_old_one_with_it"]
+
+[[invariant]]
 id = "INV-STATE-001"
 status = "planned"
 statement = "State holds references to secrets and digests of their values, never the values."

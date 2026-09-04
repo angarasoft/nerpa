@@ -104,6 +104,18 @@ pub trait Provider {
         attributes: &Attributes,
     ) -> Result<Attributes, ProviderError>;
 
+    /// Removes the resource `recorded` describes.
+    ///
+    /// Takes what state remembers rather than what the configuration says,
+    /// because by the time something is being removed the configuration that
+    /// described it is gone.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError`] if the resource could not be removed. Already
+    /// being gone is not a failure.
+    fn delete(&self, address: &Address, recorded: &Attributes) -> Result<(), ProviderError>;
+
     /// A version of this provider that touches nothing.
     ///
     /// Required rather than encouraged: a provider whose behaviour can only be

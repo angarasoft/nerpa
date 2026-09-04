@@ -256,6 +256,28 @@ impl Provider for Os {
             })
     }
 
+    fn delete(&self, address: &Address, recorded: &Attributes) -> Result<(), ProviderError> {
+        let path = required_path(recorded, address)?;
+
+        let removed = match &self.backend {
+            Backend::Memory(entries) => {
+                entries.borrow_mut().remove(&path);
+                Ok(())
+            }
+            Backend::Disk => match self.entry(&path) {
+                // Already gone is the state that was asked for, not a failure.
+                None => Ok(()),
+                Some(Entry::Directory { .. }) => fs::remove_dir_all(&path),
+                Some(Entry::File { .. }) => fs::remove_file(&path),
+            },
+        };
+
+        removed.map_err(|error| ProviderError::World {
+            address: address.clone(),
+            problem: format!("{}: {error}", path.display()),
+        })
+    }
+
     fn fake() -> Self {
         #[allow(
             clippy::expect_used,

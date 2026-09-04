@@ -16,12 +16,15 @@
 //! never converge — the second run would never be empty, which is the one thing
 //! it has to be.
 
+use std::collections::BTreeSet;
+
 use crate::attribute::Attribute;
-use crate::graph::{Graph, GraphError};
+use crate::graph::{Graph, GraphError, StageKind};
 use crate::observed::Observed;
 use crate::plan::{AttributeDelta, Change, ChangeKind, Confidence, Plan, PlanStage};
 use crate::resource::Resource;
 use crate::schema::Schema;
+use crate::state::State;
 use crate::value::Value;
 
 /// Computes what would have to happen for the world to match the configuration.
@@ -36,8 +39,13 @@ use crate::value::Value;
     clippy::result_large_err,
     reason = "diagnostics beat a lint on a cold path"
 )]
-pub fn plan(graph: &Graph, observed: &Observed, schema: &Schema) -> Result<Plan, GraphError> {
-    let mut stages = Vec::new();
+pub fn plan(
+    graph: &Graph,
+    observed: &Observed,
+    state: &State,
+    schema: &Schema,
+) -> Result<Plan, GraphError> {
+    let mut stages = removals(graph, state);
 
     // One walk of the graph, in the order the work will happen. Stages are the
     // order of execution; there is no second pass over any of them.
@@ -59,6 +67,30 @@ pub fn plan(graph: &Graph, observed: &Observed, schema: &Schema) -> Result<Plan,
     }
 
     Ok(Plan::new(stages))
+}
+
+/// What state remembers and the configuration no longer declares.
+///
+/// Removals come first, in reverse dependency order. First because a resource on
+/// its way out can be holding something a new one needs — a name, a port, a path
+/// — and because nothing being created can want something that is leaving.
+fn removals(graph: &Graph, state: &State) -> Vec<PlanStage> {
+    let declared: BTreeSet<&crate::address::Address> = state
+        .addresses()
+        .filter(|address| graph.get(address).is_some())
+        .collect();
+
+    state
+        .abandoned(&declared)
+        .into_iter()
+        .map(|level| {
+            let changes = level
+                .into_iter()
+                .map(|address| Change::new(address, ChangeKind::Delete, Vec::new(), Vec::new()))
+                .collect();
+            PlanStage::new(StageKind::Mixed, changes)
+        })
+        .collect()
 }
 
 /// What has to happen to one resource, or nothing if it already matches.

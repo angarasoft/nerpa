@@ -80,6 +80,15 @@ without ceremony until the first stage is complete.
 - `observe` and `apply`: reading the world once before planning, then walking the
   plan in the order it already fixed, filling in values an earlier stage produced.
 
+- State: what the last run made, and what it depended on when it made it.
+  Removals in reverse dependency order, taken from recorded edges because the
+  configuration that described them is exactly what was deleted.
+- `ChangeKind::Delete`, `Provider::delete`, and destroy-before-create for a
+  replacement.
+- A resource that moved is found where it was left rather than where the
+  declaration now points, so changing a location is a replacement instead of a
+  silent duplication.
+
 ### Changed
 
 - Workspace lints set to their strictest: `unsafe` forbidden, `missing_docs`

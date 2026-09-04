@@ -54,9 +54,10 @@ from already exists, the value is known and compared like any other. That is wha
 makes a second run empty, and a tool whose second run is not empty is not
 convergent.
 
-Deletions are not planned yet. A resource that is no longer declared has to go,
-but ordering its removal needs to know what depended on it, and that lives in
-state — which does not exist yet.
+Removals come first, in reverse dependency order taken from what state recorded:
+the configuration that described the dependency is exactly what was deleted. And
+a resource is looked for where state left it, not where the declaration now
+points — otherwise moving one reads as making a second and abandoning the first.
 
 ## Observed state — [0011](decisions/0011-observed-state-in-three-tiers.md)
 

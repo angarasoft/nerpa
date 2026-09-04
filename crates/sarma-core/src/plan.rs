@@ -38,13 +38,15 @@ pub enum ChangeKind {
     /// It exists, and an attribute that cannot change in place has changed, so
     /// it goes and a new one takes its address.
     Replace,
+    /// It exists and is no longer declared, so it goes.
+    Delete,
 }
 
 impl ChangeKind {
-    /// Whether the old resource survives this.
+    /// Whether the resource that is there now survives this.
     #[must_use]
     pub fn is_reversible(self) -> bool {
-        !matches!(self, ChangeKind::Replace)
+        matches!(self, ChangeKind::Create | ChangeKind::Update)
     }
 }
 
@@ -207,6 +209,7 @@ pub struct BlastRadius {
     creates: usize,
     updates: usize,
     replaces: usize,
+    deletes: usize,
     unresolved: usize,
     nodes: BTreeSet<Target>,
 }
@@ -230,6 +233,12 @@ impl BlastRadius {
         self.replaces
     }
 
+    /// Resources that will be removed and not put back.
+    #[must_use]
+    pub fn deletes(&self) -> usize {
+        self.deletes
+    }
+
     /// Attribute values that will only be known once something has been created.
     #[must_use]
     pub fn unresolved(&self) -> usize {
@@ -244,17 +253,17 @@ impl BlastRadius {
 
     /// Whether anything here cannot be undone.
     ///
-    /// A replacement destroys the resource that is there now. Nothing else in a
-    /// plan does.
+    /// A replacement destroys the resource that is there now, and a deletion
+    /// removes it for good. Nothing else in a plan does.
     #[must_use]
     pub fn has_irreversible(&self) -> bool {
-        self.replaces > 0
+        self.replaces + self.deletes > 0
     }
 
     /// How many resources change at all.
     #[must_use]
     pub fn total(&self) -> usize {
-        self.creates + self.updates + self.replaces
+        self.creates + self.updates + self.replaces + self.deletes
     }
 }
 
@@ -273,6 +282,7 @@ impl Plan {
                 ChangeKind::Create => blast_radius.creates += 1,
                 ChangeKind::Update => blast_radius.updates += 1,
                 ChangeKind::Replace => blast_radius.replaces += 1,
+                ChangeKind::Delete => blast_radius.deletes += 1,
             }
             blast_radius.unresolved += change
                 .desired()

@@ -52,6 +52,7 @@
 //! * [`plan`] — what a run intends to do.
 //! * [`provider`] — the boundary where the model stops and the world begins.
 //! * [`run`] — reading the world, and making it match.
+//! * [`state`] — what the last run left behind, and what it depended on.
 //! * [`resource`] — a node of the desired-state graph.
 //! * [`value`] — attribute values.
 //! * [`contract`] — the runtime assertions and the reasoning behind them.
@@ -69,6 +70,7 @@ pub mod provider;
 pub mod resource;
 pub mod run;
 pub mod schema;
+pub mod state;
 pub mod value;
 
 pub use address::{Address, AddressError, Kind, Name, Provider, Slot, Target};
