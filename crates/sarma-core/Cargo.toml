@@ -1,0 +1,21 @@
+[package]
+name = "sarma-core"
+description = "Resource model, planner and state for Sarma"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = ["strict-contracts"]
+
+# Runtime assertions that state what the type system cannot. They cost a few
+# comparisons next to the network round trips a real run makes, and they turn a
+# silent wrong answer into a loud failure. See `contract` for why they are on by
+# default in release builds too.
+strict-contracts = []
+
+[dependencies]
+thiserror = { workspace = true }

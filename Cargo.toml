@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = ["crates/sarma-core"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.98"
+license = "AGPL-3.0-only"
+authors = ["Anishchuk Sergei <anishukserg@gmail.com>"]
+repository = "https://github.com/anishukserg/sarma"
+
+[workspace.dependencies]
+# No version on a path dependency: the workspace resolves it by path, and a
+# version here would be a second place to bump on every release.
+sarma-core = { path = "crates/sarma-core" }
+
+thiserror = "2.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+# Sarma changes infrastructure. A panic must unwind so that guards holding a
+# state lock or a half-open transport get to run their destructors; aborting
+# would leave a lock file behind on a machine nobody is watching.
+# Do not set panic = "abort".
