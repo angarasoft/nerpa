@@ -56,6 +56,15 @@ without ceremony until the first stage is complete.
 - Edges derived from references, so ordering no longer depends on remembering to
   declare it.
 
+- `sarma-config`: a Starlark host. `resource()` declares something that should
+  exist and returns a handle; reading an attribute of it yields a value that will
+  not exist until apply; `node()` says where a machine comes from.
+- Three mechanisms holding one guarantee, because the toolchain allows only some
+  of them to be precise. Ordering, indexing and iteration are refused by the
+  value with a line. Equality and containment are refused by a pass over the
+  syntax tree before evaluation, because Starlark answers them without consulting
+  the value. Truthiness is recorded and the whole run refused.
+
 ### Changed
 
 - Workspace lints set to their strictest: `unsafe` forbidden, `missing_docs`

@@ -15,6 +15,10 @@ imports, and neither takes part in a run afterwards.
 The program is the source; the **resolved graph** is the artefact of record, and
 that is what gets reviewed, hashed and signed.
 
+An unresolved value is refused three different ways, because the language allows
+only some of them to be precise — see
+[0018](decisions/0018-what-starlark-will-not-refuse.md).
+
 ## Execution domains — [0001](decisions/0001-one-graph-two-execution-domains.md)
 
 | Domain | Read and changed | Examples |

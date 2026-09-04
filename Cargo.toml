@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/sarma-core", "xtask"]
+members = ["crates/sarma-config", "crates/sarma-core", "xtask"]
 
 [workspace.package]
 version = "0.0.1"
@@ -16,11 +16,20 @@ keywords = ["infrastructure", "configuration", "iac", "provisioning"]
 categories = ["command-line-utilities", "config", "development-tools"]
 
 [workspace.dependencies]
-# No version on a path dependency: the workspace resolves it by path, and a
-# version here would be a second place to bump on every release.
-sarma-core = { path = "crates/sarma-core" }
+# The version is here as well as in the package because a path dependency without
+# one is a wildcard, and a wildcard cannot be published. Two places to keep in
+# step on a release, which the release script does.
+sarma-core = { path = "crates/sarma-core", version = "=0.0.1" }
 
 thiserror = "2.0"
+# The Starlark implementation from Meta, the one Buck2 runs on. Chosen in 0005;
+# `allocative` comes with it and is required of any value put on its heap.
+starlark = "0.14"
+# The parser crate underneath `starlark`, taken directly for its AST visitor.
+# Two operations cannot be refused at the value level — see 0018 — and catching
+# them needs a walk over the syntax tree before evaluation begins.
+starlark_syntax = "0.14"
+allocative = "0.3"
 toml = "1.1"
 
 # Lint levels live here, at the workspace, and they are set now rather than
@@ -28,7 +37,12 @@ toml = "1.1"
 # afternoon; across fifty thousand it is a mechanical change nobody reviews and
 # a temptation to sprinkle `allow` until it goes quiet.
 [workspace.lints.rust]
-unsafe_code = "forbid"
+# Denied, not forbidden, and the difference is deliberate. `forbid` cannot be
+# lifted anywhere, and Starlark's derives — `ProvidesStaticType` among them —
+# generate `unsafe impl`. The choice was between not using Starlark and letting
+# exactly one crate opt out with a written reason. `deny` everywhere else means
+# the rule still holds for every line anybody writes by hand.
+unsafe_code = "deny"
 missing_docs = "deny"
 missing_debug_implementations = "deny"
 unreachable_pub = "deny"
@@ -76,6 +90,11 @@ cast_lossless = "deny"
 # something worse, and `must_use_candidate` wants an attribute on every getter.
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
+
+# Not ours to fix. Starlark's dependency tree carries duplicate versions of half
+# a dozen crates, and the lint cannot tell an avoidable duplicate from one three
+# levels down in somebody else's manifest. `cargo xtask deny` still reports them.
+multiple_crate_versions = "allow"
 
 [profile.release]
 lto = true

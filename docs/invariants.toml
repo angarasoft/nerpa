@@ -112,14 +112,25 @@ tests = [
 
 [[invariant]]
 id = "INV-PLAN-001"
-status = "planned"
+status = "enforced"
 statement = "An unresolved value never determines which resources exist."
 rationale = """
-This is what makes a single planning pass possible at all. Branching or \
-iterating over a deferred handle is rejected at evaluation time, so the set of \
-resources is known before anything happens even when individual values are not."""
-enforced_by = []
-tests = []
+This is what makes a single planning pass possible at all. Held by three \
+mechanisms rather than one, because the toolchain allows only some of them to be \
+precise: ordering, indexing and iteration are refused by the value itself; \
+equality and containment are refused by a pass over the syntax tree, because \
+Starlark answers them without consulting the value; and truthiness is recorded \
+and the whole run refused, because `to_bool` has no error channel. See 0018."""
+enforced_by = [
+  "crates/sarma-config/src/handle.rs",
+  "crates/sarma-config/src/refuse.rs",
+]
+tests = [
+  "comparing_a_value_that_does_not_exist_yet_is_refused_before_anything_runs",
+  "branching_on_a_value_that_does_not_exist_yet_refuses_the_whole_run",
+  "iterating_a_value_that_does_not_exist_yet_is_refused",
+  "indexing_a_value_that_does_not_exist_yet_is_refused",
+]
 
 [[invariant]]
 id = "INV-PLAN-002"
