@@ -67,12 +67,14 @@ fn change_for(resource: &Resource, observed: &Observed, schema: &Schema) -> Opti
     let existing = observed.get(address);
 
     let mut deltas = Vec::new();
+    let mut desired = Vec::new();
     for (name, declared) in resource.attributes() {
         let after = resolve(declared, observed);
+        desired.push((name.clone(), after.clone()));
+
         let before = existing
             .and_then(|attributes| attributes.get(name))
             .cloned();
-
         if settled(before.as_ref(), &after) {
             continue;
         }
@@ -87,7 +89,12 @@ fn change_for(resource: &Resource, observed: &Observed, schema: &Schema) -> Opti
 
     match existing {
         // Not there at all: it has to be made, whatever its attributes say.
-        None => Some(Change::new(address.clone(), ChangeKind::Create, deltas)),
+        None => Some(Change::new(
+            address.clone(),
+            ChangeKind::Create,
+            deltas,
+            desired,
+        )),
         Some(_) if deltas.is_empty() => None,
         Some(_) => {
             let kind = if deltas.iter().any(AttributeDelta::forces_replacement) {
@@ -95,7 +102,7 @@ fn change_for(resource: &Resource, observed: &Observed, schema: &Schema) -> Opti
             } else {
                 ChangeKind::Update
             };
-            Some(Change::new(address.clone(), kind, deltas))
+            Some(Change::new(address.clone(), kind, deltas, desired))
         }
     }
 }

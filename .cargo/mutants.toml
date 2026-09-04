@@ -42,4 +42,10 @@ exclude_globs = [
     "xtask/src/shell.rs",
 ]
 
+# The whole suite for every mutant, not just the mutated package's. The tests
+# that matter most here are cross-crate — the convergence loop lives in
+# sarma-provider-os and exercises the planner and the runner in sarma-core — and
+# scoping the run to one package let seventeen mutants through unnoticed.
+test_workspace = true
+
 timeout_multiplier = 4.0

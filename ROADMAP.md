@@ -12,8 +12,13 @@ minor bump may break anything.
 
 Resource graph, execution domains, single-pass planner, state holding references
 to secrets rather than their values, local transport. Starlark host with deferred
-handles. An `os` provider with six primitives: package, file, directory, service,
-user, sysctl.
+handles. An `os` provider covering files and directories.
+
+Packages, services, users and sysctls were in this stage originally and have moved
+to stage 1. All four need privileges and a real system underneath, which
+contradicts "no cloud involved" and would leave the exit criterion untestable
+anywhere but on somebody's own machine. They arrive with the executor, where they
+belong.
 
 **Risk retired:** that the ban on branching over an unresolved value is
 expressible at all, and that violating it produces an error naming the line.

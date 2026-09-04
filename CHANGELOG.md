@@ -74,6 +74,12 @@ without ceremony until the first stage is complete.
 - References resolve against what already exists, which is what makes a second
   run empty.
 
+- The provider boundary, and `sarma-provider-os`: files and directories on the
+  machine Sarma runs on. Every provider must ship a fake, because the trait says
+  so and a provider without one does not compile.
+- `observe` and `apply`: reading the world once before planning, then walking the
+  plan in the order it already fixed, filling in values an earlier stage produced.
+
 ### Changed
 
 - Workspace lints set to their strictest: `unsafe` forbidden, `missing_docs`

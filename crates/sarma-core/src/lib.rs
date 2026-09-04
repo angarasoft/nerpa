@@ -50,6 +50,8 @@
 //!   Called as `planner::plan`, not re-exported: a `plan` function beside a
 //!   `plan` module reads as an accident.
 //! * [`plan`] — what a run intends to do.
+//! * [`provider`] — the boundary where the model stops and the world begins.
+//! * [`run`] — reading the world, and making it match.
 //! * [`resource`] — a node of the desired-state graph.
 //! * [`value`] — attribute values.
 //! * [`contract`] — the runtime assertions and the reasoning behind them.
@@ -63,7 +65,9 @@ pub mod inventory;
 pub mod observed;
 pub mod plan;
 pub mod planner;
+pub mod provider;
 pub mod resource;
+pub mod run;
 pub mod schema;
 pub mod value;
 

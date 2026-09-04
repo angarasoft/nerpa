@@ -13,6 +13,12 @@
 //! knowledge lives in state, which does not exist yet. Ordering a deletion by
 //! guesswork removes a network before the machine on it. So deletions wait for
 //! state rather than being approximated here.
+//!
+//! **Finding a resource that moved.** [`ChangeKind::Replace`] is computed
+//! correctly from observed state, but observing it depends on knowing where the
+//! resource is now — and for anything whose location is itself the attribute
+//! that changed, that is the same missing knowledge. Until state remembers where
+//! a resource used to be, moving one reads as creating another.
 
 use std::collections::BTreeSet;
 
@@ -103,20 +109,39 @@ impl AttributeDelta {
 }
 
 /// Everything about to happen to one resource.
+///
+/// Carries the whole desired state, not only what differs. A plan has to be
+/// applicable on its own — that is what makes it worth signing, and what lets it
+/// be handed to something that never saw the configuration. Deltas are for
+/// reading; `desired` is for doing.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Change {
     address: Address,
     kind: ChangeKind,
     deltas: Vec<AttributeDelta>,
+    desired: Vec<(String, Confidence)>,
 }
 
 impl Change {
-    pub(crate) fn new(address: Address, kind: ChangeKind, deltas: Vec<AttributeDelta>) -> Self {
+    pub(crate) fn new(
+        address: Address,
+        kind: ChangeKind,
+        deltas: Vec<AttributeDelta>,
+        desired: Vec<(String, Confidence)>,
+    ) -> Self {
         Self {
             address,
             kind,
             deltas,
+            desired,
         }
+    }
+
+    // ENFORCES: INV-PLAN-004
+    /// Every attribute the resource should end up with, in a stable order.
+    #[must_use]
+    pub fn desired(&self) -> &[(String, Confidence)] {
+        &self.desired
     }
 
     /// Which resource.
@@ -250,9 +275,9 @@ impl Plan {
                 ChangeKind::Replace => blast_radius.replaces += 1,
             }
             blast_radius.unresolved += change
-                .deltas()
+                .desired()
                 .iter()
-                .filter(|delta| matches!(delta.after(), Confidence::Unknown(_)))
+                .filter(|(_, value)| matches!(value, Confidence::Unknown(_)))
                 .count();
             if let Some(target) = change.address().target() {
                 blast_radius.nodes.insert(target.clone());

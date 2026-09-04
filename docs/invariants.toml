@@ -164,6 +164,21 @@ tests = [
 ]
 
 [[invariant]]
+id = "INV-PLAN-004"
+status = "enforced"
+statement = "A plan carries everything needed to apply it, without the configuration."
+rationale = """
+A plan is what gets signed and what gets handed to something that never saw the \
+program. Carrying only the attributes that differ would make it unusable on its \
+own — an unchanged path is still needed to write the file. Deltas are for \
+reading; the desired state is for doing."""
+enforced_by = ["crates/sarma-core/src/plan.rs", "crates/sarma-core/src/run.rs"]
+tests = [
+  "a_file_edited_by_hand_is_brought_back",
+  "an_unresolved_value_is_settled_from_the_stage_before_it",
+]
+
+[[invariant]]
 id = "INV-STATE-001"
 status = "planned"
 statement = "State holds references to secrets and digests of their values, never the values."

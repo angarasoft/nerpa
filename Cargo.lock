@@ -1155,6 +1155,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "sarma-provider-os"
+version = "0.0.1"
+dependencies = [
+ "sarma-core",
+ "thiserror",
+]
+
+[[package]]
 name = "schemafy"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"

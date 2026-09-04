@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/sarma-config", "crates/sarma-core", "xtask"]
+members = ["crates/sarma-config", "crates/sarma-core", "crates/sarma-provider-os", "xtask"]
 
 [workspace.package]
 version = "0.0.1"
@@ -95,6 +95,13 @@ must_use_candidate = "allow"
 # a dozen crates, and the lint cannot tell an avoidable duplicate from one three
 # levels down in somebody else's manifest. `cargo xtask deny` still reports them.
 multiple_crate_versions = "allow"
+
+# A project-wide stance rather than a per-site exception. Errors here carry whole
+# addresses and the message somebody reads at three in the morning, not a code to
+# look up. That makes them large, and every fallible function in the workspace
+# returns one on a path that runs once per plan, not once per resource. Said here
+# once instead of at a dozen call sites.
+result_large_err = "allow"
 
 [profile.release]
 lto = true

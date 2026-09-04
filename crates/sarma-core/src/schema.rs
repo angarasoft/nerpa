@@ -38,6 +38,17 @@ impl Schema {
         self
     }
 
+    /// Folds another schema into this one.
+    ///
+    /// Providers each describe their own kinds, and a run needs them together.
+    #[must_use]
+    pub fn merge(mut self, other: Self) -> Self {
+        for (kind, attributes) in other.immutable {
+            self.immutable.entry(kind).or_default().extend(attributes);
+        }
+        self
+    }
+
     /// Whether changing this attribute of this resource forces a replacement.
     #[must_use]
     pub fn forces_replacement(&self, address: &Address, attribute: &str) -> bool {
