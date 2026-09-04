@@ -31,6 +31,12 @@ without ceremony until the first stage is complete.
 - `cargo xtask docs`: decision numbering, required sections, both directions of
   every supersession, then rustdoc with warnings denied.
 
+- Seven more decision records: zero trust, the executor and transports, observed
+  state, the machine-facing surface, what is taken from Portage, how the project
+  ships, and how it is tested.
+- `docs/TESTING.md` and exit criteria in `ROADMAP.md` that can be executed rather
+  than judged.
+
 ### Changed
 
 - Workspace lints set to their strictest: `unsafe` forbidden, `missing_docs`

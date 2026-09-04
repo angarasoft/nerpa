@@ -12,6 +12,8 @@ one place.
 | What must never break? | `docs/invariants.toml` | `cargo xtask invariants` |
 | What shape is it in now? | `docs/ARCHITECTURE.md` | review |
 | How do we write code here? | `docs/CODING_STANDARDS.md` | itself, mostly |
+| How do we test it? | `docs/TESTING.md` | the invariant registry |
+| What are we doing next, and when is it done? | `ROADMAP.md` | its own exit criteria |
 | What changed? | `CHANGELOG.md` | review |
 | How do I get started? | the documentation site | not built yet |
 
