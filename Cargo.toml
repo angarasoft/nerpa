@@ -4,6 +4,7 @@ members = [
   "crates/nerpa-cli",
   "crates/nerpa-config",
   "crates/nerpa-core",
+  "crates/nerpa-proto",
   "crates/nerpa-provider-os",
   "xtask",
 ]
@@ -27,6 +28,7 @@ categories = ["command-line-utilities", "config", "development-tools"]
 # step on a release, which the release script does.
 nerpa-config = { path = "crates/nerpa-config", version = "=0.0.1" }
 nerpa-core = { path = "crates/nerpa-core", version = "=0.0.1" }
+nerpa-proto = { path = "crates/nerpa-proto", version = "=0.0.1" }
 nerpa-provider-os = { path = "crates/nerpa-provider-os", version = "=0.0.1" }
 
 thiserror = "2.0"
@@ -44,6 +46,10 @@ toml = "1.1"
 # not this one.
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# CBOR on the wire: self-describing enough to version, compact enough that a
+# file's contents are not doubled in transit, and it does not carry JSON's
+# inability to say "these are bytes".
+ciborium = "0.2"
 clap = { version = "4.6", features = ["derive"] }
 
 # Lint levels live here, at the workspace, and they are set now rather than

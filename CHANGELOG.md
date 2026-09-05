@@ -107,6 +107,10 @@ without ceremony until the first stage is complete.
 - Reads happen in batches, grouped by machine before anything is asked. Reading a
   machine takes one journey however many resources are on it.
 
+- `nerpa-proto`: the wire between the engine and an executor on a machine.
+  Length-prefixed CBOR frames, every one stamped with the protocol version it was
+  written by, and a size that is checked before anything is allocated.
+
 ### Changed
 
 - Renamed from `sarma` to `nerpa`, and the Gentoo package manager that held the

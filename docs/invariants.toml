@@ -245,6 +245,33 @@ enforced_by = ["crates/nerpa-core/src/plan.rs", "crates/nerpa-cli/src/render.rs"
 tests = ["a_plan_survives_a_trip_through_json"]
 
 [[invariant]]
+id = "INV-WIRE-001"
+status = "enforced"
+statement = "A frame written by a protocol version this build does not know is refused, not partly believed."
+rationale = """
+An executor built from one version outlives the engine that installed it, so \
+every later engine has to keep talking to it. Every frame carries the version it \
+was written by, and an unknown one is refused rather than read as a subset — \
+guessing at a protocol is how two ends come to disagree about what they agreed."""
+enforced_by = ["crates/nerpa-proto/src/lib.rs"]
+tests = ["a_frame_from_another_version_is_refused_rather_than_guessed_at"]
+
+[[invariant]]
+id = "INV-WIRE-002"
+status = "enforced"
+statement = "A frame's announced size is checked before any of it is allocated."
+rationale = """
+The length prefix is an instruction to allocate that arrives from the other end \
+of a pipe. Believing it is how a peer that is confused, old or hostile turns a \
+number into memory exhaustion. Bounded, and refused above the bound before a byte \
+is reserved."""
+enforced_by = ["crates/nerpa-proto/src/lib.rs"]
+tests = [
+  "an_enormous_announced_frame_is_refused_before_anything_is_allocated",
+  "a_pipe_that_ends_mid_frame_says_so",
+]
+
+[[invariant]]
 id = "INV-BATCH-001"
 status = "enforced"
 statement = "Reading a machine takes one journey, however many resources are on it."

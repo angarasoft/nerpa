@@ -88,7 +88,12 @@ Load-bearing rather than an optimisation, because the plan is single-pass.
 
 ## The executor and transports — [0010](decisions/0010-static-executor-pluggable-transport.md)
 
-A static Rust binary on the target, speaking framed CBOR over stdin and stdout.
+A static Rust binary on the target, speaking framed CBOR over stdin and stdout —
+four bytes of length, then the body. Every frame carries the protocol version it
+was written by, because an executor installed once outlives the engine that put
+it there, and an unknown version is refused rather than read as a subset. The
+length is checked before a byte is allocated: it is an instruction to allocate
+arriving from the far end of a pipe.
 The transport carries bytes and knows nothing about them: `teleport`, `ssh`,
 `local`, `container`. The executor holds no secrets and no state beyond its
 fingerprint, and is signed and verified in both directions.
