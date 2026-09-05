@@ -2,8 +2,11 @@
 
 ## Before anything else
 
-The repository is private while stage 0 is in progress. Once it opens, the
-notes below apply.
+The repository is private while the early stages are in progress. Once it opens,
+the notes below apply.
+
+Work lands on `develop`. `main` is merged into by hand, after the change has been
+tried on something real — the gate passing is necessary and not sufficient.
 
 ## Building and checking
 

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
   schedule:
     # Mutation testing is minutes, not seconds, so it runs nightly rather than on

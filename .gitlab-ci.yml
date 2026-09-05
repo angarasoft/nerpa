@@ -1,0 +1,45 @@
+# The gate, where the code actually lives.
+#
+# GitHub Actions runs the same `cargo xtask ci` in .github/workflows/ci.yml, for
+# the mirror. Neither file lists its own steps: a CI that grows its own idea of
+# what to check ends up checking something subtly different from what anybody can
+# reproduce locally.
+
+default:
+  # Not a pinned Rust image. rust-toolchain.toml is the single place the version
+  # is decided, and this image's rustup honours it — a tag here would be a second
+  # place to keep in step, and it would drift.
+  image: rust:latest
+  before_script:
+    - rustup show
+  cache:
+    key:
+      files:
+        - Cargo.lock
+    paths:
+      - .cargo/registry/
+      - target/
+
+variables:
+  CARGO_HOME: $CI_PROJECT_DIR/.cargo
+  CARGO_TERM_COLOR: always
+
+gate:
+  stage: test
+  script:
+    - cargo install cargo-deny --locked --quiet
+    - cargo xtask ci
+
+# Minutes rather than seconds, so it runs nightly rather than on every push. A
+# gate people learn to skip is worse than no gate.
+mutants:
+  stage: test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+  script:
+    - cargo install cargo-mutants --locked --quiet
+    - cargo xtask mutants
+  artifacts:
+    when: always
+    paths:
+      - mutants.out/
