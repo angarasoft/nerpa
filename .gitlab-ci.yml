@@ -4,20 +4,24 @@
 # the mirror. Neither file lists its own steps: a CI that grows its own idea of
 # what to check ends up checking something subtly different from what anybody can
 # reproduce locally.
+#
+# Written for a small budget on purpose. GitLab's free tier gives a few hundred
+# shared-runner minutes a month, and this workspace builds Starlark's dependency
+# tree, so nothing here may waste them: tools arrive as prebuilt binaries rather
+# than being compiled, and the cache is keyed on the lockfile.
 
 default:
   # Not a pinned Rust image. rust-toolchain.toml is the single place the version
   # is decided, and this image's rustup honours it — a tag here would be a second
   # place to keep in step, and it would drift.
   image: rust:latest
-  before_script:
-    - rustup show
   cache:
     key:
       files:
         - Cargo.lock
     paths:
       - .cargo/registry/
+      - .cargo/bin/
       - target/
 
 variables:
@@ -26,18 +30,29 @@ variables:
 
 gate:
   stage: test
+  before_script:
+    # Prebuilt, not compiled. `cargo install cargo-deny` from source is minutes
+    # of the monthly budget on every cold cache, for a tool that has releases.
+    - test -x .cargo/bin/cargo-binstall || curl -fsSL https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+    - test -x .cargo/bin/cargo-deny || cargo binstall --no-confirm --locked cargo-deny
   script:
-    - cargo install cargo-deny --locked --quiet
     - cargo xtask ci
 
-# Minutes rather than seconds, so it runs nightly rather than on every push. A
-# gate people learn to skip is worse than no gate.
+# Minutes rather than seconds, and it is the single largest consumer there is:
+# nine minutes locally, more here, every night. That does not fit a free tier and
+# should not try to. It runs on a runner of ours, tagged below, and until one
+# exists this job simply never appears — it is only created for scheduled
+# pipelines, and there is no schedule yet.
 mutants:
   stage: test
+  tags:
+    - sarma-builder
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
+  before_script:
+    - test -x .cargo/bin/cargo-binstall || curl -fsSL https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+    - test -x .cargo/bin/cargo-mutants || cargo binstall --no-confirm --locked cargo-mutants
   script:
-    - cargo install cargo-mutants --locked --quiet
     - cargo xtask mutants
   artifacts:
     when: always

@@ -7,6 +7,10 @@ on:
   schedule:
     # Mutation testing is minutes, not seconds, so it runs nightly rather than on
     # every push. A gate people learn to skip is worse than no gate.
+    #
+    # This is the mirror, and Actions is free without limit on public
+    # repositories — which is why the nightly run lives here rather than on
+    # GitLab, where the same job would eat a free tier's whole month.
     - cron: "0 3 * * *"
 
 env:
