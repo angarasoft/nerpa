@@ -28,13 +28,13 @@ the second table.
 | W-008 | The executor binary has to reach the machine, matching its architecture and its libc | Ansible sidesteps this because Python is already there. A static binary is five to fifteen megabytes; pushing it to two hundred machines every run is not an option, so there is a cache keyed by version, a version handshake and a cleanup policy — none of them costed, and all of them part of the protocol rather than of the implementation | 2026-09-06 |
 | W-009 | A value that only exists once an operation has run costs a round trip per stage boundary | The uid `useradd` mints is not knowable at plan time. Typical depth is two to four, so it is bounded; a deep chain eats the advantage that central planning bought. The way out — teaching the executor to resolve references inside a batch — turns it into an interpreter, which is the escalation to watch for | 2026-09-06 |
 | W-010 | The control machine holds every target distribution's semantics | `emerge` against `apt`, version comparison, USE flags: all decided here, from facts, rather than by looking. Ansible puts that knowledge on the machine it describes. Every provider carries a distribution matrix, and being wrong about one is discovered remotely | 2026-09-06 |
-| W-007 | A provider silently accepts an attribute it does not own | Measured: a file declared with an attribute the `os` provider does not know applies cleanly and then re-plans for ever, because nothing reports the attribute back and nothing ever settles it. Either a provider refuses what it cannot own, or the planner learns that an attribute absent from a reading is not the same as one that differs. The choice belongs with the provider trait, which outside authors will implement | 2026-09-05 |
 
 ## Closed
 
 | ID | Observation | What became of it | Closed |
 | --- | --- | --- | --- |
 | W-003 | The plan hash is named everywhere and implemented nowhere | Escalated to `OQ-005`. The executor gave it a deadline: 0033 makes a batch able to run anything and 0034 binds it to a premise, and both reason from the hash | 2026-09-06 |
+| W-007 | A provider silently accepts an attribute it does not own | Neither of the two answers this entry offered. The check is generic and needs no schema: an attribute handed to a provider has to come back from it, so a provider written by somebody who never read this repository gets it anyway. `INV-PLAN-005`, and it is refused after the record is written so nothing is left owned by nobody | 2026-09-06 |
 | W-004 | Refusing an unresolved value is syntactic, so every new way of laundering one needs a new pattern | Became an analysis rather than a pattern: opacity now spreads through assignments, containers, indexing, iteration, comprehensions and function returns. What is left — a function *parameter* — is named in `INV-PLAN-001`'s bypass and has a test that goes that way | 2026-09-06 |
 
 ## Adding an entry

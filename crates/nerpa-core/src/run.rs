@@ -191,11 +191,12 @@ pub fn apply(
 
             let attributes = settle(change, &observed, secrets)?;
             let result = provider.apply(address, change.kind(), &attributes)?;
+
             state.record(
                 address.clone(),
                 Record::new(recording(&result, change, secrets), dependencies(change)),
             );
-            observed.record(address.clone(), result);
+            observed.record(address.clone(), result.clone());
             // Written down before the next resource is touched. State used to be
             // saved once, after this whole loop returned, so anything that
             // stopped it — a contract violation panicking by design, a machine
@@ -204,6 +205,29 @@ pub fn apply(
             // rolled back; they were forgotten.
             // ENFORCES: INV-STATE-005
             record(state).map_err(RunError::Record)?;
+
+            // Checked after the record, not before it. The resource has been
+            // made by now, and refusing without writing that down would leave it
+            // owned by nobody — the failure this whole loop was rearranged to
+            // stop.
+            //
+            // Reporting an attribute back is the provider's claim that it took
+            // it. One that goes in and does not come out never settles: the next
+            // plan finds it missing from the reading, proposes the same change,
+            // and every run after that does the same for ever. Measured on a
+            // file declared with an attribute the `os` provider does not own —
+            // it applied cleanly and re-planned until somebody noticed.
+            //
+            // A provider that cannot read a value back — a credential the cloud
+            // will not return — echoes it, and the echo is the claim. What it
+            // may not do is say nothing.
+            // ENFORCES: INV-PLAN-005
+            if let Some(name) = attributes.keys().find(|name| !result.contains_key(*name)) {
+                return Err(RunError::Unreported {
+                    address: address.clone(),
+                    attribute: name.clone(),
+                });
+            }
             changed += 1;
         }
     }
@@ -273,6 +297,22 @@ pub enum RunError {
     /// and nothing to do.
     #[error(transparent)]
     Graph(#[from] GraphError),
+    /// A provider was given an attribute and did not report it back.
+    ///
+    /// Almost always an attribute the provider does not own — a typo, or a
+    /// declaration written for a different kind. It cannot be let through: an
+    /// attribute nothing reports never settles, so the plan proposes it again on
+    /// every run and the tool stops converging, quietly.
+    #[error(
+        "{address}: {attribute} was applied and not reported back, so it would \
+         never settle; the provider does not appear to own it"
+    )]
+    Unreported {
+        /// The resource it was declared on.
+        address: Address,
+        /// The attribute that went in and did not come out.
+        attribute: String,
+    },
     /// What had been done could not be written down.
     ///
     /// Stops the run. Carrying on would make more changes that nothing is
