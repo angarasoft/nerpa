@@ -39,6 +39,29 @@ No index anywhere. Two instances of one declaration are told apart by a slot.
 Frozen the moment a state file exists outside this machine, which is why it was
 built first.
 
+## The inventory — [0025](decisions/0025-the-inventory-is-known-facts-are-not.md)
+
+The inventory is data, settled before the configuration is evaluated, and it may
+be iterated: `for node in group("web")` builds a graph for a fleet without
+breaking the rule that composition is known. Handles and facts may not be
+iterated. The line is between what a machine *is* — decided by a person or by the
+cloud stage, knowable in advance — and what a machine *turned out to be*.
+
+Groups carry values. Two groups giving one node the same key is an error naming
+both, not a precedence resolution; a node may override its groups explicitly. A
+dynamic inventory is a `control` read, materialised into the plan and covered by
+its hash, so a plan is reproducible against a recorded fleet rather than against
+whatever the cloud says next.
+
+## Renaming — [0028](decisions/0028-a-rename-is-a-migration-that-can-be-deleted.md)
+
+Because the address is the identity, a rename needs a declaration:
+`moved(from, to)`, identified by its endpoints. State records the migrations it
+has applied, which is the part Terraform lacks — so the plan can report that a
+migration is spent and its declaration can be deleted, instead of accumulating
+`moved` blocks forever. A rename changes nothing else: the plan for that resource
+is empty afterwards, and a real difference appears as an ordinary update.
+
 ## A single planning pass — [0006](decisions/0006-static-plan-staged-execution.md)
 
 Planning happens once, over the whole graph. Stages exist but belong to
@@ -58,6 +81,16 @@ Removals come first, in reverse dependency order taken from what state recorded:
 the configuration that described the dependency is exactly what was deleted. And
 a resource is looked for where state left it, not where the declaration now
 points — otherwise moving one reads as making a second and abandoning the first.
+
+## Facts as values — [0029](decisions/0029-a-fact-is-a-value-not-a-branch.md)
+
+A fact may decide what an attribute says and never whether a resource exists.
+`node.fact(...)` is an unresolved value in that node's `target` domain, refused
+for branching, comparison and iteration like any handle. Where a value differs by
+fact, `select(fact, {closed mapping})` keeps the graph fully known and leaves only
+the value open — within a set the plan can print, which says more than "known
+after apply" does. A fact arriving outside the mapping fails at apply, naming the
+fact, the value and the line.
 
 ## A machine that will not answer — [0020](decisions/0020-a-machine-that-cannot-be-reached.md)
 
@@ -98,6 +131,32 @@ The transport carries bytes and knows nothing about them: `teleport`, `ssh`,
 `local`, `container`. The executor holds no secrets and no state beyond its
 fingerprint, and is signed and verified in both directions.
 
+## Configuration files — [0023](decisions/0023-templates-that-look-like-the-file.md)
+
+Files come from Jinja templates rendered by `minijinja`, because a template that
+looks like the file it produces is the reason anyone can read a configuration.
+The sandbox is the same shape as Starlark's: no clock, no environment, no
+filesystem, no process, no `lookup`. Values are handed over rather than inherited
+from an ambient scope. Templates are read relative to the configuration's own
+root, which makes the configuration a directory and makes the plan hash cover the
+tree.
+
+Rendering happens at plan time wherever the inputs are settled, so the plan shows
+what a file will contain before anything happens — earlier than Ansible's
+`--diff`, which reports during the run.
+
+## Reacting to change — [0026](decisions/0026-a-reaction-is-an-edge-and-can-be-owed.md)
+
+`service("nginx", restart_on = [conf])` is an edge, not a notification. A typo is
+an evaluation error rather than silence, two files notifying one restart coalesce
+into one node, the restart is ordered by the graph instead of deferred to the end
+of a play, and the plan says the restart is coming before it happens.
+
+A reaction that was triggered and did not complete is recorded in state as owed
+and appears as pending in the next plan. The state Ansible reaches when a play
+fails between the write and its handlers — new file, old process, no record — is
+not reachable here.
+
 ## Providers — [0004](decisions/0004-providers-in-tree-and-wasm.md)
 
 | Tier | What it is | Isolation |
@@ -119,6 +178,19 @@ other than the proposer — and that hash covers the configuration revision,
 provider versions, state version and a digest of observed state, so it cannot be
 replayed against a changed world. State holds references and digests, never
 secret values. The log is an append-only hash chain.
+
+## Secrets — [0027](decisions/0027-secrets-are-tainted-and-masked-by-span.md)
+
+Secrecy is a taint carried by the value model: anything derived from a secret is
+secret, including a rendered file. State holds a reference — provider, path,
+version — and a keyed digest, never a value, because a digest answers the only
+question state has, which is whether it changed. A plan reports
+`password: (secret) → (secret, changed)`: enough to approve, nothing more.
+
+A rendered file is masked by span rather than suppressed. The renderer runs twice,
+once with real values and once with a random sentinel per secret, and the
+difference locates where each secret landed. The diff stays readable and the
+credential does not appear in it.
 
 ## The machine-facing surface — [0012](decisions/0012-machine-facing-surface-is-first-class.md)
 
