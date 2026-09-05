@@ -25,7 +25,10 @@ use std::collections::BTreeSet;
 use crate::address::{Address, Target};
 use crate::attribute::Reference;
 use crate::graph::StageKind;
+use std::fmt;
+
 use crate::secret::{Recorded, Sealed};
+use crate::value;
 use crate::value::Value;
 
 /// What is about to happen to one resource.
@@ -403,7 +406,7 @@ impl BlastRadius {
 
 // ENFORCES: INV-AGENT-001
 /// Everything a run intends to do, in the order it will do it.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct Plan {
     stages: Vec<PlanStage>,
     unreachable: Vec<Unreachable>,
@@ -497,5 +500,187 @@ impl Plan {
     /// Every change, in execution order, ignoring stage boundaries.
     pub fn changes(&self) -> impl Iterator<Item = &Change> {
         self.stages.iter().flat_map(PlanStage::changes)
+    }
+}
+
+/// The bytes a plan digest is taken over start with this, so that a digest of a
+/// plan can never collide with a digest of anything else and so that changing
+/// how a plan is encoded changes every digest rather than some of them.
+const PLAN_DIGEST_DOMAIN: &[u8] = b"nerpa-plan-digest-1";
+
+/// One number standing for everything a plan intends to do.
+///
+/// What it covers is exactly the intent: the stages, and every change in them.
+/// Not what the plan could not see — a plan carrying an age cannot be hashed at
+/// all — and not what it merely reports. Those belong to the premise, which
+/// covers what the plan was computed *from*. Between the two the whole plan is
+/// accounted for, and neither is doing the other's job.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PlanDigest([u8; crate::secret::LENGTH]);
+
+impl PlanDigest {
+    /// Written as hexadecimal.
+    #[must_use]
+    pub fn to_hex(&self) -> String {
+        crate::secret::to_hex(&self.0)
+    }
+
+    /// Read back from hexadecimal.
+    #[must_use]
+    pub fn from_hex(text: &str) -> Option<Self> {
+        crate::secret::from_hex(text).map(Self)
+    }
+}
+
+impl fmt::Debug for PlanDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "PlanDigest({})", self.to_hex())
+    }
+}
+
+impl fmt::Display for PlanDigest {
+    /// The first twelve characters, which is what a person compares by eye.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.to_hex().get(..12).unwrap_or_default())
+    }
+}
+
+impl serde::Serialize for PlanDigest {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_hex())
+    }
+}
+
+/// Why a plan has no digest.
+#[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
+#[error(
+    "a plan that could not look at {machines} of its machines has no digest: it \
+     carries how old that knowledge is, an age moves every second, and a number \
+     over it would never settle"
+)]
+pub struct Unhashable {
+    /// How many machines did not answer.
+    pub machines: usize,
+}
+
+impl Plan {
+    /// One number standing for everything this plan intends to do.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Unhashable`] if any machine could not be looked at. Such a plan
+    /// is incomplete by `INV-REACH-003` and says so; a digest over it would move
+    /// every second, which is worse than not having one.
+    // ENFORCES: INV-PLAN-006
+    pub fn digest(&self) -> Result<PlanDigest, Unhashable> {
+        if !self.unreachable.is_empty() {
+            return Err(Unhashable {
+                machines: self.unreachable.len(),
+            });
+        }
+
+        let mut out = Vec::from(PLAN_DIGEST_DOMAIN);
+        out.extend_from_slice(&value::length(self.stages.len()));
+        for stage in &self.stages {
+            encode_stage(stage, &mut out);
+        }
+        Ok(PlanDigest(*blake3::hash(&out).as_bytes()))
+    }
+}
+
+/// Every kind carries a distinct tag and every variable-length part carries its
+/// length, so no two plans can encode to the same bytes.
+///
+/// Deliberately without a catch-all arm. These enums are `#[non_exhaustive]` for
+/// the world outside this crate and exhaustive inside it, so adding a variant
+/// stops the build here — which is the right place to be asked how it hashes,
+/// rather than having it silently fold into a default and two different plans
+/// share a number.
+fn encode_stage(stage: &PlanStage, out: &mut Vec<u8>) {
+    match stage.kind() {
+        StageKind::Control => out.push(1),
+        StageKind::Target(nodes) => {
+            out.push(2);
+            out.extend_from_slice(&value::length(nodes.len()));
+            for node in nodes {
+                value::text(&node.to_string(), out);
+            }
+        }
+        StageKind::Mixed => out.push(3),
+    }
+
+    out.extend_from_slice(&value::length(stage.changes().len()));
+    for change in stage.changes() {
+        value::text(&change.address().to_string(), out);
+        out.push(match change.kind() {
+            ChangeKind::Create => 1,
+            ChangeKind::Update => 2,
+            ChangeKind::Replace => 3,
+            ChangeKind::Delete => 4,
+        });
+
+        out.extend_from_slice(&value::length(change.desired().len()));
+        for (name, wanted) in change.desired() {
+            value::text(name, out);
+            encode_confidence(wanted, out);
+        }
+
+        out.extend_from_slice(&value::length(change.deltas().len()));
+        for delta in change.deltas() {
+            value::text(delta.name(), out);
+            match delta.before() {
+                None => out.push(0),
+                Some(Recorded::Plain(value)) => {
+                    out.push(1);
+                    value::encode(value, out);
+                }
+                Some(Recorded::Secret(digest)) => {
+                    out.push(2);
+                    out.extend_from_slice(digest.raw());
+                }
+            }
+            encode_confidence(delta.after(), out);
+            out.push(u8::from(delta.forces_replacement()));
+        }
+    }
+}
+
+fn encode_confidence(confidence: &Confidence, out: &mut Vec<u8>) {
+    match confidence {
+        Confidence::Known(value) => {
+            out.push(1);
+            value::encode(value, out);
+        }
+        Confidence::Unknown(reference) => {
+            out.push(2);
+            value::text(&reference.to_string(), out);
+        }
+        Confidence::Secret(sealed) => {
+            out.push(3);
+            value::text(&sealed.source().to_string(), out);
+            out.extend_from_slice(sealed.digest().raw());
+        }
+    }
+}
+
+/// Written out rather than derived so that the digest travels with the plan.
+///
+/// It is computed rather than stored, so reading a plan back and recomputing it
+/// is the check that the document was not edited on the way — which is the whole
+/// point of a machine having the number at all. `serde` ignores fields it does
+/// not know, so the derived `Deserialize` reads this document unchanged.
+impl serde::Serialize for Plan {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeMap as _;
+        let mut map = serializer.serialize_map(Some(5))?;
+        map.serialize_entry("stages", &self.stages)?;
+        map.serialize_entry("unreachable", &self.unreachable)?;
+        map.serialize_entry("outdated", &self.outdated)?;
+        map.serialize_entry("blast_radius", &self.blast_radius)?;
+        // `null` rather than absent when there is none: a reader that finds no
+        // key cannot tell an old document from an unhashable plan, and those
+        // mean very different things.
+        map.serialize_entry("digest", &self.digest().ok())?;
+        map.end()
     }
 }

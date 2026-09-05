@@ -141,6 +141,67 @@ impl From<bool> for Value {
 }
 
 // ENFORCES: INV-VALUE-001
+/// A canonical encoding of a value, for anything that has to hash one.
+///
+/// Written out rather than borrowed from `serde` because a digest must depend on
+/// exactly one encoding for ever, and a serialisation format is free to change
+/// how it spells things. Every variant carries a distinct tag and every
+/// variable-length part carries its length, so no two different values can
+/// encode to the same bytes.
+pub(crate) fn encode(value: &Value, out: &mut Vec<u8>) {
+    match value {
+        Value::Text(text) => {
+            out.push(1);
+            out.extend_from_slice(&length(text.len()));
+            out.extend_from_slice(text.as_bytes());
+        }
+        Value::Integer(number) => {
+            out.push(2);
+            out.extend_from_slice(&number.to_le_bytes());
+        }
+        Value::Boolean(flag) => {
+            out.push(3);
+            out.push(u8::from(*flag));
+        }
+        Value::List(items) => {
+            out.push(4);
+            out.extend_from_slice(&length(items.len()));
+            for item in items {
+                encode(item, out);
+            }
+        }
+        Value::Bytes(bytes) => {
+            out.push(6);
+            out.extend_from_slice(&length(bytes.len()));
+            out.extend_from_slice(bytes);
+        }
+        Value::Map(entries) => {
+            out.push(5);
+            out.extend_from_slice(&length(entries.len()));
+            for (key, item) in entries {
+                out.extend_from_slice(&length(key.len()));
+                out.extend_from_slice(key.as_bytes());
+                encode(item, out);
+            }
+        }
+    }
+}
+
+/// A length as eight canonical bytes.
+///
+/// `usize` is never wider than `u64` on any target this builds for, so the
+/// fallback is unreachable; it is written rather than unwrapped because a digest
+/// is not a place to put a panic.
+pub(crate) fn length(count: usize) -> [u8; 8] {
+    u64::try_from(count).unwrap_or(u64::MAX).to_le_bytes()
+}
+
+/// Text with its length in front, so that two pieces of it cannot run together.
+pub(crate) fn text(value: &str, out: &mut Vec<u8>) {
+    out.extend_from_slice(&length(value.len()));
+    out.extend_from_slice(value.as_bytes());
+}
+
 /// Whether a map would be read back as bytes rather than as itself.
 fn is_binary_shaped(entries: &BTreeMap<String, Value>) -> bool {
     let mut pairs = entries.iter();

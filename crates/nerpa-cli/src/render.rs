@@ -43,6 +43,14 @@ pub(crate) fn plan(plan: &Plan) -> String {
     if plan.blast_radius().has_irreversible() {
         out.push_str("\n! marks a change that destroys what is there now\n");
     }
+
+    // Last, because it is about everything above it. A plan that could not look
+    // at everything has none, and says so where the number would have been
+    // rather than leaving a person to wonder.
+    let _ = match plan.digest() {
+        Ok(digest) => writeln!(out, "\nplan {digest}"),
+        Err(problem) => writeln!(out, "\nno plan number: {problem}"),
+    };
     out
 }
 

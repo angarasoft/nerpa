@@ -63,7 +63,7 @@ impl fmt::Display for Source {
 }
 
 /// The number of bytes in a key and in a digest.
-const LENGTH: usize = 32;
+pub(crate) const LENGTH: usize = 32;
 
 /// The key a state file's digests are taken under.
 ///
@@ -127,7 +127,7 @@ impl Digest {
     #[must_use]
     pub fn of(key: &Key, value: &Value) -> Self {
         let mut encoded = Vec::new();
-        encode(value, &mut encoded);
+        crate::value::encode(value, &mut encoded);
         Self(*blake3::keyed_hash(&key.0, &encoded).as_bytes())
     }
 
@@ -141,6 +141,11 @@ impl Digest {
     #[must_use]
     pub fn from_hex(text: &str) -> Option<Self> {
         from_hex(text).map(Self)
+    }
+
+    /// The bytes, for a caller that is hashing this digest into a larger one.
+    pub(crate) fn raw(&self) -> &[u8; LENGTH] {
+        &self.0
     }
 }
 
@@ -265,62 +270,7 @@ impl fmt::Display for Sealed {
     }
 }
 
-/// A canonical encoding of a value, for digesting.
-///
-/// Written out rather than borrowed from `serde` because a digest must depend on
-/// exactly one encoding for ever, and a serialisation format is free to change
-/// how it spells things. Every variant carries a distinct tag and every
-/// variable-length part carries its length, so no two different values can
-/// encode to the same bytes.
-fn encode(value: &Value, out: &mut Vec<u8>) {
-    match value {
-        Value::Text(text) => {
-            out.push(1);
-            out.extend_from_slice(&length(text.len()));
-            out.extend_from_slice(text.as_bytes());
-        }
-        Value::Integer(number) => {
-            out.push(2);
-            out.extend_from_slice(&number.to_le_bytes());
-        }
-        Value::Boolean(flag) => {
-            out.push(3);
-            out.push(u8::from(*flag));
-        }
-        Value::List(items) => {
-            out.push(4);
-            out.extend_from_slice(&length(items.len()));
-            for item in items {
-                encode(item, out);
-            }
-        }
-        Value::Bytes(bytes) => {
-            out.push(6);
-            out.extend_from_slice(&length(bytes.len()));
-            out.extend_from_slice(bytes);
-        }
-        Value::Map(entries) => {
-            out.push(5);
-            out.extend_from_slice(&length(entries.len()));
-            for (key, item) in entries {
-                out.extend_from_slice(&length(key.len()));
-                out.extend_from_slice(key.as_bytes());
-                encode(item, out);
-            }
-        }
-    }
-}
-
-/// A length as eight canonical bytes.
-///
-/// `usize` is never wider than `u64` on any target this builds for, so the
-/// fallback is unreachable; it is written rather than unwrapped because a digest
-/// is not a place to put a panic.
-fn length(count: usize) -> [u8; 8] {
-    u64::try_from(count).unwrap_or(u64::MAX).to_le_bytes()
-}
-
-fn to_hex(bytes: &[u8; LENGTH]) -> String {
+pub(crate) fn to_hex(bytes: &[u8; LENGTH]) -> String {
     use fmt::Write as _;
     bytes.iter().fold(String::new(), |mut text, byte| {
         // Writing into a String cannot fail, and the result is discarded rather
@@ -330,7 +280,7 @@ fn to_hex(bytes: &[u8; LENGTH]) -> String {
     })
 }
 
-fn from_hex(text: &str) -> Option<[u8; LENGTH]> {
+pub(crate) fn from_hex(text: &str) -> Option<[u8; LENGTH]> {
     if text.len() != LENGTH * 2 {
         return None;
     }
