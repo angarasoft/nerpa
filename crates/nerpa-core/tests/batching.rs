@@ -16,6 +16,7 @@ use nerpa_core::plan::ChangeKind;
 use nerpa_core::provider::{Attributes, Provider, ProviderError, Providers, Reading};
 use nerpa_core::run::observe;
 use nerpa_core::schema::Schema;
+use nerpa_core::secret::Recorded;
 use nerpa_core::state::{Record, State};
 use nerpa_core::{Address, ExecutionDomain, Graph, Resource, Value};
 
@@ -154,7 +155,7 @@ fn what_state_remembers_beats_what_the_declaration_says() {
     recorded.insert("path".to_owned(), Value::Text("/var/motd".to_owned()));
     state.record(
         address("os:file.motd@web-01"),
-        Record::new(recorded, std::collections::BTreeSet::new()),
+        Record::new(Recorded::all(recorded), std::collections::BTreeSet::new()),
     );
 
     let providers = watch();
@@ -176,7 +177,10 @@ fn something_only_state_remembers_travels_with_the_rest() {
     let mut state = State::new();
     state.record(
         address("os:file.forgotten@web-01"),
-        Record::new(Attributes::new(), std::collections::BTreeSet::new()),
+        Record::new(
+            Recorded::all(Attributes::new()),
+            std::collections::BTreeSet::new(),
+        ),
     );
 
     let providers = watch();

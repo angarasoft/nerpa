@@ -14,8 +14,20 @@ use nerpa_core::planner::plan_at;
 use nerpa_core::provider::{Attributes, Provider, ProviderError, Providers, Reading};
 use nerpa_core::run::observe;
 use nerpa_core::schema::Schema;
+use nerpa_core::secret::{Key, Recorded, Remembered, Secrets};
 use nerpa_core::state::{Record, State, Written};
 use nerpa_core::{Address, ExecutionDomain, Graph, Observed, Reference, Resource, Target};
+
+/// A fixed key and a store holding nothing.
+///
+/// No test in this file declares a secret; planning still has to be told where
+/// one would be fetched from, and a fixed key keeps digests reproducible.
+static DIGEST_KEY: Key = Key::from_bytes([7; 32]);
+static NO_STORE: Remembered = Remembered::EMPTY;
+
+fn secrets() -> Secrets<'static> {
+    Secrets::new(&DIGEST_KEY, &NO_STORE)
+}
 
 fn node(name: &str) -> Target {
     Target::new(name).unwrap()
@@ -51,6 +63,7 @@ fn a_resource_on_a_machine_that_did_not_answer_is_not_planned() {
         &observed,
         &State::new(),
         &Schema::new(),
+        secrets(),
         nothing_known(),
     )
     .unwrap();
@@ -90,6 +103,7 @@ fn nothing_at_all_is_said_about_what_could_not_be_read() {
         &observed,
         &State::new(),
         &Schema::new(),
+        secrets(),
         nothing_known(),
     )
     .unwrap();
@@ -126,6 +140,7 @@ fn a_resource_that_reads_from_an_unreachable_one_cannot_be_planned_either() {
         &observed,
         &State::new(),
         &Schema::new(),
+        secrets(),
         nothing_known(),
     )
     .unwrap();
@@ -154,7 +169,7 @@ fn the_age_of_what_is_known_comes_from_state() {
     state.record(
         address("os:file.motd@web-01"),
         Record::written_at(
-            Attributes::new(),
+            Recorded::all(Attributes::new()),
             BTreeSet::new(),
             Written::at(1_700_000_000 - 3600),
         ),
@@ -163,7 +178,15 @@ fn the_age_of_what_is_known_comes_from_state() {
     let mut observed = Observed::new();
     observed.unreachable(node("web-01"));
 
-    let plan = plan_at(&graph, &observed, &state, &Schema::new(), nothing_known()).unwrap();
+    let plan = plan_at(
+        &graph,
+        &observed,
+        &state,
+        &Schema::new(),
+        secrets(),
+        nothing_known(),
+    )
+    .unwrap();
     assert_eq!(
         plan.unreachable()[0].known_for(),
         Some(3600),
@@ -182,6 +205,7 @@ fn a_machine_that_answered_is_planned_as_usual() {
         &Observed::new(),
         &State::new(),
         &Schema::new(),
+        secrets(),
         nothing_known(),
     )
     .unwrap();

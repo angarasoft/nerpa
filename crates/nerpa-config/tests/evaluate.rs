@@ -327,3 +327,313 @@ if db.ready:
         "the previous run's branch must not carry over"
     );
 }
+
+/// A secret is named, not read: the configuration says where it lives and the
+/// value never enters evaluation.
+#[test]
+fn a_secret_becomes_an_attribute_that_says_where_to_look() {
+    let graph = graph_of(
+        r#"
+resource("os:file.credentials@web-01", {
+    "path": "/etc/app/credentials",
+    "content": secret("lockbox", "prod/db/password"),
+})
+"#,
+    );
+
+    let resource = graph
+        .get(&address("os:file.credentials@web-01"))
+        .expect("declared");
+    let content = resource.attribute("content").expect("an attribute");
+    let source = content.secret().expect("a secret");
+    assert_eq!(source.to_string(), "lockbox:prod/db/password");
+    assert!(content.known().is_none(), "there is no value to read here");
+}
+
+#[test]
+fn a_secret_can_be_pinned_to_a_version() {
+    let graph = graph_of(
+        r#"
+resource("os:file.credentials@web-01", {
+    "content": secret("lockbox", "prod/db/password", version = "v3"),
+})
+"#,
+    );
+
+    let resource = graph
+        .get(&address("os:file.credentials@web-01"))
+        .expect("declared");
+    let source = resource
+        .attribute("content")
+        .and_then(Attribute::secret)
+        .expect("a secret");
+    assert_eq!(source.to_string(), "lockbox:prod/db/password@v3");
+}
+
+/// Comparing a secret is not a mistake about ordering. It is an oracle: a
+/// configuration that can ask "is the password admin?" can ask it in a loop.
+#[test]
+fn a_secret_refuses_to_be_compared() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+if secret("lockbox", "prod/db/password") == "admin":
+    resource("os:file.a@web-01", {})
+"#,
+    )
+    .expect_err("comparing a secret is not a configuration")
+    .to_string();
+    assert!(
+        refusal.contains("is a secret") && refusal.contains("main.star"),
+        "the refusal should name the secret and the line: {refusal}"
+    );
+}
+
+/// The same through a name, because that is how anybody would actually write it.
+#[test]
+fn a_secret_held_in_a_variable_refuses_to_be_compared_too() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+password = secret("lockbox", "prod/db/password")
+if password == "admin":
+    resource("os:file.a@web-01", {})
+"#,
+    )
+    .expect_err("comparing a secret is not a configuration")
+    .to_string();
+    assert!(
+        refusal.contains("password is a secret"),
+        "the refusal should name the variable: {refusal}"
+    );
+}
+
+#[test]
+fn a_secret_refuses_to_be_a_condition() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+if secret("lockbox", "prod/db/password"):
+    resource("os:file.a@web-01", {})
+"#,
+    )
+    .expect_err("a secret is not a condition")
+    .to_string();
+    assert!(
+        refusal.contains("secret from lockbox:prod/db/password"),
+        "the refusal should name the secret: {refusal}"
+    );
+}
+
+/// The refusals the syntax pass cannot reach.
+///
+/// The pass follows opacity through names, containers and function returns, so
+/// almost every route is closed before evaluation. A function *parameter* is
+/// not followed — that would need the call sites of every function — and this is
+/// the route through it. The value itself has to refuse, and does.
+#[test]
+fn a_secret_passed_into_a_function_still_refuses_to_be_compared() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+def same(left, right):
+    return left == right
+
+if same(secret("lockbox", "prod/db/password"), secret("lockbox", "other")):
+    resource("os:file.a@web-01", {})
+"#,
+    )
+    .expect_err("comparing two secrets is not a configuration")
+    .to_string();
+    assert!(
+        refusal.contains("secret from lockbox:prod/db/password") && refusal.contains("=="),
+        "the value itself should refuse, naming the operation: {refusal}"
+    );
+}
+
+#[test]
+fn a_secret_refuses_to_be_indexed() {
+    let refusal = evaluate(
+        "main.star",
+        r#"resource("os:file.a@web-01", {"content": secret("lockbox", "db")[0]})"#,
+    )
+    .expect_err("a secret has no first character to take")
+    .to_string();
+    assert!(
+        refusal.contains("indexing"),
+        "the refusal should name the operation: {refusal}"
+    );
+}
+
+#[test]
+fn a_secret_refuses_to_be_iterated() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+for part in secret("lockbox", "db"):
+    resource("os:file.a@web-01", {"content": part})
+"#,
+    )
+    .expect_err("a secret is not a sequence")
+    .to_string();
+    assert!(
+        refusal.contains("iteration"),
+        "the refusal should name the operation: {refusal}"
+    );
+}
+
+#[test]
+fn a_secret_refuses_to_be_ordered() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+def held():
+    return secret("lockbox", "db")
+
+if held() < held():
+    resource("os:file.a@web-01", {})
+"#,
+    )
+    .expect_err("secrets have no order")
+    .to_string();
+    assert!(
+        refusal.contains("ordering comparison"),
+        "the refusal should name the operation: {refusal}"
+    );
+}
+
+// Every test below was a way past this check. Each is written the way somebody
+// evading it would write it, not the way somebody demonstrating it would.
+
+/// The one an independent review found first: put the handle in a dictionary and
+/// read it back, and the pattern that matched `x.y` sees an index instead.
+#[test]
+fn a_value_that_does_not_exist_yet_cannot_be_laundered_through_a_dictionary() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+db = resource("yandex:instance.db")
+held = {"address": db.ip}
+if held["address"] == "10.0.0.1":
+    resource("yandex:instance.yes", {})
+else:
+    resource("yandex:instance.no", {})
+"#,
+    )
+    .expect_err("a dictionary is not a way around it");
+    let ConfigError::ComparedUnresolved(message) = refusal else {
+        panic!("the comparison should be refused before evaluation");
+    };
+    assert!(message.contains("held[...]"), "{message}");
+}
+
+#[test]
+fn a_value_that_does_not_exist_yet_cannot_be_laundered_through_a_list() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+db = resource("yandex:instance.db")
+addresses = [db.ip]
+for address in addresses:
+    if address == "10.0.0.1":
+        resource("yandex:instance.yes", {})
+"#,
+    )
+    .expect_err("iterating a list of them is not a way around it either");
+    assert!(
+        matches!(refusal, ConfigError::ComparedUnresolved(_)),
+        "{refusal}"
+    );
+}
+
+#[test]
+fn a_secret_cannot_be_laundered_through_a_dictionary() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+held = {"password": secret("vault", "db/password")}
+if held["password"] == "changeme":
+    resource("os:file.weak@web-01", {"path": "/tmp/weak"})
+"#,
+    )
+    .expect_err("a dictionary is not a way around it");
+    let ConfigError::ComparedUnresolved(message) = refusal else {
+        panic!("the comparison should be refused before evaluation");
+    };
+    assert!(message.contains("is a secret"), "{message}");
+}
+
+#[test]
+fn a_value_that_does_not_exist_yet_cannot_be_handed_out_of_a_function() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+db = resource("yandex:instance.db")
+
+def address():
+    return db.ip
+
+if address() == "10.0.0.1":
+    resource("yandex:instance.yes", {})
+"#,
+    )
+    .expect_err("a function is not a way around it");
+    let ConfigError::ComparedUnresolved(message) = refusal else {
+        panic!("the comparison should be refused before evaluation");
+    };
+    assert!(message.contains("address(...)"), "{message}");
+}
+
+/// Containment reads as `False` for the same reason equality does.
+#[test]
+fn a_value_that_does_not_exist_yet_cannot_be_tested_for_membership() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+db = resource("yandex:instance.db")
+if db.ip in ["10.0.0.1", "10.0.0.2"]:
+    resource("yandex:instance.yes", {})
+"#,
+    )
+    .expect_err("membership is a comparison");
+    assert!(
+        matches!(refusal, ConfigError::ComparedUnresolved(_)),
+        "{refusal}"
+    );
+}
+
+/// A comprehension is a loop with the same hole in it.
+#[test]
+fn a_comprehension_over_a_deferred_list_is_refused() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+db = resource("yandex:instance.db")
+addresses = [db.ip]
+matching = [a for a in addresses if a == "10.0.0.1"]
+resource("yandex:instance.web", {"count": len(matching)})
+"#,
+    )
+    .expect_err("a comprehension is a loop");
+    assert!(
+        matches!(refusal, ConfigError::ComparedUnresolved(_)),
+        "{refusal}"
+    );
+}
+
+/// The check must still let an ordinary configuration through, or it has traded
+/// one silent wrongness for a tool nobody can use.
+#[test]
+fn comparing_ordinary_values_is_still_allowed() {
+    let graph = graph_of(
+        r#"
+environment = "production"
+sizes = {"production": 8, "staging": 2}
+if environment == "production":
+    resource("yandex:instance.db", {"cores": sizes[environment]})
+if "prod" in environment:
+    resource("yandex:instance.web", {})
+"#,
+    );
+    assert_eq!(graph.len(), 2, "nothing here is deferred or secret");
+}

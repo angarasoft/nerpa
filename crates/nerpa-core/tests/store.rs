@@ -10,8 +10,13 @@ use std::path::PathBuf;
 use nerpa_core::Value;
 use nerpa_core::address::address;
 use nerpa_core::provider::Attributes;
+use nerpa_core::secret::{Key, Recorded};
 use nerpa_core::state::{Record, State, Written};
 use nerpa_core::store::{self, Lock, StoreError};
+
+/// A fixed key, so that a file written by one test reads back in another and
+/// the bytes on disk are the same every run.
+static DIGEST_KEY: Key = Key::from_bytes([7; 32]);
 
 struct Scratch(PathBuf);
 
@@ -48,11 +53,11 @@ fn populated() -> State {
     let depends_on: BTreeSet<_> = [address("yandex:instance.db")].into_iter().collect();
     state.record(
         address("os:file.motd@web-01"),
-        Record::new(attributes, depends_on),
+        Record::new(Recorded::all(attributes), depends_on),
     );
     state.record(
         address("yandex:instance.db"),
-        Record::new(Attributes::new(), BTreeSet::new()),
+        Record::new(Recorded::all(Attributes::new()), BTreeSet::new()),
     );
     state
 }
@@ -62,8 +67,10 @@ fn state_survives_a_trip_through_the_file() {
     let scratch = Scratch::new("roundtrip");
     let written = populated();
 
-    store::save(&scratch.file(), &written).expect("writes");
-    let read = store::load(&scratch.file()).expect("reads");
+    store::save(&scratch.file(), &written, &DIGEST_KEY).expect("writes");
+    let read = store::load(&scratch.file())
+        .map(|(state, _)| state)
+        .expect("reads");
 
     assert_eq!(
         read, written,
@@ -83,22 +90,28 @@ fn state_survives_a_trip_through_the_file() {
 #[test]
 fn the_file_is_readable_by_a_person() {
     let scratch = Scratch::new("readable");
-    store::save(&scratch.file(), &populated()).expect("writes");
+    store::save(&scratch.file(), &populated(), &DIGEST_KEY).expect("writes");
 
     let text = fs::read_to_string(scratch.file()).expect("written");
-    assert!(text.contains("\"version\": 2"), "{text}");
+    assert!(text.contains("\"version\": 3"), "{text}");
     assert!(
         text.contains("\"os:file.motd@web-01\""),
         "addresses are text: {text}"
     );
     assert!(text.contains("\"/etc/motd\""), "{text}");
+    assert!(
+        text.contains("\"digest_key\""),
+        "the key its digests were taken under travels with them: {text}"
+    );
     assert!(text.contains('\n'), "and it is not one long line");
 }
 
 #[test]
 fn a_first_run_has_no_state_and_that_is_not_an_error() {
     let scratch = Scratch::new("first");
-    let state = store::load(&scratch.file()).expect("an absent file is an empty state");
+    let state = store::load(&scratch.file())
+        .map(|(state, _)| state)
+        .expect("an absent file is an empty state");
     assert!(state.is_empty());
 }
 
@@ -118,7 +131,7 @@ fn a_file_that_is_not_state_is_refused_rather_than_read_as_empty() {
     fs::write(scratch.file(), "this is not json").expect("written");
 
     assert!(matches!(
-        store::load(&scratch.file()),
+        store::load(&scratch.file()).map(|(state, _)| state),
         Err(StoreError::Format { .. })
     ));
 }
@@ -128,7 +141,7 @@ fn an_address_the_model_refuses_is_refused_on_the_way_in_too() {
     let scratch = Scratch::new("address");
     fs::write(
         scratch.file(),
-        r#"{"version": 2, "resources": {"not-an-address": {"attributes": {}, "depends_on": [], "written": 0}}}"#,
+        r#"{"version": 3, "digest_key": "0707070707070707070707070707070707070707070707070707070707070707", "resources": {"not-an-address": {"attributes": {}, "depends_on": [], "written": 0}}}"#,
     )
     .expect("written");
 
@@ -141,16 +154,22 @@ fn an_address_the_model_refuses_is_refused_on_the_way_in_too() {
 #[test]
 fn writing_replaces_the_previous_file_only_once_it_is_whole() {
     let scratch = Scratch::new("atomic");
-    store::save(&scratch.file(), &populated()).expect("writes");
+    store::save(&scratch.file(), &populated(), &DIGEST_KEY).expect("writes");
 
     let mut smaller = State::new();
     smaller.record(
         address("yandex:instance.db"),
-        Record::new(Attributes::new(), BTreeSet::new()),
+        Record::new(Recorded::all(Attributes::new()), BTreeSet::new()),
     );
-    store::save(&scratch.file(), &smaller).expect("writes again");
+    store::save(&scratch.file(), &smaller, &DIGEST_KEY).expect("writes again");
 
-    assert_eq!(store::load(&scratch.file()).expect("reads").len(), 1);
+    assert_eq!(
+        store::load(&scratch.file())
+            .map(|(state, _)| state)
+            .expect("reads")
+            .len(),
+        1
+    );
     assert!(
         !scratch.0.join("state.json.new").exists(),
         "no leftovers beside it"
@@ -202,14 +221,16 @@ fn when_a_record_was_written_comes_back_too() {
     state.record(
         address("os:file.motd@web-01"),
         Record::written_at(
-            Attributes::new(),
+            Recorded::all(Attributes::new()),
             BTreeSet::new(),
             Written::at(1_700_000_000),
         ),
     );
 
-    store::save(&scratch.file(), &state).expect("writes");
-    let read = store::load(&scratch.file()).expect("reads");
+    store::save(&scratch.file(), &state, &DIGEST_KEY).expect("writes");
+    let read = store::load(&scratch.file())
+        .map(|(state, _)| state)
+        .expect("reads");
 
     let recorded = read.get(&address("os:file.motd@web-01")).expect("recorded");
     assert_eq!(recorded.written(), Written::at(1_700_000_000));

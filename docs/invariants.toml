@@ -120,7 +120,13 @@ mechanisms rather than one, because the toolchain allows only some of them to be
 precise: ordering, indexing and iteration are refused by the value itself; \
 equality and containment are refused by a pass over the syntax tree, because \
 Starlark answers them without consulting the value; and truthiness is recorded \
-and the whole run refused, because `to_bool` has no error channel. See 0018."""
+and the whole run refused, because `to_bool` has no error channel. See 0018.
+
+The syntax pass follows the taint rather than matching a shape. It used to match \
+one — a bare attribute access beside `==` — and a review got past it in two \
+lines by storing the handle in a dictionary first. Opacity now spreads through \
+assignments, containers, indexing, slicing, iteration, comprehensions and \
+function returns."""
 enforced_by = [
   "crates/nerpa-config/src/handle.rs",
   "crates/nerpa-config/src/refuse.rs",
@@ -130,6 +136,15 @@ tests = [
   "branching_on_a_value_that_does_not_exist_yet_refuses_the_whole_run",
   "iterating_a_value_that_does_not_exist_yet_is_refused",
   "indexing_a_value_that_does_not_exist_yet_is_refused",
+  "comparing_ordinary_values_is_still_allowed",
+]
+bypass = "An opaque value reaching a comparison through a function *parameter*. The analysis follows names, containers, indexing, iteration and returns, but not arguments — following those needs the call sites of every function, which a single walk of one module does not have. Inside such a function the value still refuses when both sides are its own type, and Starlark still answers silently when one side is a constant."
+adversarial = [
+  "a_value_that_does_not_exist_yet_cannot_be_laundered_through_a_dictionary",
+  "a_value_that_does_not_exist_yet_cannot_be_laundered_through_a_list",
+  "a_value_that_does_not_exist_yet_cannot_be_handed_out_of_a_function",
+  "a_value_that_does_not_exist_yet_cannot_be_tested_for_membership",
+  "a_comprehension_over_a_deferred_list_is_refused",
 ]
 
 [[invariant]]
@@ -392,3 +407,83 @@ Not a recommendation but an absence: there is no code path that reads a long-liv
 key, so no deadline can produce one."""
 enforced_by = []
 tests = []
+
+[[invariant]]
+id = "INV-SECRET-001"
+status = "enforced"
+statement = "A secret attribute never reports a value through the accessor everything that writes things down goes through."
+rationale = """
+`Attribute::known` is what every part of the engine that persists or prints \
+reaches for, so a secret answering `None` there makes the guarantee structural \
+rather than a rule each caller has to remember. The value exists — somewhere \
+else, behind a `Source` — and reaching it takes a deliberate fetch."""
+enforced_by = ["crates/nerpa-core/src/attribute.rs"]
+tests = [
+  "a_recorded_secret_shows_that_it_is_one_and_nothing_more",
+  "a_password_reaches_the_file_and_nothing_else",
+]
+
+[[invariant]]
+id = "INV-SECRET-002"
+status = "enforced"
+statement = "A secret value is reduced to a keyed digest before it can be written into state or a plan."
+rationale = """
+Terraform's state is a plaintext dump of every credential its configuration \
+touched, and whole-file encryption is a bandage over keeping what nobody needed \
+to keep. Two places see a real credential — the planner, comparing what a machine \
+has against what the store holds, and the step that hands a provider what to \
+write — and both reduce it on the way out. `Recorded` has no path back to a \
+value, so the reduction cannot be undone downstream."""
+enforced_by = [
+  "crates/nerpa-core/src/planner.rs",
+  "crates/nerpa-core/src/run.rs",
+  "crates/nerpa-core/src/secret.rs",
+]
+tests = [
+  "a_password_reaches_the_file_and_nothing_else",
+  "a_rotated_secret_is_reported_as_changed",
+  "the_same_value_under_two_keys_digests_differently",
+  "values_that_are_not_equal_do_not_digest_equal",
+]
+
+[[invariant]]
+id = "INV-SECRET-003"
+status = "enforced"
+statement = "A provider is never handed a secret out of state, because state never held one."
+rationale = """
+Deleting or relocating a resource reads its attributes back from state, and those \
+attributes are how the provider finds it. A secret is not a locator — nothing is \
+found by its password — so `Record::locator` yields the values and drops the \
+digests. Anything that genuinely needs the credential fetches it from the store, \
+which is the point of not keeping it."""
+enforced_by = ["crates/nerpa-core/src/state.rs"]
+tests = ["a_password_reaches_the_file_and_nothing_else"]
+
+[[invariant]]
+id = "INV-SECRET-004"
+status = "enforced"
+statement = "A secret can be passed to a resource and nothing else: not compared, indexed, iterated or used as a condition."
+rationale = """
+A configuration that can ask questions about a credential is a configuration that \
+can answer them, and the answers travel in whatever the graph turns out to \
+contain. Ordering, indexing and iteration are refused by the value itself, with a \
+line number. Equality and containment cannot be — Starlark decides a comparison \
+across types as `False` without consulting either value — so the syntax pass \
+refuses them before evaluation, for a name bound to a secret as well as for a \
+direct call. Truthiness has no error channel, so it is recorded and the whole \
+evaluation is refused afterwards. Same three mechanisms as decision 0018, same \
+reasons."""
+enforced_by = [
+  "crates/nerpa-config/src/handle.rs",
+  "crates/nerpa-config/src/refuse.rs",
+]
+tests = [
+  "a_secret_refuses_to_be_compared",
+  "a_secret_held_in_a_variable_refuses_to_be_compared_too",
+  "a_secret_refuses_to_be_a_condition",
+]
+bypass = "A secret reaching a comparison through a function *parameter*, which the analysis does not follow: doing so needs the call sites of every function. Inside such a function the value refuses when both sides are secrets, and Starlark answers silently when one side is a constant."
+adversarial = [
+  "a_secret_cannot_be_laundered_through_a_dictionary",
+  "a_secret_passed_into_a_function_still_refuses_to_be_compared",
+]

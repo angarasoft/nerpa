@@ -10,9 +10,21 @@ use nerpa_core::address::address;
 use nerpa_core::planner::plan;
 use nerpa_core::provider::{Provider, Providers};
 use nerpa_core::run::{apply, observe};
+use nerpa_core::secret::{Key, Remembered, Secrets};
 use nerpa_core::state::State;
 use nerpa_core::{ChangeKind, Graph, Reference, Resource, Target, Value};
 use nerpa_provider_os::Os;
+
+/// A fixed key and a store holding nothing.
+///
+/// No test in this file declares a secret; planning still has to be told where
+/// one would be fetched from, and a fixed key keeps digests reproducible.
+static DIGEST_KEY: Key = Key::from_bytes([7; 32]);
+static NO_STORE: Remembered = Remembered::EMPTY;
+
+fn secrets() -> Secrets<'static> {
+    Secrets::new(&DIGEST_KEY, &NO_STORE)
+}
 
 /// A directory that removes itself, so a failing test cannot leave litter behind.
 struct Scratch(PathBuf);
@@ -68,16 +80,16 @@ fn a_file_is_written_and_the_second_run_has_nothing_to_do() {
     let before = observe(&graph, &providers, &state).expect("readable");
     assert!(before.is_empty(), "nothing exists yet");
 
-    let first = plan(&graph, &before, &state, &providers.schema()).expect("plannable");
+    let first = plan(&graph, &before, &state, &providers.schema(), secrets()).expect("plannable");
     assert_eq!(first.blast_radius().creates(), 1);
 
-    let applied = apply(&first, &providers, &before, &mut state).expect("applies");
+    let applied = apply(&first, &providers, &before, &mut state, secrets()).expect("applies");
     assert_eq!(applied.changed(), 1);
     assert_eq!(fs::read_to_string(&path).expect("written"), "hello\n");
 
     // The property the whole tool exists to have.
     let after = observe(&graph, &providers, &state).expect("readable");
-    let second = plan(&graph, &after, &state, &providers.schema()).expect("plannable");
+    let second = plan(&graph, &after, &state, &providers.schema(), secrets()).expect("plannable");
     assert!(
         second.is_empty(),
         "the second run must change nothing: {second:?}"
@@ -98,24 +110,25 @@ fn a_file_edited_by_hand_is_brought_back() {
 
     let observed = observe(&graph, &providers, &state).expect("readable");
     apply(
-        &plan(&graph, &observed, &state, &providers.schema()).expect("plannable"),
+        &plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable"),
         &providers,
         &observed,
         &mut state,
+        secrets(),
     )
     .expect("applies");
 
     fs::write(&path, "listen 8080;\n").expect("somebody edits it during an incident");
 
     let drifted = observe(&graph, &providers, &state).expect("readable");
-    let repair = plan(&graph, &drifted, &state, &providers.schema()).expect("plannable");
+    let repair = plan(&graph, &drifted, &state, &providers.schema(), secrets()).expect("plannable");
     assert_eq!(repair.blast_radius().updates(), 1);
     assert_eq!(
         repair.changes().next().expect("one change").kind(),
         ChangeKind::Update
     );
 
-    apply(&repair, &providers, &drifted, &mut state).expect("applies");
+    apply(&repair, &providers, &drifted, &mut state, secrets()).expect("applies");
     assert_eq!(fs::read_to_string(&path).expect("written"), "listen 80;\n");
 }
 
@@ -135,10 +148,10 @@ fn a_directory_comes_before_the_file_in_it() {
     ]);
 
     let observed = observe(&graph, &providers, &state).expect("readable");
-    let plan = plan(&graph, &observed, &state, &providers.schema()).expect("plannable");
+    let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
     assert_eq!(plan.stages().len(), 2, "the file waits for the directory");
 
-    let applied = apply(&plan, &providers, &observed, &mut state).expect("applies");
+    let applied = apply(&plan, &providers, &observed, &mut state, secrets()).expect("applies");
     assert_eq!(applied.changed(), 2, "the directory and the file in it");
     assert!(fs::metadata(&directory).expect("made").is_dir());
     assert_eq!(
@@ -166,10 +179,11 @@ fn moving_a_file_replaces_it_and_takes_the_old_one_with_it() {
     ]);
     let observed = observe(&before, &providers, &state).expect("readable");
     apply(
-        &plan(&before, &observed, &state, &providers.schema()).expect("plannable"),
+        &plan(&before, &observed, &state, &providers.schema(), secrets()).expect("plannable"),
         &providers,
         &observed,
         &mut state,
+        secrets(),
     )
     .expect("applies");
     assert!(fs::metadata(&old).is_ok(), "the first file was made");
@@ -180,14 +194,14 @@ fn moving_a_file_replaces_it_and_takes_the_old_one_with_it() {
             .with("content", "hello\n"),
     ]);
     let observed = observe(&moved, &providers, &state).expect("readable");
-    let plan = plan(&moved, &observed, &state, &providers.schema()).expect("plannable");
+    let plan = plan(&moved, &observed, &state, &providers.schema(), secrets()).expect("plannable");
 
     let change = plan.changes().next().expect("one change");
     assert_eq!(change.kind(), ChangeKind::Replace);
     assert_eq!(change.cause().expect("a cause").name(), "path");
     assert!(plan.blast_radius().has_irreversible());
 
-    apply(&plan, &providers, &observed, &mut state).expect("applies");
+    apply(&plan, &providers, &observed, &mut state, secrets()).expect("applies");
     assert!(fs::metadata(&new).is_ok(), "the new file is there");
     assert!(fs::metadata(&old).is_err(), "and the old one went with it");
 }
@@ -208,10 +222,11 @@ fn a_resource_removed_from_the_configuration_is_removed_from_the_machine() {
     ]);
     let observed = observe(&declared, &providers, &state).expect("readable");
     apply(
-        &plan(&declared, &observed, &state, &providers.schema()).expect("plannable"),
+        &plan(&declared, &observed, &state, &providers.schema(), secrets()).expect("plannable"),
         &providers,
         &observed,
         &mut state,
+        secrets(),
     )
     .expect("applies");
     assert!(fs::metadata(&path).is_ok());
@@ -220,7 +235,7 @@ fn a_resource_removed_from_the_configuration_is_removed_from_the_machine() {
     // The declaration is gone.
     let empty = Graph::new();
     let observed = observe(&empty, &providers, &state).expect("readable");
-    let plan = plan(&empty, &observed, &state, &providers.schema()).expect("plannable");
+    let plan = plan(&empty, &observed, &state, &providers.schema(), secrets()).expect("plannable");
 
     assert_eq!(plan.blast_radius().deletes(), 1);
     assert!(
@@ -232,7 +247,7 @@ fn a_resource_removed_from_the_configuration_is_removed_from_the_machine() {
         ChangeKind::Delete
     );
 
-    apply(&plan, &providers, &observed, &mut state).expect("applies");
+    apply(&plan, &providers, &observed, &mut state, secrets()).expect("applies");
     assert!(fs::metadata(&path).is_err(), "the file is gone");
     assert!(state.is_empty(), "and so is the memory of it");
 }
@@ -257,16 +272,17 @@ fn what_depended_on_a_thing_is_removed_before_the_thing() {
     ]);
     let observed = observe(&declared, &providers, &state).expect("readable");
     apply(
-        &plan(&declared, &observed, &state, &providers.schema()).expect("plannable"),
+        &plan(&declared, &observed, &state, &providers.schema(), secrets()).expect("plannable"),
         &providers,
         &observed,
         &mut state,
+        secrets(),
     )
     .expect("applies");
 
     let empty = Graph::new();
     let observed = observe(&empty, &providers, &state).expect("readable");
-    let plan = plan(&empty, &observed, &state, &providers.schema()).expect("plannable");
+    let plan = plan(&empty, &observed, &state, &providers.schema(), secrets()).expect("plannable");
 
     assert_eq!(plan.blast_radius().deletes(), 2);
     assert_eq!(
@@ -280,7 +296,7 @@ fn what_depended_on_a_thing_is_removed_before_the_thing() {
         "whatever read from the directory goes first"
     );
 
-    apply(&plan, &providers, &observed, &mut state).expect("applies");
+    apply(&plan, &providers, &observed, &mut state, secrets()).expect("applies");
     assert!(fs::metadata(&directory).is_err());
     assert!(state.is_empty());
 }
@@ -305,14 +321,14 @@ fn an_unresolved_value_is_settled_from_the_stage_before_it() {
     ]);
 
     let observed = observe(&graph, &providers, &state).expect("readable");
-    let plan = plan(&graph, &observed, &state, &providers.schema()).expect("plannable");
+    let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
     assert_eq!(
         plan.blast_radius().unresolved(),
         1,
         "the content is not known yet"
     );
 
-    apply(&plan, &providers, &observed, &mut state).expect("applies");
+    apply(&plan, &providers, &observed, &mut state, secrets()).expect("applies");
     assert_eq!(
         fs::read_to_string(format!("{directory}/where")).expect("written"),
         directory,
@@ -332,8 +348,8 @@ fn the_fake_touches_nothing() {
     ]);
 
     let observed = observe(&graph, &providers, &state).expect("readable");
-    let plan = plan(&graph, &observed, &state, &providers.schema()).expect("plannable");
-    let applied = apply(&plan, &providers, &observed, &mut state).expect("applies");
+    let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    let applied = apply(&plan, &providers, &observed, &mut state, secrets()).expect("applies");
 
     assert_eq!(applied.changed(), 1);
     assert!(
@@ -355,9 +371,10 @@ fn a_declaration_without_a_path_is_refused_rather_than_guessed_at() {
     let graph = graph_of(vec![Resource::new(address("os:file.nowhere@localhost"))]);
 
     let observed = observe(&graph, &providers, &state).expect("readable");
-    let plan = plan(&graph, &observed, &state, &providers.schema()).expect("plannable");
+    let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
 
-    let refusal = apply(&plan, &providers, &observed, &mut state).expect_err("a file needs a path");
+    let refusal = apply(&plan, &providers, &observed, &mut state, secrets())
+        .expect_err("a file needs a path");
     assert!(refusal.to_string().contains("needs a `path`"), "{refusal}");
 }
 
@@ -419,7 +436,7 @@ fn a_file_that_was_already_there_is_adopted_rather_than_remade() {
         "it was found"
     );
 
-    let plan = plan(&graph, &observed, &state, &providers.schema()).expect("plannable");
+    let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
     assert!(
         plan.is_empty(),
         "nothing to do about a file that already matches: {plan:?}"

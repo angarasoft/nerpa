@@ -27,8 +27,24 @@ use crate::plan::{
 };
 use crate::resource::Resource;
 use crate::schema::Schema;
+use crate::secret::{FetchError, Recorded, Secrets};
 use crate::state::{Record, State, Written};
-use crate::value::Value;
+
+/// Why a plan could not be produced at all.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum PlanError {
+    /// The configuration cannot be ordered: a cycle, a dangling dependency, or a
+    /// resource on a node the inventory does not know.
+    #[error(transparent)]
+    Graph(#[from] GraphError),
+    /// A secret could not be fetched, and whether it changed cannot be guessed.
+    ///
+    /// Planning stops rather than reporting a secret as unchanged, which is the
+    /// answer that would be believed and is the one that could be wrong.
+    #[error(transparent)]
+    Secret(#[from] FetchError),
+}
 
 /// Computes what would have to happen for the world to match the configuration.
 ///
@@ -47,8 +63,9 @@ pub fn plan(
     observed: &Observed,
     state: &State,
     schema: &Schema,
-) -> Result<Plan, GraphError> {
-    plan_at(graph, observed, state, schema, Written::now())
+    secrets: Secrets<'_>,
+) -> Result<Plan, PlanError> {
+    plan_at(graph, observed, state, schema, secrets, Written::now())
 }
 
 /// The same, with the clock supplied.
@@ -64,8 +81,9 @@ pub fn plan_at(
     observed: &Observed,
     state: &State,
     schema: &Schema,
+    secrets: Secrets<'_>,
     now: Written,
-) -> Result<Plan, GraphError> {
+) -> Result<Plan, PlanError> {
     let mut stages = removals(graph, state);
     let mut unreachable = Vec::new();
     let mut outdated = Vec::new();
@@ -103,7 +121,7 @@ pub fn plan_at(
                 continue;
             }
 
-            if let Some(change) = change_for(resource, observed, schema, &mut outdated) {
+            if let Some(change) = change_for(resource, observed, schema, secrets, &mut outdated)? {
                 changes.push(change);
             }
         }
@@ -160,20 +178,31 @@ fn change_for(
     resource: &Resource,
     observed: &Observed,
     schema: &Schema,
+    secrets: Secrets<'_>,
     outdated: &mut Vec<Outdated>,
-) -> Option<Change> {
+) -> Result<Option<Change>, FetchError> {
     let address = resource.address();
     let existing = observed.get(address);
 
     let mut deltas = Vec::new();
     let mut desired = Vec::new();
     for (name, declared) in resource.attributes() {
-        let after = resolve(declared, observed);
+        let after = resolve(declared, observed, secrets)?;
         desired.push((name.clone(), after.clone()));
 
+        // Reduced here, at the edge: a secret attribute's observed value is a
+        // real credential read back off a machine, and this is the last place it
+        // is allowed to be one. Everything downstream sees a digest.
+        // ENFORCES: INV-SECRET-002
         let before = existing
             .and_then(|attributes| attributes.get(name))
-            .cloned();
+            .map(|value| {
+                if declared.is_secret() {
+                    Recorded::Secret(secrets.digest(value))
+                } else {
+                    Recorded::Plain(value.clone())
+                }
+            });
         if settled(before.as_ref(), &after) {
             continue;
         }
@@ -196,7 +225,7 @@ fn change_for(
         ));
     }
 
-    match existing {
+    Ok(match existing {
         // Not there at all: it has to be made, whatever its attributes say.
         None => Some(Change::new(
             address.clone(),
@@ -213,13 +242,17 @@ fn change_for(
             };
             Some(Change::new(address.clone(), kind, deltas, desired))
         }
-    }
+    })
 }
 
 // ENFORCES: INV-PLAN-003
 /// A declared attribute, with references resolved against what already exists.
-fn resolve(declared: &Attribute, observed: &Observed) -> Confidence {
-    match declared {
+fn resolve(
+    declared: &Attribute,
+    observed: &Observed,
+    secrets: Secrets<'_>,
+) -> Result<Confidence, FetchError> {
+    Ok(match declared {
         Attribute::Known(value) => Confidence::Known(value.clone()),
         Attribute::Unresolved(reference) => {
             match observed.attribute(reference.source(), reference.attribute()) {
@@ -227,16 +260,24 @@ fn resolve(declared: &Attribute, observed: &Observed) -> Confidence {
                 None => Confidence::Unknown(reference.clone()),
             }
         }
-    }
+        // Fetched to be hashed, and dropped in `seal`. The only way to say
+        // whether a secret changed is to look at what is there now.
+        Attribute::Secret(source) => Confidence::Secret(secrets.seal(source)?),
+    })
 }
 
 /// Whether an attribute already holds what it should.
 ///
 /// An unresolved value never matches: nothing can be said about a value that
 /// does not exist, and claiming it matches would silently skip the write.
-fn settled(before: Option<&Value>, after: &Confidence) -> bool {
+fn settled(before: Option<&Recorded>, after: &Confidence) -> bool {
     match (before, after) {
-        (Some(current), Confidence::Known(wanted)) => current == wanted,
+        (Some(Recorded::Plain(current)), Confidence::Known(wanted)) => current == wanted,
+        // Two digests under one key: equal means the credential on the machine
+        // is the one the store holds, which is the whole question.
+        (Some(Recorded::Secret(current)), Confidence::Secret(wanted)) => {
+            *current == wanted.digest()
+        }
         _ => false,
     }
 }

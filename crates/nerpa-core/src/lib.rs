@@ -46,6 +46,7 @@
 //! * [`inventory`] — where the nodes come from.
 //! * [`observed`] — what the world looks like, read before planning starts.
 //! * [`schema`] — which attributes cannot be changed in place.
+//! * [`secret`] — values that must never be written down.
 //! * [`planner`] — desired and observed state, in one pass, into a plan.
 //!   Called as `planner::plan`, not re-exported: a `plan` function beside a
 //!   `plan` module reads as an accident.
@@ -71,6 +72,7 @@ pub mod provider;
 pub mod resource;
 pub mod run;
 pub mod schema;
+pub mod secret;
 pub mod state;
 pub mod store;
 pub mod value;

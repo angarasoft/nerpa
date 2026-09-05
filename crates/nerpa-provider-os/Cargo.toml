@@ -16,5 +16,10 @@ categories.workspace = true
 nerpa-core = { workspace = true }
 thiserror = { workspace = true }
 
+[dev-dependencies]
+# So a test can look for a credential in the plan as a machine would receive it,
+# not only as `Debug` prints it.
+serde_json = { workspace = true }
+
 [lints]
 workspace = true

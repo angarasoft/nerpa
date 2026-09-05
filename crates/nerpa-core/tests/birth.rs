@@ -12,7 +12,20 @@ use std::collections::BTreeMap;
 use nerpa_core::address::address;
 use nerpa_core::plan::{ChangeKind, Confidence};
 use nerpa_core::planner::plan;
+use nerpa_core::secret::{Key, Recorded, Remembered, Secrets};
 use nerpa_core::state::State;
+
+/// A fixed key and a store holding nothing.
+///
+/// No test in this file declares a secret; planning still has to be told where
+/// one would be fetched from, and a fixed key keeps digests reproducible.
+static DIGEST_KEY: Key = Key::from_bytes([7; 32]);
+static NO_STORE: Remembered = Remembered::EMPTY;
+
+fn secrets() -> Secrets<'static> {
+    Secrets::new(&DIGEST_KEY, &NO_STORE)
+}
+
 use nerpa_core::{Graph, Kind, Observed, Provider, Resource, Schema, Value};
 
 fn instances() -> Schema {
@@ -60,6 +73,7 @@ fn editing_the_image_does_not_propose_to_destroy_anything() {
         &running("gentoo-2026-01", 8),
         &State::new(),
         &instances(),
+        secrets(),
     )
     .unwrap();
 
@@ -83,6 +97,7 @@ fn but_it_is_reported_every_time() {
         &running("gentoo-2026-01", 8),
         &State::new(),
         &instances(),
+        secrets(),
     )
     .unwrap();
 
@@ -92,7 +107,7 @@ fn but_it_is_reported_every_time() {
     assert_eq!(told.attribute(), "image");
     assert_eq!(
         told.born_with(),
-        Some(&Value::Text("gentoo-2026-01".to_owned()))
+        Some(&Recorded::Plain(Value::Text("gentoo-2026-01".to_owned())))
     );
     assert_eq!(
         told.declared(),
@@ -108,7 +123,14 @@ fn a_new_machine_is_born_from_what_is_declared_today() {
         Resource::new(address("yandex:instance.web")).with("image", "gentoo-2026-09"),
     ]);
 
-    let plan = plan(&graph, &Observed::new(), &State::new(), &instances()).unwrap();
+    let plan = plan(
+        &graph,
+        &Observed::new(),
+        &State::new(),
+        &instances(),
+        secrets(),
+    )
+    .unwrap();
 
     assert_eq!(plan.blast_radius().creates(), 1);
     assert_eq!(
@@ -138,6 +160,7 @@ fn the_rest_of_the_resource_is_still_held_to_its_declaration() {
         &running("gentoo-2026-01", 8),
         &State::new(),
         &instances(),
+        secrets(),
     )
     .unwrap();
 
@@ -165,6 +188,7 @@ fn an_attribute_nobody_declared_as_a_birth_attribute_is_converged() {
         &running("gentoo-2026-01", 8),
         &State::new(),
         &Schema::new(),
+        secrets(),
     )
     .unwrap();
 
@@ -202,6 +226,7 @@ fn being_born_with_something_never_becomes_a_replacement() {
         &running("gentoo-2026-01", 8),
         &State::new(),
         &schema,
+        secrets(),
     )
     .unwrap();
 
@@ -224,7 +249,7 @@ fn two_slots_run_side_by_side_on_different_images() {
     old.insert("image".to_owned(), Value::Text("gentoo-2026-01".to_owned()));
     observed.record(address("yandex:instance.web:v1"), old);
 
-    let plan = plan(&graph, &observed, &State::new(), &instances()).unwrap();
+    let plan = plan(&graph, &observed, &State::new(), &instances(), secrets()).unwrap();
 
     assert_eq!(plan.blast_radius().creates(), 1, "the new slot is made");
     assert_eq!(

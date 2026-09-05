@@ -22,6 +22,8 @@ default = ["strict-contracts"]
 strict-contracts = []
 
 [dependencies]
+blake3.workspace = true
+getrandom.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

@@ -20,6 +20,7 @@
 use std::fmt;
 
 use crate::address::Address;
+use crate::secret::Source;
 use crate::value::Value;
 
 /// Where a value will come from once it exists.
@@ -59,10 +60,7 @@ impl fmt::Display for Reference {
 
 /// What a declaration says about one attribute.
 ///
-/// Non-exhaustive: a third reading is already in the roadmap. A secret is
-/// neither settled data nor a reference to another resource — it is a reference
-/// to a secret store, and state is required to hold that rather than the value
-/// behind it.
+/// Non-exhaustive: provider schemas will want readings this does not have yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum Attribute {
@@ -70,22 +68,46 @@ pub enum Attribute {
     Known(Value),
     /// Not settled. Will be read from another resource once that exists.
     Unresolved(Reference),
+    /// Settled somewhere else, and deliberately not brought here.
+    ///
+    /// The declaration names a store and a path; the value is fetched when a
+    /// provider needs it and is never written into state or into a plan. See
+    /// decision 0027.
+    Secret(Source),
 }
 
 impl Attribute {
     /// The value, if there is one yet.
+    ///
+    /// A secret answers `None` here even though its value exists: it exists
+    /// somewhere else, and this is the accessor every part of the engine that
+    /// writes things down goes through.
     pub fn known(&self) -> Option<&Value> {
         match self {
             Attribute::Known(value) => Some(value),
-            Attribute::Unresolved(_) => None,
+            Attribute::Unresolved(_) | Attribute::Secret(_) => None,
         }
+    }
+
+    /// Where the secret behind this attribute is kept, if it is a secret.
+    // ENFORCES: INV-SECRET-001
+    pub fn secret(&self) -> Option<&Source> {
+        match self {
+            Attribute::Secret(source) => Some(source),
+            Attribute::Known(_) | Attribute::Unresolved(_) => None,
+        }
+    }
+
+    /// Whether this attribute holds something that must not be written down.
+    pub fn is_secret(&self) -> bool {
+        matches!(self, Attribute::Secret(_))
     }
 
     /// What this attribute is waiting on, if it is waiting.
     // ENFORCES: INV-GRAPH-003
     pub fn reference(&self) -> Option<&Reference> {
         match self {
-            Attribute::Known(_) => None,
+            Attribute::Known(_) | Attribute::Secret(_) => None,
             Attribute::Unresolved(reference) => Some(reference),
         }
     }
@@ -96,7 +118,14 @@ impl fmt::Display for Attribute {
         match self {
             Attribute::Known(value) => write!(f, "{value}"),
             Attribute::Unresolved(reference) => write!(f, "unknown until apply, from {reference}"),
+            Attribute::Secret(source) => write!(f, "(secret from {source})"),
         }
+    }
+}
+
+impl From<Source> for Attribute {
+    fn from(source: Source) -> Self {
+        Attribute::Secret(source)
     }
 }
 

@@ -51,6 +51,12 @@ serde_json = "1.0"
 # inability to say "these are bytes".
 ciborium = "0.2"
 clap = { version = "4.6", features = ["derive"] }
+# Keyed hashing, for the digests state keeps of secrets it must not keep. One
+# crate rather than the two an HMAC needs, and the same primitive will serve the
+# plan hash and the hash-chained log when those arrive.
+blake3 = "1.8"
+# Thirty-two random bytes for a state file's digest key, and nothing else.
+getrandom = "0.4"
 
 # Lint levels live here, at the workspace, and they are set now rather than
 # later on purpose. Turning a strict lint on across a thousand lines is an

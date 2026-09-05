@@ -17,7 +17,8 @@ use crate::observed::Observed;
 use crate::plan::{Change, ChangeKind, Confidence, Plan};
 use crate::provider::{Attributes, ProviderError, Providers, Reading};
 use crate::resource::Resource;
-use crate::state::{Record, State};
+use crate::secret::{FetchError, Recorded, Secrets};
+use crate::state::{Record, Recording, State};
 use crate::{ensures, requires};
 
 /// Reads every resource the configuration declares.
@@ -48,7 +49,7 @@ pub fn observe(
             // or the change reads as making a second one and abandoning the
             // first.
             // ENFORCES: INV-STATE-003
-            (_, Some(record)) => record.attributes().clone(),
+            (_, Some(record)) => record.locator(),
             (Some(resource), None) => settled_declaration(resource),
             (None, None) => continue,
         };
@@ -110,7 +111,10 @@ fn settled_declaration(resource: &Resource) -> Attributes {
         .iter()
         .filter_map(|(name, attribute)| match attribute {
             Attribute::Known(value) => Some((name.clone(), value.clone())),
-            Attribute::Unresolved(_) => None,
+            // A secret is never a locator: nothing is found by its password, and
+            // fetching one in order to look something up would be reaching for a
+            // credential to do a job that does not need it.
+            Attribute::Unresolved(_) | Attribute::Secret(_) => None,
         })
         .collect()
 }
@@ -154,7 +158,8 @@ pub fn apply(
     providers: &Providers,
     known: &Observed,
     state: &mut State,
-) -> Result<Applied, ProviderError> {
+    secrets: Secrets<'_>,
+) -> Result<Applied, RunError> {
     let mut observed = known.clone();
     let mut changed = 0usize;
 
@@ -165,7 +170,7 @@ pub fn apply(
 
             if change.kind() == ChangeKind::Delete {
                 if let Some(record) = state.get(address) {
-                    provider.delete(address, record.attributes())?;
+                    provider.delete(address, &record.locator())?;
                 }
                 state.forget(address);
                 changed += 1;
@@ -178,14 +183,14 @@ pub fn apply(
             if change.kind() == ChangeKind::Replace
                 && let Some(record) = state.get(address)
             {
-                provider.delete(address, record.attributes())?;
+                provider.delete(address, &record.locator())?;
             }
 
-            let attributes = settle(change, &observed);
+            let attributes = settle(change, &observed, secrets)?;
             let result = provider.apply(address, change.kind(), &attributes)?;
             state.record(
                 address.clone(),
-                Record::new(result.clone(), dependencies(change)),
+                Record::new(recording(&result, change, secrets), dependencies(change)),
             );
             observed.record(address.clone(), result);
             changed += 1;
@@ -211,13 +216,59 @@ fn dependencies(change: &Change) -> BTreeSet<Address> {
         .iter()
         .filter_map(|(_, value)| match value {
             Confidence::Unknown(reference) => Some(reference.source().clone()),
-            Confidence::Known(_) => None,
+            Confidence::Known(_) | Confidence::Secret(_) => None,
         })
         .collect()
 }
 
+/// What state may keep of what a provider reported.
+///
+/// Values, except where the declaration said the attribute was a secret — those
+/// become digests here and are never values again. This is the one place a
+/// credential could have been written down, and it is the reason it is not.
+// ENFORCES: INV-SECRET-002
+fn recording(reported: &Attributes, change: &Change, secrets: Secrets<'_>) -> Recording {
+    let secret: BTreeSet<&str> = change
+        .desired()
+        .iter()
+        .filter(|(_, wanted)| wanted.is_secret())
+        .map(|(name, _)| name.as_str())
+        .collect();
+
+    reported
+        .iter()
+        .map(|(name, value)| {
+            let recorded = if secret.contains(name.as_str()) {
+                Recorded::Secret(secrets.digest(value))
+            } else {
+                Recorded::Plain(value.clone())
+            };
+            (name.clone(), recorded)
+        })
+        .collect()
+}
+
+/// Why a run stopped.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum RunError {
+    /// A provider could not do what was asked of it.
+    #[error(transparent)]
+    Provider(#[from] ProviderError),
+    /// A secret a change needed could not be fetched.
+    #[error(transparent)]
+    Secret(#[from] FetchError),
+}
+
 /// Every attribute of a change, with what was unknown at plan time filled in.
-fn settle(change: &Change, observed: &Observed) -> Attributes {
+///
+/// Secrets are fetched here, as late as they can be: between this call and the
+/// provider that writes them, and nowhere else.
+fn settle(
+    change: &Change,
+    observed: &Observed,
+    secrets: Secrets<'_>,
+) -> Result<Attributes, FetchError> {
     let mut attributes = Attributes::new();
     for (name, wanted) in change.desired() {
         let value = match wanted {
@@ -236,8 +287,11 @@ fn settle(change: &Change, observed: &Observed) -> Attributes {
                     None => continue,
                 }
             }
+            // The last moment, and the only one: fetched here and handed
+            // straight to the provider that writes it.
+            Confidence::Secret(sealed) => secrets.fetch(sealed.source())?,
         };
         attributes.insert(name.clone(), value);
     }
-    attributes
+    Ok(attributes)
 }

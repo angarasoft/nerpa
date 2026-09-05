@@ -8,11 +8,24 @@ use std::collections::BTreeMap;
 use nerpa_core::address::address;
 use nerpa_core::planner::plan;
 use nerpa_core::provider::Attributes;
+use nerpa_core::secret::Recorded;
+use nerpa_core::secret::{Key, Remembered, Secrets};
 use nerpa_core::state::{Record, State};
 use nerpa_core::{
     Change, ChangeKind, Confidence, ExecutionDomain, Graph, Kind, Observed, Provider, Reference,
     Resource, Schema, Target, Value,
 };
+
+/// A fixed key and a store holding nothing.
+///
+/// No test in this file declares a secret; planning still has to be told where
+/// one would be fetched from, and a fixed key keeps digests reproducible.
+static DIGEST_KEY: Key = Key::from_bytes([7; 32]);
+static NO_STORE: Remembered = Remembered::EMPTY;
+
+fn secrets() -> Secrets<'static> {
+    Secrets::new(&DIGEST_KEY, &NO_STORE)
+}
 
 fn graph_of(resources: Vec<Resource>) -> Graph {
     let mut graph = Graph::new();
@@ -38,7 +51,7 @@ fn observed_with(entries: &[(&str, &[(&str, Value)])]) -> Observed {
 }
 
 fn only_change(graph: &Graph, observed: &Observed, schema: &Schema) -> Change {
-    let plan = plan(graph, observed, &State::new(), schema).expect("plannable");
+    let plan = plan(graph, observed, &State::new(), schema, secrets()).expect("plannable");
     let changes: Vec<&Change> = plan.changes().collect();
     assert_eq!(
         changes.len(),
@@ -71,7 +84,8 @@ fn a_resource_that_already_matches_produces_nothing() {
     ]);
     let observed = observed_with(&[("yandex:instance.db", &[("cores", Value::Integer(8))])]);
 
-    let plan = plan(&graph, &observed, &State::new(), &Schema::new()).expect("plannable");
+    let plan =
+        plan(&graph, &observed, &State::new(), &Schema::new(), secrets()).expect("plannable");
     assert!(plan.is_empty(), "a converged world needs no plan: {plan:?}");
     assert_eq!(plan.blast_radius().total(), 0);
 }
@@ -86,7 +100,10 @@ fn a_changed_attribute_is_an_update_carrying_both_values() {
     let change = only_change(&graph, &observed, &Schema::new());
     assert_eq!(change.kind(), ChangeKind::Update);
     assert!(change.kind().is_reversible());
-    assert_eq!(change.deltas()[0].before(), Some(&Value::Integer(4)));
+    assert_eq!(
+        change.deltas()[0].before(),
+        Some(&Recorded::Plain(Value::Integer(4)))
+    );
     assert_eq!(
         change.deltas()[0].after(),
         &Confidence::Known(Value::Integer(8))
@@ -135,7 +152,14 @@ fn a_reference_to_something_that_exists_is_already_known() {
         ),
     ]);
 
-    let unknown = plan(&graph, &Observed::new(), &State::new(), &Schema::new()).expect("plannable");
+    let unknown = plan(
+        &graph,
+        &Observed::new(),
+        &State::new(),
+        &Schema::new(),
+        secrets(),
+    )
+    .expect("plannable");
     assert_eq!(unknown.blast_radius().unresolved(), 1);
 
     let observed = observed_with(&[
@@ -148,7 +172,8 @@ fn a_reference_to_something_that_exists_is_already_known() {
             &[("upstream", Value::Text("10.0.0.1".to_owned()))],
         ),
     ]);
-    let settled = plan(&graph, &observed, &State::new(), &Schema::new()).expect("plannable");
+    let settled =
+        plan(&graph, &observed, &State::new(), &Schema::new(), secrets()).expect("plannable");
     assert!(
         settled.is_empty(),
         "once the source exists, the reader matches: {settled:?}"
@@ -166,7 +191,14 @@ fn planning_after_applying_produces_an_empty_plan() {
             .with("listen", Reference::to(address("yandex:instance.db"), "ip")),
     ]);
 
-    let first = plan(&graph, &Observed::new(), &State::new(), &Schema::new()).expect("plannable");
+    let first = plan(
+        &graph,
+        &Observed::new(),
+        &State::new(),
+        &Schema::new(),
+        secrets(),
+    )
+    .expect("plannable");
     assert_eq!(first.blast_radius().creates(), 3);
     assert_eq!(first.blast_radius().unresolved(), 1);
 
@@ -189,7 +221,8 @@ fn planning_after_applying_produces_an_empty_plan() {
         ),
     ]);
 
-    let second = plan(&graph, &applied, &State::new(), &Schema::new()).expect("plannable");
+    let second =
+        plan(&graph, &applied, &State::new(), &Schema::new(), secrets()).expect("plannable");
     assert!(
         second.is_empty(),
         "the second run must change nothing: {second:?}"
@@ -213,7 +246,7 @@ fn the_blast_radius_names_every_machine_and_counts_what_cannot_be_undone() {
         "zone",
     );
 
-    let plan = plan(&graph, &observed, &State::new(), &schema).expect("plannable");
+    let plan = plan(&graph, &observed, &State::new(), &schema, secrets()).expect("plannable");
     let radius = plan.blast_radius();
 
     assert_eq!(radius.creates(), 2);
@@ -242,7 +275,8 @@ fn stages_with_nothing_to_do_are_left_out_but_order_is_kept() {
         ],
     )]);
 
-    let plan = plan(&graph, &observed, &State::new(), &Schema::new()).expect("plannable");
+    let plan =
+        plan(&graph, &observed, &State::new(), &Schema::new(), secrets()).expect("plannable");
     assert_eq!(
         plan.stages().len(),
         1,
@@ -261,7 +295,16 @@ fn a_graph_that_cannot_be_ordered_is_not_planned_at_all() {
         Resource::new(address("os:file.b@web-01")).after(address("os:file.a@web-01")),
     ]);
 
-    assert!(plan(&graph, &Observed::new(), &State::new(), &Schema::new()).is_err());
+    assert!(
+        plan(
+            &graph,
+            &Observed::new(),
+            &State::new(),
+            &Schema::new(),
+            secrets()
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -304,7 +347,7 @@ fn the_blast_radius_counts_each_kind_separately() {
     ]);
     let observed = observed_with(&[("yandex:instance.changed", &[("cores", Value::Integer(4))])]);
 
-    let radius = plan(&graph, &observed, &State::new(), &Schema::new())
+    let radius = plan(&graph, &observed, &State::new(), &Schema::new(), secrets())
         .expect("plannable")
         .blast_radius()
         .clone();
@@ -323,12 +366,20 @@ fn an_empty_plan_is_empty_and_a_plan_with_work_is_not() {
         Resource::new(address("yandex:instance.db")).with("cores", 8),
     ]);
 
-    let work = plan(&graph, &Observed::new(), &State::new(), &Schema::new()).expect("plannable");
+    let work = plan(
+        &graph,
+        &Observed::new(),
+        &State::new(),
+        &Schema::new(),
+        secrets(),
+    )
+    .expect("plannable");
     assert!(!work.is_empty(), "there is a resource to create");
     assert_eq!(work.changes().count(), 1);
 
     let settled = observed_with(&[("yandex:instance.db", &[("cores", Value::Integer(8))])]);
-    let nothing = plan(&graph, &settled, &State::new(), &Schema::new()).expect("plannable");
+    let nothing =
+        plan(&graph, &settled, &State::new(), &Schema::new(), secrets()).expect("plannable");
     assert!(nothing.is_empty());
     assert_eq!(nothing.changes().count(), 0);
 }
@@ -345,10 +396,14 @@ fn the_total_counts_removals_alongside_everything_else() {
     let mut state = State::new();
     state.record(
         address("yandex:instance.gone"),
-        Record::new(Attributes::new(), std::collections::BTreeSet::new()),
+        Record::new(
+            Recorded::all(Attributes::new()),
+            std::collections::BTreeSet::new(),
+        ),
     );
 
-    let plan = plan(&graph, &Observed::new(), &state, &Schema::new()).expect("plannable");
+    let plan =
+        plan(&graph, &Observed::new(), &state, &Schema::new(), secrets()).expect("plannable");
     let radius = plan.blast_radius();
 
     assert_eq!(radius.creates(), 2);
@@ -385,7 +440,7 @@ fn a_plan_survives_a_trip_through_json() {
         "zone",
     );
 
-    let written = plan(&graph, &observed, &State::new(), &schema).expect("plannable");
+    let written = plan(&graph, &observed, &State::new(), &schema, secrets()).expect("plannable");
     let text = serde_json::to_string(&written).expect("writes");
     let read: nerpa_core::Plan = serde_json::from_str(&text).expect("reads");
 

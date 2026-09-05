@@ -31,6 +31,7 @@ use clap::{Parser, Subcommand};
 use nerpa_core::planner;
 use nerpa_core::provider::Providers;
 use nerpa_core::run;
+use nerpa_core::secret::{Remembered, Secrets};
 use nerpa_core::store::{self, Lock};
 use nerpa_provider_os::Os;
 
@@ -89,9 +90,17 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     // against one state file would each write what the other did not know about.
     let _lock = Lock::take(&arguments.state).map_err(|error| error.to_string())?;
 
-    let mut state = store::load(&arguments.state).map_err(|error| error.to_string())?;
+    let (mut state, key) = store::load(&arguments.state).map_err(|error| error.to_string())?;
+
+    // Nothing in it yet: a declaration cannot say an attribute is secret until
+    // the Starlark side can name a store, and the stores themselves arrive with
+    // the rest of decision 0027. Wired now so that the path a secret takes
+    // through a run exists rather than being retrofitted around it.
+    let store = Remembered::new();
+    let secrets = Secrets::new(&key, &store);
+
     let observed = run::observe(&graph, &providers, &state).map_err(|error| error.to_string())?;
-    let plan = planner::plan(&graph, &observed, &state, &providers.schema())
+    let plan = planner::plan(&graph, &observed, &state, &providers.schema(), secrets)
         .map_err(|error| error.to_string())?;
 
     if let Task::Plan { json: true } = arguments.task {
@@ -113,11 +122,11 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
         return Ok(());
     }
 
-    let applied = run::apply(&plan, &providers, &observed, &mut state);
+    let applied = run::apply(&plan, &providers, &observed, &mut state, secrets);
 
     // Written whatever happened. A run that stopped half way made real changes,
     // and forgetting them would leave them unowned for ever.
-    store::save(&arguments.state, &state).map_err(|error| error.to_string())?;
+    store::save(&arguments.state, &state, &key).map_err(|error| error.to_string())?;
 
     let applied = applied.map_err(|error| error.to_string())?;
     println!("\napplied {} changes", applied.changed());

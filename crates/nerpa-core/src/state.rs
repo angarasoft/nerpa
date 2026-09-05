@@ -17,19 +17,25 @@
 //! Secret values. Terraform's state carries passwords in clear text, which is
 //! why it needs whole-file encryption and still leaks through every backup. A
 //! state that never held the value has nothing to leak. The mechanism — a
-//! reference to a secret store and a digest of what is behind it — arrives with
-//! the `Attribute::Secret` variant; until a declaration can say that an
-//! attribute is secret, nothing here is.
+//! reference to a secret store and a digest of what is behind it — is
+//! [`Recorded`], and it is the type of what a [`Record`] holds. There is no
+//! path from a stored digest back to a value, so this is true by construction
+//! rather than by everyone remembering. See decision 0027.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::address::Address;
 use crate::provider::Attributes;
+use crate::secret::Recorded;
+
+/// What state holds for one resource: values, and digests where the value was a
+/// secret.
+pub type Recording = BTreeMap<String, Recorded>;
 
 /// What one resource looked like when Nerpa last touched it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Record {
-    attributes: Attributes,
+    attributes: Recording,
     depends_on: BTreeSet<Address>,
     written: Written,
 }
@@ -80,7 +86,7 @@ impl Written {
 impl Record {
     /// Records a resource and what it depended on, as of now.
     #[must_use]
-    pub fn new(attributes: Attributes, depends_on: BTreeSet<Address>) -> Self {
+    pub fn new(attributes: Recording, depends_on: BTreeSet<Address>) -> Self {
         Self {
             attributes,
             depends_on,
@@ -92,7 +98,7 @@ impl Record {
     /// disk and for tests that need a fixed clock.
     #[must_use]
     pub fn written_at(
-        attributes: Attributes,
+        attributes: Recording,
         depends_on: BTreeSet<Address>,
         written: Written,
     ) -> Self {
@@ -109,10 +115,25 @@ impl Record {
         self.written
     }
 
-    /// What the provider reported after the last change.
+    /// What the provider reported after the last change, with secrets reduced
+    /// to digests.
     #[must_use]
-    pub fn attributes(&self) -> &Attributes {
+    pub fn attributes(&self) -> &Recording {
         &self.attributes
+    }
+
+    /// The attributes a provider may be handed back — the ones that are values.
+    ///
+    /// A secret is not among them, and cannot be: state never held it. Anything
+    /// that needs one has to fetch it from the store again, which is the whole
+    /// point of not keeping it here.
+    // ENFORCES: INV-SECRET-003
+    #[must_use]
+    pub fn locator(&self) -> Attributes {
+        self.attributes
+            .iter()
+            .filter_map(|(name, recorded)| Some((name.clone(), recorded.plain()?.clone())))
+            .collect()
     }
 
     /// What it depended on then — which is the only thing that can order its

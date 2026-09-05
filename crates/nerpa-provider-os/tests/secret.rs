@@ -1,0 +1,204 @@
+//! A password, all the way through a run, and everywhere it must not appear.
+//!
+//! The claim decision 0027 makes is negative — that a value is *not* somewhere —
+//! and a negative claim is only worth as much as the search behind it. So these
+//! tests take a real credential through a real filesystem and then go looking
+//! for it in the state file, in the plan, and in what the plan is rendered from.
+
+// Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+
+use std::fs;
+use std::path::PathBuf;
+
+use nerpa_core::address::address;
+use nerpa_core::planner::plan;
+use nerpa_core::provider::Providers;
+use nerpa_core::run::{apply, observe};
+use nerpa_core::secret::{Key, Recorded, Remembered, Secrets, Source};
+use nerpa_core::state::State;
+use nerpa_core::{Graph, Resource};
+use nerpa_provider_os::Os;
+
+/// The credential this whole file is about. Written once so that every search
+/// below is looking for the same bytes.
+const PASSWORD: &str = "correct-horse-battery-staple";
+
+static DIGEST_KEY: Key = Key::from_bytes([7; 32]);
+
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new(name: &str) -> Self {
+        let path = std::env::temp_dir().join(format!("nerpa-secret-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).expect("a scratch directory");
+        Self(path)
+    }
+
+    fn join(&self, name: &str) -> String {
+        self.0.join(name).display().to_string()
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn at(path: &str) -> Source {
+    Source::Stored {
+        provider: "remembered".to_owned(),
+        path: path.to_owned(),
+        version: None,
+    }
+}
+
+/// One file whose contents are a secret held in the store.
+fn graph_of(path: &str) -> Graph {
+    let mut graph = Graph::new();
+    let resource = Resource::new(address("os:file.credentials@localhost"))
+        .with("path", path)
+        .with("content", at("db/password"));
+    if let Some(target) = resource.address().target() {
+        graph.preexisting(target.clone());
+    }
+    graph.insert(resource).expect("a graph of one file");
+    graph
+}
+
+/// The whole loop, and then a search for the password in everything the run
+/// wrote down.
+#[test]
+fn a_password_reaches_the_file_and_nothing_else() {
+    let scratch = Scratch::new("through");
+    let path = scratch.join("credentials");
+    let graph = graph_of(&path);
+
+    let store = Remembered::new().holding("db/password", PASSWORD);
+    let secrets = Secrets::new(&DIGEST_KEY, &store);
+    let providers = Providers::new().with(Box::new(Os::new()));
+    let mut state = State::new();
+
+    let observed = observe(&graph, &providers, &state).expect("readable");
+    let intended =
+        plan(&graph, &observed, &state, &providers.schema(), secrets).expect("plannable");
+
+    // The plan is what a person reads and what a machine is asked to approve.
+    let rendered = format!("{intended:?}");
+    assert!(
+        !rendered.contains(PASSWORD),
+        "the plan carries the password: {rendered}"
+    );
+    let as_json = serde_json::to_string(&intended).expect("a plan serialises");
+    assert!(
+        !as_json.contains(PASSWORD),
+        "the machine-facing plan carries the password: {as_json}"
+    );
+
+    apply(&intended, &providers, &observed, &mut state, secrets).expect("applies");
+
+    // The provider did get the real value: this is a credentials file, and a
+    // masked one would be useless.
+    assert_eq!(fs::read_to_string(&path).expect("written"), PASSWORD);
+
+    // And state has the digest instead.
+    let record = state
+        .get(&address("os:file.credentials@localhost"))
+        .expect("recorded");
+    assert!(
+        matches!(
+            record.attributes().get("content"),
+            Some(Recorded::Secret(_))
+        ),
+        "content should have been reduced to a digest: {:?}",
+        record.attributes()
+    );
+    assert!(
+        !record.locator().contains_key("content"),
+        "a secret is never handed back to a provider from state"
+    );
+    let written = format!("{:?}", record.attributes());
+    assert!(
+        !written.contains(PASSWORD),
+        "state holds the password: {written}"
+    );
+}
+
+/// The second run is empty, which is the property that makes a tool convergent —
+/// and it has to survive an attribute whose value the plan never saw.
+#[test]
+fn a_secret_that_did_not_change_converges() {
+    let scratch = Scratch::new("converge");
+    let path = scratch.join("credentials");
+    let graph = graph_of(&path);
+
+    let store = Remembered::new().holding("db/password", PASSWORD);
+    let secrets = Secrets::new(&DIGEST_KEY, &store);
+    let providers = Providers::new().with(Box::new(Os::new()));
+    let mut state = State::new();
+
+    let observed = observe(&graph, &providers, &state).expect("readable");
+    let first = plan(&graph, &observed, &state, &providers.schema(), secrets).expect("plannable");
+    apply(&first, &providers, &observed, &mut state, secrets).expect("applies");
+
+    let again = observe(&graph, &providers, &state).expect("readable");
+    let second = plan(&graph, &again, &state, &providers.schema(), secrets).expect("plannable");
+    assert!(
+        second.is_empty(),
+        "the second run should have nothing to do: {second:?}"
+    );
+}
+
+/// Rotating the credential in the store is a change, and the plan says so
+/// without saying what to.
+#[test]
+fn a_rotated_secret_is_reported_as_changed() {
+    let scratch = Scratch::new("rotated");
+    let path = scratch.join("credentials");
+    let graph = graph_of(&path);
+
+    let providers = Providers::new().with(Box::new(Os::new()));
+    let mut state = State::new();
+
+    let before = Remembered::new().holding("db/password", PASSWORD);
+    let secrets = Secrets::new(&DIGEST_KEY, &before);
+    let observed = observe(&graph, &providers, &state).expect("readable");
+    let first = plan(&graph, &observed, &state, &providers.schema(), secrets).expect("plannable");
+    apply(&first, &providers, &observed, &mut state, secrets).expect("applies");
+
+    let after = Remembered::new().holding("db/password", "something-else-entirely");
+    let rotated = Secrets::new(&DIGEST_KEY, &after);
+    let again = observe(&graph, &providers, &state).expect("readable");
+    let second = plan(&graph, &again, &state, &providers.schema(), rotated).expect("plannable");
+
+    assert_eq!(second.changes().count(), 1, "the rotation is one change");
+    let rendered = format!("{second:?}");
+    assert!(
+        !rendered.contains("something-else-entirely") && !rendered.contains(PASSWORD),
+        "neither credential belongs in the plan: {rendered}"
+    );
+}
+
+/// A store that cannot answer stops the plan. Reporting "unchanged" would be the
+/// answer somebody believes, and the one that could be wrong.
+#[test]
+fn a_secret_that_cannot_be_fetched_stops_the_plan() {
+    let scratch = Scratch::new("missing");
+    let path = scratch.join("credentials");
+    let graph = graph_of(&path);
+
+    let store = Remembered::new();
+    let secrets = Secrets::new(&DIGEST_KEY, &store);
+    let providers = Providers::new().with(Box::new(Os::new()));
+    let state = State::new();
+
+    let observed = observe(&graph, &providers, &state).expect("readable");
+    let refusal = plan(&graph, &observed, &state, &providers.schema(), secrets)
+        .expect_err("a secret that is not there is not a plan");
+    assert!(
+        refusal.to_string().contains("db/password"),
+        "the refusal should name what was looked for: {refusal}"
+    );
+}

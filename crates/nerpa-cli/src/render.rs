@@ -15,6 +15,7 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use nerpa_core::plan::{Outdated, Unreachable};
+use nerpa_core::secret::Recorded;
 use nerpa_core::{BlastRadius, Change, ChangeKind, Confidence, Plan, StageKind, Target};
 
 /// The whole plan, as text.
@@ -65,11 +66,7 @@ fn behind(outdated: &[Outdated]) -> String {
         let born = entry
             .born_with()
             .map_or_else(|| "—".to_owned(), ToString::to_string);
-        let declared = match entry.declared() {
-            Confidence::Known(value) => value.to_string(),
-            Confidence::Unknown(reference) => format!("unknown until apply, from {reference}"),
-            _ => "unrecognised".to_owned(),
-        };
+        let declared = shown(entry.declared());
         let _ = writeln!(
             out,
             "    {} · {} was {born}, declared {declared}",
@@ -197,6 +194,20 @@ fn action(kind: ChangeKind) -> &'static str {
     }
 }
 
+/// What a plan may say about a value it is about to write.
+///
+/// A secret says where it comes from and nothing about what it is. That is not a
+/// diminished diff: which store a credential is read from is the part a person
+/// approving the change actually needs.
+fn shown(after: &Confidence) -> String {
+    match after {
+        Confidence::Known(value) => value.to_string(),
+        Confidence::Unknown(reference) => format!("unknown until apply, from {reference}"),
+        Confidence::Secret(sealed) => format!("(secret from {})", sealed.source()),
+        _ => "unrecognised".to_owned(),
+    }
+}
+
 fn one(change: &Change) -> String {
     let mut out = format!("  {} {}\n", action(change.kind()), change.address());
 
@@ -204,10 +215,11 @@ fn one(change: &Change) -> String {
         let before = delta
             .before()
             .map_or_else(|| "—".to_owned(), ToString::to_string);
-        let after = match delta.after() {
-            Confidence::Known(value) => value.to_string(),
-            Confidence::Unknown(reference) => format!("unknown until apply, from {reference}"),
-            _ => "unrecognised".to_owned(),
+        // A secret that was already there and is changing: the fact is the whole
+        // report, because the value is the thing being withheld. See 0027.
+        let after = match (delta.before(), delta.after()) {
+            (Some(Recorded::Secret(_)), Confidence::Secret(_)) => "(secret, changed)".to_owned(),
+            (_, after) => shown(after),
         };
         let cause = if delta.forces_replacement() {
             "   ← cause of the replacement"
@@ -244,7 +256,18 @@ mod tests {
         Value,
     };
 
+    use nerpa_core::secret::{Key, Recorded, Remembered, Secrets};
+
     use super::plan as render;
+
+    /// A fixed key and a store holding nothing: rendering is what is under test,
+    /// not where a secret comes from.
+    static DIGEST_KEY: Key = Key::from_bytes([7; 32]);
+    static NO_STORE: Remembered = Remembered::EMPTY;
+
+    fn secrets() -> Secrets<'static> {
+        Secrets::new(&DIGEST_KEY, &NO_STORE)
+    }
 
     fn graph_of(resources: Vec<Resource>) -> Graph {
         let mut graph = Graph::new();
@@ -268,7 +291,92 @@ mod tests {
     }
 
     fn rendered(graph: &Graph, observed: &Observed, state: &State, schema: &Schema) -> String {
-        render(&planner::plan(graph, observed, state, schema).unwrap())
+        render(&planner::plan(graph, observed, state, schema, secrets()).unwrap())
+    }
+
+    /// The credential these two tests go looking for in the output.
+    const PASSWORD: &str = "hunter2";
+
+    static WITH_PASSWORD: std::sync::LazyLock<Remembered> =
+        std::sync::LazyLock::new(|| Remembered::new().holding("db/password", PASSWORD));
+
+    fn holding_a_secret() -> Secrets<'static> {
+        Secrets::new(&DIGEST_KEY, &*WITH_PASSWORD)
+    }
+
+    fn secret_at(path: &str) -> nerpa_core::secret::Source {
+        nerpa_core::secret::Source::Stored {
+            provider: "remembered".to_owned(),
+            path: path.to_owned(),
+            version: None,
+        }
+    }
+
+    fn with_a_secret() -> Graph {
+        graph_of(vec![
+            Resource::new(address("os:file.credentials@web-01"))
+                .with("path", "/etc/app/credentials")
+                .with("content", secret_at("db/password")),
+        ])
+    }
+
+    /// The plan says which store a credential comes from, because that is what a
+    /// person approving the change needs, and never what it is.
+    #[test]
+    fn a_secret_is_shown_as_where_it_comes_from() {
+        let text = render(
+            &planner::plan(
+                &with_a_secret(),
+                &Observed::new(),
+                &State::new(),
+                &Schema::new(),
+                holding_a_secret(),
+            )
+            .unwrap(),
+        );
+
+        assert!(
+            text.contains("(secret from remembered:db/password)"),
+            "the plan should name the store: {text}"
+        );
+        assert!(!text.contains(PASSWORD), "the plan carries it: {text}");
+    }
+
+    /// A credential that was rotated is a change worth approving, and the fact of
+    /// it is the whole report.
+    #[test]
+    fn a_secret_that_changed_says_so_and_no_more() {
+        let observed = observed_with(
+            "os:file.credentials@web-01",
+            &[
+                ("path", Value::Text("/etc/app/credentials".to_owned())),
+                ("content", Value::Text("the-old-one".to_owned())),
+            ],
+        );
+
+        let text = render(
+            &planner::plan(
+                &with_a_secret(),
+                &observed,
+                &State::new(),
+                &Schema::new(),
+                holding_a_secret(),
+            )
+            .unwrap(),
+        );
+
+        assert!(
+            text.contains("(secret) → (secret, changed)"),
+            "a rotation reads as one: {text}"
+        );
+        assert!(
+            !text.contains(PASSWORD),
+            "the plan carries the new one: {text}"
+        );
+        assert!(
+            !text.contains("the-old-one"),
+            "the plan carries the old one: {text}"
+        );
     }
 
     #[test]
@@ -349,7 +457,10 @@ mod tests {
         let mut state = State::new();
         state.record(
             address("yandex:instance.gone"),
-            Record::new(Attributes::new(), std::collections::BTreeSet::new()),
+            Record::new(
+                Recorded::all(Attributes::new()),
+                std::collections::BTreeSet::new(),
+            ),
         );
 
         let text = rendered(&Graph::new(), &Observed::new(), &state, &Schema::new());
@@ -429,7 +540,7 @@ mod tests {
         state.record(
             address("os:file.motd@web-01"),
             Record::written_at(
-                Attributes::new(),
+                Recorded::all(Attributes::new()),
                 std::collections::BTreeSet::new(),
                 Written::at(1_700_000_000 - 7200),
             ),
@@ -441,6 +552,7 @@ mod tests {
                 &observed,
                 &state,
                 &Schema::new(),
+                secrets(),
                 Written::at(1_700_000_000),
             )
             .unwrap(),
@@ -487,7 +599,7 @@ mod tests {
             state.record(
                 address("os:file.one@web-01"),
                 Record::written_at(
-                    Attributes::new(),
+                    Recorded::all(Attributes::new()),
                     std::collections::BTreeSet::new(),
                     Written::at(1_700_000_000 - seconds),
                 ),
@@ -499,6 +611,7 @@ mod tests {
                     &observed,
                     &state,
                     &Schema::new(),
+                    secrets(),
                     Written::at(1_700_000_000),
                 )
                 .unwrap(),
@@ -538,7 +651,8 @@ mod tests {
             "image",
         );
 
-        let text = render(&planner::plan(&graph, &observed, &State::new(), &schema).unwrap());
+        let text =
+            render(&planner::plan(&graph, &observed, &State::new(), &schema, secrets()).unwrap());
 
         assert!(text.contains("no longer declared"), "{text}");
         assert!(text.contains("image was \"gentoo-2026-01\""), "{text}");
@@ -580,7 +694,8 @@ mod tests {
             "image",
         );
 
-        let text = render(&planner::plan(&graph, &observed, &State::new(), &schema).unwrap());
+        let text =
+            render(&planner::plan(&graph, &observed, &State::new(), &schema, secrets()).unwrap());
 
         assert!(text.contains("no longer declared"), "{text}");
         assert!(
@@ -605,6 +720,7 @@ mod tests {
                 &observed,
                 &State::new(),
                 &Schema::new(),
+                secrets(),
                 Written::at(1_700_000_000),
             )
             .unwrap(),

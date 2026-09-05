@@ -13,12 +13,20 @@
 //! trip exactly — the property `INV-ADDR-003` exists for.
 //!
 //! ```text
-//!   { "version": 2,
+//!   { "version": 3,
+//!     "digest_key": "3f9a…",
 //!     "resources": {
 //!       "os:file.motd@web-01": {
 //!         "attributes": { "path": "/etc/motd", "content": "hello\n" },
+//!         "secrets": { "token": "9c41…" },
 //!         "depends_on": [] } } }
 //! ```
+//!
+//! Secrets are in a map of their own rather than mixed in among the attributes,
+//! and this is deliberate: a person running `jq .resources[].attributes` over a
+//! state file can see that no value in it is a credential, which is a guarantee
+//! worth being able to check by looking. `digest_key` is what those digests were
+//! taken under — see [`crate::secret`] for what that does and does not protect.
 //!
 //! # The lock
 //!
@@ -35,13 +43,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::address::Address;
 use crate::provider::Attributes;
-use crate::state::{Record, State, Written};
+use crate::secret::{Digest, Key, Recorded};
+use crate::state::{Record, Recording, State, Written};
 
 /// The format version written into every state file.
 ///
 /// Read back and refused if it is not understood. A state file from a later
 /// version is not something to guess at.
-pub const FORMAT_VERSION: u32 = 2;
+pub const FORMAT_VERSION: u32 = 3;
 
 /// Why state could not be read or written.
 #[derive(Debug, thiserror::Error)]
@@ -63,6 +72,14 @@ pub enum StoreError {
         /// What was wrong with it.
         problem: String,
     },
+    /// The operating system would not supply randomness for a digest key.
+    #[error("{path}: {problem}")]
+    Randomness {
+        /// Which file was being started.
+        path: String,
+        /// What went wrong.
+        problem: String,
+    },
     /// Another run holds the lock.
     #[error("{path} is locked by another run; remove it if you are sure there is not one")]
     Locked {
@@ -71,15 +88,28 @@ pub enum StoreError {
     },
 }
 
+/// Just enough of a state file to say which version wrote it.
+#[derive(Deserialize)]
+struct Stamp {
+    version: u32,
+}
+
 #[derive(Serialize, Deserialize)]
 struct Document {
     version: u32,
+    /// Hexadecimal, and the reason digests in this file compare only against
+    /// each other.
+    digest_key: String,
     resources: BTreeMap<String, StoredRecord>,
 }
 
 #[derive(Serialize, Deserialize)]
 struct StoredRecord {
     attributes: Attributes,
+    /// Digests of the attributes that were secret. Absent when there were none,
+    /// so that an ordinary state file is not littered with empty maps.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    secrets: BTreeMap<String, Digest>,
     depends_on: Vec<String>,
     /// Seconds since the epoch, and the only reason a clock is read at all: how
     /// old what we know about a machine is, when that machine will not answer.
@@ -135,17 +165,29 @@ fn lock_path(state: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
-/// Reads state, or an empty one if the file is not there yet.
+/// Reads state and the key its digests were taken under, or an empty state and a
+/// fresh key if the file is not there yet.
+///
+/// The key comes back with the state because the two are only meaningful
+/// together: a digest taken under a different key compares unequal to every
+/// digest already written, which would report every secret as changed.
 ///
 /// # Errors
 ///
 /// Returns [`StoreError`] if the file exists but cannot be read, is not JSON, or
-/// was written by a version this one does not understand.
-pub fn load(path: &Path) -> Result<State, StoreError> {
+/// was written by a version this one does not understand, and
+/// [`StoreError::Randomness`] if a first run cannot get a key at all.
+pub fn load(path: &Path) -> Result<(State, Key), StoreError> {
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         // A first run has no state, and that is not a problem to report.
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(State::new()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let key = Key::fresh().map_err(|problem| StoreError::Randomness {
+                path: path.display().to_string(),
+                problem: problem.to_string(),
+            })?;
+            return Ok((State::new(), key));
+        }
         Err(error) => {
             return Err(StoreError::File {
                 path: path.display().to_string(),
@@ -154,20 +196,29 @@ pub fn load(path: &Path) -> Result<State, StoreError> {
         }
     };
 
-    let document: Document = serde_json::from_str(&text).map_err(|error| StoreError::Format {
+    // The version is read on its own first, and the file parsed afterwards. A
+    // state file from another version will be missing fields this one requires,
+    // and complaining about a missing field tells whoever is reading the message
+    // nothing about what actually happened to them.
+    let stamp: Stamp = serde_json::from_str(&text).map_err(|error| StoreError::Format {
         path: path.display().to_string(),
         problem: error.to_string(),
     })?;
 
-    if document.version != FORMAT_VERSION {
+    if stamp.version != FORMAT_VERSION {
         return Err(StoreError::Format {
             path: path.display().to_string(),
             problem: format!(
                 "written by format version {}, and this is version {FORMAT_VERSION}",
-                document.version
+                stamp.version
             ),
         });
     }
+
+    let document: Document = serde_json::from_str(&text).map_err(|error| StoreError::Format {
+        path: path.display().to_string(),
+        problem: error.to_string(),
+    })?;
 
     let mut state = State::new();
     for (written, record) in document.resources {
@@ -185,12 +236,21 @@ pub fn load(path: &Path) -> Result<State, StoreError> {
                 })
             })
             .collect::<Result<_, _>>()?;
+        let mut attributes: Recording = Recorded::all(record.attributes);
+        for (name, digest) in record.secrets {
+            attributes.insert(name, Recorded::Secret(digest));
+        }
         state.record(
             address,
-            Record::written_at(record.attributes, depends_on, Written::at(record.written)),
+            Record::written_at(attributes, depends_on, Written::at(record.written)),
         );
     }
-    Ok(state)
+
+    let key = Key::from_hex(&document.digest_key).ok_or_else(|| StoreError::Format {
+        path: path.display().to_string(),
+        problem: "digest_key is not thirty-two bytes of hexadecimal".to_owned(),
+    })?;
+    Ok((state, key))
 }
 
 /// Writes state, whole or not at all.
@@ -200,9 +260,10 @@ pub fn load(path: &Path) -> Result<State, StoreError> {
 /// Returns [`StoreError::File`] if the file could not be written or moved into
 /// place.
 // ENFORCES: INV-STATE-004
-pub fn save(path: &Path, state: &State) -> Result<(), StoreError> {
+pub fn save(path: &Path, state: &State, key: &Key) -> Result<(), StoreError> {
     let document = Document {
         version: FORMAT_VERSION,
+        digest_key: key.to_hex(),
         resources: state
             .addresses()
             .filter_map(|address| {
@@ -210,7 +271,15 @@ pub fn save(path: &Path, state: &State) -> Result<(), StoreError> {
                 Some((
                     address.to_string(),
                     StoredRecord {
-                        attributes: record.attributes().clone(),
+                        attributes: record.locator(),
+                        secrets: record
+                            .attributes()
+                            .iter()
+                            .filter_map(|(name, recorded)| match recorded {
+                                Recorded::Secret(digest) => Some((name.clone(), *digest)),
+                                Recorded::Plain(_) => None,
+                            })
+                            .collect(),
                         depends_on: record
                             .depends_on()
                             .iter()

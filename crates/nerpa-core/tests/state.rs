@@ -7,6 +7,7 @@ use std::collections::BTreeSet;
 
 use nerpa_core::address::address;
 use nerpa_core::provider::Attributes;
+use nerpa_core::secret::Recorded;
 use nerpa_core::state::{Record, State};
 use nerpa_core::{Address, Value};
 
@@ -14,7 +15,7 @@ fn record(depends_on: &[&str]) -> Record {
     let mut attributes = Attributes::new();
     attributes.insert("path".to_owned(), Value::Text("/somewhere".to_owned()));
     Record::new(
-        attributes,
+        Recorded::all(attributes),
         depends_on.iter().map(|text| address(text)).collect(),
     )
 }
@@ -40,7 +41,7 @@ fn state_reports_what_it_remembers() {
     let remembered = state.get(&address("yandex:disk.spare")).expect("recorded");
     assert_eq!(
         remembered.attributes().get("path"),
-        Some(&Value::Text("/somewhere".to_owned()))
+        Some(&Recorded::Plain(Value::Text("/somewhere".to_owned())))
     );
     let read_from: Vec<String> = remembered
         .depends_on()

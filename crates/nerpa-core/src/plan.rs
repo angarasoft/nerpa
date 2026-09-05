@@ -25,6 +25,7 @@ use std::collections::BTreeSet;
 use crate::address::{Address, Target};
 use crate::attribute::Reference;
 use crate::graph::StageKind;
+use crate::secret::{Recorded, Sealed};
 use crate::value::Value;
 
 /// What is about to happen to one resource.
@@ -63,13 +64,24 @@ pub enum Confidence {
     /// Not settled at plan time, and will be read from another resource once
     /// that resource exists.
     Unknown(Reference),
+    /// Settled, and deliberately not written here: a secret is carried as where
+    /// it came from and what it hashes to. See decision 0027.
+    Secret(Sealed),
+}
+
+impl Confidence {
+    /// Whether this is something that must not be written down.
+    #[must_use]
+    pub fn is_secret(&self) -> bool {
+        matches!(self, Confidence::Secret(_))
+    }
 }
 
 /// One attribute changing.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AttributeDelta {
     name: String,
-    before: Option<Value>,
+    before: Option<Recorded>,
     after: Confidence,
     forces_replacement: bool,
 }
@@ -77,7 +89,7 @@ pub struct AttributeDelta {
 impl AttributeDelta {
     pub(crate) fn new(
         name: String,
-        before: Option<Value>,
+        before: Option<Recorded>,
         after: Confidence,
         forces_replacement: bool,
     ) -> Self {
@@ -97,7 +109,7 @@ impl AttributeDelta {
 
     /// What it holds now, or `None` if it holds nothing.
     #[must_use]
-    pub fn before(&self) -> Option<&Value> {
+    pub fn before(&self) -> Option<&Recorded> {
         self.before.as_ref()
     }
 
@@ -231,7 +243,7 @@ impl Unreachable {
 pub struct Outdated {
     address: Address,
     attribute: String,
-    born_with: Option<Value>,
+    born_with: Option<Recorded>,
     declared: Confidence,
 }
 
@@ -239,7 +251,7 @@ impl Outdated {
     pub(crate) fn new(
         address: Address,
         attribute: String,
-        born_with: Option<Value>,
+        born_with: Option<Recorded>,
         declared: Confidence,
     ) -> Self {
         Self {
@@ -264,7 +276,7 @@ impl Outdated {
 
     /// What it was made from, if that is recorded.
     #[must_use]
-    pub fn born_with(&self) -> Option<&Value> {
+    pub fn born_with(&self) -> Option<&Recorded> {
         self.born_with.as_ref()
     }
 

@@ -153,7 +153,7 @@ pub fn evaluate(path: &str, source: &str) -> Result<Graph, ConfigError> {
     // which does not exist yet produced a graph nobody should trust, whatever
     // else it also got wrong.
     if let Some(reference) = handle::branches_taken().first() {
-        return Err(ConfigError::BranchedOnUnresolved(reference.to_string()));
+        return Err(ConfigError::BranchedOnUnresolved(reference.clone()));
     }
 
     if let Some(problem) = declarations.problems.borrow().first() {
