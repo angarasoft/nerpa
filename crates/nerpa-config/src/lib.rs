@@ -41,6 +41,7 @@
 mod globals;
 mod handle;
 mod refuse;
+pub mod template;
 
 use std::cell::RefCell;
 
@@ -83,14 +84,30 @@ pub enum ConfigError {
 }
 
 /// What a run of the configuration declared, before it becomes a graph.
-#[derive(Debug, Default, starlark::any::ProvidesStaticType)]
+#[derive(Debug, starlark::any::ProvidesStaticType)]
 pub(crate) struct Declarations {
+    renderer: crate::template::Renderer,
     resources: RefCell<Vec<Resource>>,
     nodes: RefCell<Vec<(Target, Option<Address>)>>,
     problems: RefCell<Vec<String>>,
 }
 
 impl Declarations {
+    /// A store that can reach these templates and nothing else.
+    fn with(renderer: crate::template::Renderer) -> Self {
+        Self {
+            renderer,
+            resources: RefCell::new(Vec::new()),
+            nodes: RefCell::new(Vec::new()),
+            problems: RefCell::new(Vec::new()),
+        }
+    }
+
+    /// The renderer, for the one global that needs it.
+    pub(crate) fn renderer(&self) -> &crate::template::Renderer {
+        &self.renderer
+    }
+
     pub(crate) fn add_resource(&self, resource: Resource) {
         self.resources.borrow_mut().push(resource);
     }
@@ -115,7 +132,11 @@ impl Declarations {
     clippy::result_large_err,
     reason = "diagnostics beat a lint on a cold path"
 )]
-pub fn evaluate(path: &str, source: &str) -> Result<Graph, ConfigError> {
+pub fn evaluate(
+    path: &str,
+    source: &str,
+    templates: Box<dyn crate::template::Templates>,
+) -> Result<Graph, ConfigError> {
     // Top-level statements are enabled because this is a configuration, not a
     // build file: `for` and `if` at module level are how anybody would write it.
     // Everything else stays standard — no `while`, no recursion — so evaluation
@@ -135,7 +156,7 @@ pub fn evaluate(path: &str, source: &str) -> Result<Graph, ConfigError> {
     }
 
     let globals = GlobalsBuilder::standard().with(globals::nerpa).build();
-    let declarations = Declarations::default();
+    let declarations = Declarations::with(crate::template::Renderer::new(templates));
 
     handle::forget_branches();
     Module::with_temp_heap(|module| {

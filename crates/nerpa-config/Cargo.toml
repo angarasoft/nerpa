@@ -13,6 +13,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+minijinja = { workspace = true }
+minijinja-contrib = { workspace = true }
 nerpa-core = { workspace = true }
 starlark = { workspace = true }
 starlark_syntax = { workspace = true }

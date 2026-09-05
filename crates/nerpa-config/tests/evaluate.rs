@@ -6,12 +6,13 @@
 // Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
+use nerpa_config::template::Held;
 use nerpa_config::{ConfigError, evaluate};
 use nerpa_core::Attribute;
 use nerpa_core::address::address;
 
 fn graph_of(source: &str) -> nerpa_core::Graph {
-    evaluate("main.star", source).expect("the configuration should evaluate")
+    evaluate("main.star", source, Box::new(Held::new())).expect("the configuration should evaluate")
 }
 
 #[test]
@@ -68,8 +69,8 @@ fn comparing_a_value_that_does_not_exist_yet_is_refused_before_anything_runs() {
         r#"x = db.ip not in ["10.0.0.1"]"#,
     ] {
         let source = format!("db = resource(\"yandex:instance.db\")\n{body}\n");
-        let refusal =
-            evaluate("main.star", &source).expect_err("this comparison should have been refused");
+        let refusal = evaluate("main.star", &source, Box::new(Held::new()))
+            .expect_err("this comparison should have been refused");
 
         let message = refusal.to_string();
         assert!(message.contains("db.ip"), "{message}");
@@ -105,6 +106,7 @@ db = resource("yandex:instance.db")
 for disk in db.disks:
     resource("yandex:disk." + disk)
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("iteration over an unresolved value must fail");
 
@@ -119,6 +121,7 @@ fn indexing_a_value_that_does_not_exist_yet_is_refused() {
 db = resource("yandex:instance.db")
 x = db.addresses[0]
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("indexing an unresolved value must fail");
 
@@ -137,6 +140,7 @@ db = resource("yandex:instance.db")
 if db.ready:
     resource("yandex:instance.web")
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("branching on an unresolved value must not produce a graph");
 
@@ -189,16 +193,24 @@ fn a_resource_on_a_node_the_configuration_never_mentioned_is_refused() {
 
 #[test]
 fn an_address_the_model_refuses_is_reported_rather_than_guessed_at() {
-    let refusal = evaluate("main.star", r#"resource("not-an-address")"#)
-        .expect_err("a malformed address must fail");
+    let refusal = evaluate(
+        "main.star",
+        r#"resource("not-an-address")"#,
+        Box::new(Held::new()),
+    )
+    .expect_err("a malformed address must fail");
 
     assert!(refusal.to_string().contains("provider"), "{refusal}");
 }
 
 #[test]
 fn an_attribute_holding_something_a_resource_cannot_carry_is_reported() {
-    let refusal = evaluate("main.star", r#"resource("yandex:instance.db", {"f": len})"#)
-        .expect_err("a function is not a value a resource can carry");
+    let refusal = evaluate(
+        "main.star",
+        r#"resource("yandex:instance.db", {"f": len})"#,
+        Box::new(Held::new()),
+    )
+    .expect_err("a function is not a value a resource can carry");
 
     assert!(
         refusal
@@ -240,7 +252,7 @@ fn a_comparison_hidden_behind_a_function_is_refused_by_the_value_itself() {
              if same({arguments}):\n    resource(\"yandex:instance.web\")\n"
         );
 
-        let refusal = evaluate("main.star", &source)
+        let refusal = evaluate("main.star", &source, Box::new(Held::new()))
             .expect_err("a comparison the syntax pass cannot see must still be refused");
         let message = refusal.to_string();
         assert!(
@@ -265,7 +277,7 @@ fn the_refusal_names_the_operator_that_was_used() {
         (r#"x = db.ip not in ["a"]"#, "with not in is"),
     ] {
         let source = format!("db = resource(\"yandex:instance.db\")\n{body}\n");
-        let refusal = evaluate("main.star", &source).expect_err("refused");
+        let refusal = evaluate("main.star", &source, Box::new(Held::new())).expect_err("refused");
         assert!(
             refusal.to_string().contains(operator),
             "{operator}: {refusal}"
@@ -281,6 +293,7 @@ fn a_nested_attribute_is_recognised_too() {
 db = resource("yandex:instance.db")
 x = db.network.address == "10.0.0.1"
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("a nested attribute access is still an attribute access");
 
@@ -318,7 +331,7 @@ db = resource("yandex:instance.db")
 if db.ready:
     resource("yandex:instance.web")
 "#;
-    assert!(evaluate("main.star", poisoned).is_err());
+    assert!(evaluate("main.star", poisoned, Box::new(Held::new())).is_err());
 
     let clean = graph_of(r#"resource("yandex:instance.db")"#);
     assert_eq!(
@@ -380,6 +393,7 @@ fn a_secret_refuses_to_be_compared() {
 if secret("lockbox", "prod/db/password") == "admin":
     resource("os:file.a@web-01", {})
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("comparing a secret is not a configuration")
     .to_string();
@@ -399,6 +413,7 @@ password = secret("lockbox", "prod/db/password")
 if password == "admin":
     resource("os:file.a@web-01", {})
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("comparing a secret is not a configuration")
     .to_string();
@@ -416,6 +431,7 @@ fn a_secret_refuses_to_be_a_condition() {
 if secret("lockbox", "prod/db/password"):
     resource("os:file.a@web-01", {})
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("a secret is not a condition")
     .to_string();
@@ -442,6 +458,7 @@ def same(left, right):
 if same(secret("lockbox", "prod/db/password"), secret("lockbox", "other")):
     resource("os:file.a@web-01", {})
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("comparing two secrets is not a configuration")
     .to_string();
@@ -456,6 +473,7 @@ fn a_secret_refuses_to_be_indexed() {
     let refusal = evaluate(
         "main.star",
         r#"resource("os:file.a@web-01", {"content": secret("lockbox", "db")[0]})"#,
+        Box::new(Held::new()),
     )
     .expect_err("a secret has no first character to take")
     .to_string();
@@ -473,6 +491,7 @@ fn a_secret_refuses_to_be_iterated() {
 for part in secret("lockbox", "db"):
     resource("os:file.a@web-01", {"content": part})
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("a secret is not a sequence")
     .to_string();
@@ -493,6 +512,7 @@ def held():
 if held() < held():
     resource("os:file.a@web-01", {})
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("secrets have no order")
     .to_string();
@@ -519,6 +539,7 @@ if held["address"] == "10.0.0.1":
 else:
     resource("yandex:instance.no", {})
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("a dictionary is not a way around it");
     let ConfigError::ComparedUnresolved(message) = refusal else {
@@ -538,6 +559,7 @@ for address in addresses:
     if address == "10.0.0.1":
         resource("yandex:instance.yes", {})
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("iterating a list of them is not a way around it either");
     assert!(
@@ -555,6 +577,7 @@ held = {"password": secret("vault", "db/password")}
 if held["password"] == "changeme":
     resource("os:file.weak@web-01", {"path": "/tmp/weak"})
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("a dictionary is not a way around it");
     let ConfigError::ComparedUnresolved(message) = refusal else {
@@ -576,6 +599,7 @@ def address():
 if address() == "10.0.0.1":
     resource("yandex:instance.yes", {})
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("a function is not a way around it");
     let ConfigError::ComparedUnresolved(message) = refusal else {
@@ -594,6 +618,7 @@ db = resource("yandex:instance.db")
 if db.ip in ["10.0.0.1", "10.0.0.2"]:
     resource("yandex:instance.yes", {})
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("membership is a comparison");
     assert!(
@@ -613,6 +638,7 @@ addresses = [db.ip]
 matching = [a for a in addresses if a == "10.0.0.1"]
 resource("yandex:instance.web", {"count": len(matching)})
 "#,
+        Box::new(Held::new()),
     )
     .expect_err("a comprehension is a loop");
     assert!(

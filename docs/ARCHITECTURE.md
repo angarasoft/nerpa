@@ -145,19 +145,29 @@ The transport carries bytes and knows nothing about them: `teleport`, `ssh`,
 `local`, `container`. The executor holds no secrets and no state beyond its
 fingerprint, and is signed and verified in both directions.
 
-## Configuration files — [0023](decisions/0023-templates-that-look-like-the-file.md) · planned
+## Configuration files — [0023](decisions/0023-templates-that-look-like-the-file.md) · partly built
 
 Files come from Jinja templates rendered by `minijinja`, because a template that
 looks like the file it produces is the reason anyone can read a configuration.
 The sandbox is the same shape as Starlark's: no clock, no environment, no
 filesystem, no process, no `lookup`. Values are handed over rather than inherited
-from an ambient scope. Templates are read relative to the configuration's own
-root, which makes the configuration a directory and makes the plan hash cover the
-tree.
+from an ambient scope. Templates are read from the directory the configuration
+sits in and nowhere else, which makes a configuration a tree rather than a file.
 
-Rendering happens at plan time wherever the inputs are settled, so the plan shows
-what a file will contain before anything happens — earlier than Ansible's
-`--diff`, which reports during the run.
+Every filter a template may use is a list this project keeps rather than whatever
+the library ships, because each one is part of what a configuration may rely on
+and an upgrade should not widen that silently. Execution is bounded: fuel and a
+recursion limit, since a template arriving from somebody's repository is exactly
+where a loop that does not end should be impossible.
+
+Rendering happens during evaluation, before planning, so the plan shows what a
+file will contain — as lines rather than as one escaped string — before anything
+happens. Ansible's `--diff` reports during the run.
+
+Not built: a template whose values are not all settled. `0023` says such a
+template renders during apply from what the earlier stage produced; today a value
+a template cannot be shown is refused where it is written, which is loud rather
+than silent but is not the whole of what was decided.
 
 ## Reacting to change — [0026](decisions/0026-a-reaction-is-an-edge-and-can-be-owed.md) · planned
 

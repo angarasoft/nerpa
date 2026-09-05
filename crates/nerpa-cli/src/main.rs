@@ -24,7 +24,7 @@
 
 mod render;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
@@ -82,8 +82,21 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     let source = std::fs::read_to_string(&arguments.file)
         .map_err(|error| format!("{}: {error}", arguments.file.display()))?;
 
-    let graph = nerpa_config::evaluate(&arguments.file.display().to_string(), &source)
-        .map_err(|error| error.to_string())?;
+    // Templates come from the directory the configuration is in, and from
+    // nowhere else. A configuration is the tree it sits in, not the one file
+    // that names it.
+    let root = arguments
+        .file
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+
+    let graph = nerpa_config::evaluate(
+        &arguments.file.display().to_string(),
+        &source,
+        Box::new(nerpa_config::template::Directory::at(root)),
+    )
+    .map_err(|error| error.to_string())?;
 
     let providers = Providers::new().with(Box::new(Os::new()));
 

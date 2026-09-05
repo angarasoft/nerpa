@@ -40,6 +40,15 @@ starlark = "0.14"
 # them needs a walk over the syntax tree before evaluation begins.
 starlark_syntax = "0.14"
 allocative = "0.3"
+# Jinja, by the author of Jinja2. A template that looks like the file it produces
+# is the reason anybody can read a configuration, and matching a predecessor
+# exactly is the feature here rather than a failure of nerve. Chosen in 0023
+# against tera, measured rather than assumed: twenty idioms from real Ansible
+# templates, nineteen accepted here and twelve there.
+minijinja = { version = "2.24", default-features = false, features = ["builtins", "loader", "fuel", "macros", "multi_template"] }
+# `pycompat` answers the twentieth: Jinja templates call Python methods on
+# values, and this maps them onto filters.
+minijinja-contrib = { version = "2.24", features = ["pycompat"] }
 toml = "1.1"
 # State has to outlive the process, so it has to be written down. JSON because
 # it is what a state file is read back by — a person with `jq`, or a tool that is

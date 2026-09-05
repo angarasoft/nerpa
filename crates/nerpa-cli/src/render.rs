@@ -16,6 +16,7 @@ use std::fmt::Write as _;
 
 use nerpa_core::plan::{Outdated, Unreachable};
 use nerpa_core::secret::Recorded;
+use nerpa_core::value::Value;
 use nerpa_core::{BlastRadius, Change, ChangeKind, Confidence, Plan, StageKind, Target};
 
 /// The whole plan, as text.
@@ -234,11 +235,67 @@ fn one(change: &Change) -> String {
         } else {
             ""
         };
-        let _ = writeln!(
-            out,
-            "               ~ {:<14} {before} → {after}{cause}",
-            delta.name()
-        );
+        // A file's contents on one escaped line defeat the reason they are
+        // rendered before anything happens. Anything with a newline in it goes
+        // underneath, as itself.
+        let blocks: Vec<(&str, &str)> = [
+            ("was", block_of(delta.before())),
+            ("becomes", after_block(delta)),
+        ]
+        .into_iter()
+        .filter_map(|(label, text)| text.map(|text| (label, text)))
+        .collect();
+
+        if blocks.is_empty() {
+            let _ = writeln!(
+                out,
+                "               ~ {:<14} {before} → {after}{cause}",
+                delta.name()
+            );
+            continue;
+        }
+
+        let _ = writeln!(out, "               ~ {}{cause}", delta.name());
+        for (label, text) in blocks {
+            let _ = writeln!(out, "                 {label}:");
+            out.push_str(&lines_of(text));
+        }
+    }
+    out
+}
+
+/// How much of a file a plan prints before it stops being something anybody
+/// reads.
+const SHOWN_LINES: usize = 40;
+
+/// The text of a value worth showing on its own lines, if it is one.
+fn multiline(value: Option<&Value>) -> Option<&str> {
+    match value {
+        Some(Value::Text(text)) if text.contains('\n') => Some(text.as_str()),
+        _ => None,
+    }
+}
+
+fn block_of(before: Option<&Recorded>) -> Option<&str> {
+    multiline(before.and_then(Recorded::plain))
+}
+
+fn after_block(delta: &nerpa_core::plan::AttributeDelta) -> Option<&str> {
+    match delta.after() {
+        Confidence::Known(value) => multiline(Some(value)),
+        _ => None,
+    }
+}
+
+/// A file's contents, indented, and cut off before they stop being readable.
+fn lines_of(text: &str) -> String {
+    let mut out = String::new();
+    let all: Vec<&str> = text.lines().collect();
+    for line in all.iter().take(SHOWN_LINES) {
+        let _ = writeln!(out, "                   │ {line}");
+    }
+    if let Some(rest) = all.len().checked_sub(SHOWN_LINES).filter(|rest| *rest > 0) {
+        let _ = writeln!(out, "                   │ … and {rest} more lines");
     }
     out
 }

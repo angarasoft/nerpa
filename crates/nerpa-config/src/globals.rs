@@ -37,6 +37,10 @@ enum Rejected {
     NotAResource(String),
     #[error("secret() needs a store and a path, and {0} is empty")]
     NamelessSecret(&'static str),
+    #[error("template() takes a name and a dictionary of values, and was given {0}")]
+    NotValues(String),
+    #[error("{0}")]
+    Template(String),
 }
 
 fn declarations<'a>(evaluator: &Evaluator<'_, 'a, '_>) -> starlark::Result<&'a Declarations> {
@@ -151,6 +155,52 @@ pub(crate) fn nerpa(builder: &mut GlobalsBuilder) {
             path: path.to_owned(),
             version: version.unpack_str().map(ToOwned::to_owned),
         }))
+    }
+
+    /// Renders a template from the configuration's own directory.
+    ///
+    /// The values it may see are the ones handed to it here and nothing else.
+    /// There is no ambient scope, no clock, no environment and no way to read a
+    /// file — a template that reads the world renders differently every time,
+    /// and a plan computed from it could not be compared or signed.
+    ///
+    /// Rendered now rather than later, so what comes back is text, and the plan
+    /// shows the file's contents before anything happens.
+    fn template<'v>(
+        #[starlark(require = pos)] name: &str,
+        #[starlark(require = pos, default = NoneType)] values: Value<'v>,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<String> {
+        let store = declarations(eval)?;
+
+        let mut handed = std::collections::BTreeMap::new();
+        if !values.is_none() {
+            let Some(entries) = DictRef::from_value(values) else {
+                return Err(starlark::Error::new_value(Rejected::NotValues(
+                    values.get_type().to_owned(),
+                )));
+            };
+            for (key, item) in entries.iter() {
+                let Some(key) = key.unpack_str() else {
+                    return Err(starlark::Error::new_value(Rejected::NotValues(
+                        "a dictionary with a key that is not text".to_owned(),
+                    )));
+                };
+                let Some(value) = core_value_of(item) else {
+                    return Err(starlark::Error::new_value(Rejected::Template(format!(
+                        "value {key:?} for template {name:?} holds {}, which a template \
+                         cannot be shown",
+                        item.get_type()
+                    ))));
+                };
+                handed.insert(key.to_owned(), value);
+            }
+        }
+
+        store
+            .renderer()
+            .render(name, &handed)
+            .map_err(|problem| starlark::Error::new_value(Rejected::Template(problem)))
     }
 
     /// Declares a node, and what brings it into existence.
