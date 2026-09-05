@@ -52,6 +52,32 @@ one property this tool exists to have and the one nobody remembers to assert.
 A test that cannot pass twice is describing a resource that is not idempotent,
 and that is a bug in the resource, not in the test.
 
+### Adversarial tests, and why they are a separate word
+
+A test that exercises a guarantee and a test that attacks one are different
+things, and the registry now tells them apart. Every built entry in
+`docs/invariants.toml` writes down its `bypass` — what an attempt to violate it
+would actually look like — and an entry may only be `enforced` if its
+`adversarial` list names tests that carry that attempt out and assert it is
+refused.
+
+An adversarial test is named after the route it takes, not after the property:
+`a_value_that_does_not_exist_yet_cannot_be_laundered_through_a_dictionary` says
+what somebody tried. A reader who wonders whether a guarantee holds can then find
+out what has actually been tried against it, rather than reading a list of names
+that all sound reassuring.
+
+Where the types make a violation impossible to express, the entry says
+`bypass = "unrepresentable"` and no such test is asked for. That is a real
+category and not an escape hatch — there is no index in an address because no
+field and no constructor can hold one, and no test can attempt what cannot be
+written.
+
+`cargo xtask invariants` refuses `enforced` without the list. What it cannot
+check is whether the named tests attack the bypass the entry describes; that is
+prose against prose, and it is why promotion wants a reader who did not write the
+entry. Two entries reached `enforced` and came back the same day when one did.
+
 ### Providers ship a fake
 
 The requirement lives in the provider trait, so a provider without one does not

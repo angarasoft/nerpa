@@ -154,7 +154,7 @@ adversarial = [
 
 [[invariant]]
 id = "INV-PLAN-001"
-status = "enforced"
+status = "claimed"
 statement = "An unresolved value never determines which resources exist."
 rationale = """
 This is what makes a single planning pass possible at all. Held by three \
@@ -570,7 +570,7 @@ adversarial = [
 
 [[invariant]]
 id = "INV-SECRET-004"
-status = "enforced"
+status = "claimed"
 statement = "A secret can be passed to a resource and nothing else: not compared, indexed, iterated or used as a condition."
 rationale = """
 A configuration that can ask questions about a credential is a configuration that \

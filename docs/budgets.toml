@@ -25,7 +25,7 @@
 #     8000            6.37 s     0.12 s
 #    16000              —        0.24 s
 #
-# Four times the resources used to be twenty-one times the work and is now four
+# Four times the resources used to be twenty-two times the work and is now four
 # times the work. A hundred machines carrying eighty resources each is 8000, and
 # reaching a fleet is what stage 1 exists to do.
 #

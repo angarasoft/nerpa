@@ -145,10 +145,26 @@ fn architecture(text: &str) -> Vec<String> {
             continue;
         };
         sections += 1;
-        if !BUILD_MARKERS.iter().any(|marker| line.contains(marker)) {
+
+        // At the end, not merely present. `contains` let a marker sit anywhere
+        // on the line, so a heading could carry one and then contradict it in
+        // its own trailing words — and the message said "does not end in" while
+        // the code meant something weaker. An independent review found both.
+        let Some(before) = BUILD_MARKERS
+            .iter()
+            .find_map(|marker| heading.strip_suffix(marker))
+        else {
             complaints.push(format!(
-                "docs/ARCHITECTURE.md:{}: {heading:?} does not end in `· built`, \
-                 `· partly built` or `· planned`",
+                "docs/ARCHITECTURE.md:{}: {heading:?} does not end in `\u{b7} built`, \
+                 `\u{b7} partly built` or `\u{b7} planned`",
+                index + 1
+            ));
+            continue;
+        };
+
+        if before.trim().is_empty() {
+            complaints.push(format!(
+                "docs/ARCHITECTURE.md:{}: a marker with no section in front of it",
                 index + 1
             ));
         }
@@ -194,32 +210,85 @@ fn resolve(page: &str, target: &str) -> Option<String> {
 /// route that goes on looking plausible after the file it names has moved, so a
 /// reader follows it and believes whatever they land on. A broken link is
 /// noticed; a link into the wrong place is not.
+///
+/// Three things it deliberately does not treat as links, each found by an
+/// independent review rather than by imagination: anything inside a fenced code
+/// block, which is an example rather than a route; a bracket escaped as `\\[`,
+/// which is markdown for "these are literal brackets"; and neither of those was
+/// hypothetical, because this very file documents link syntax. Reference-style
+/// definitions (`[label]: target`) are the opposite case — they were invisible
+/// to the scanner, and are now checked like any other route.
 fn routes(pages: &[Page], present: &BTreeSet<String>) -> Vec<String> {
     let mut complaints = Vec::new();
 
     for (page, text) in pages {
+        let mut fenced = false;
         for (number, line) in text.lines().enumerate() {
-            let mut rest = line;
-            while let Some((_, tail)) = rest.split_once("](") {
-                let Some((target, after)) = tail.split_once(')') else {
-                    break;
-                };
-                rest = after;
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+                fenced = !fenced;
+                continue;
+            }
+            if fenced {
+                continue;
+            }
 
-                let Some(path) = resolve(page, target) else {
-                    continue;
-                };
-                if !present.contains(&path) {
+            let mut complain = |target: &str| {
+                if let Some(path) = resolve(page, target)
+                    && !present.contains(&path)
+                {
                     complaints.push(format!(
                         "{page}:{}: links to {target:?}, which is not there",
                         number + 1
                     ));
                 }
+            };
+
+            // `[label]: target` — a reference-style definition, which carries a
+            // route without ever spelling `](`.
+            if let Some(rest) = trimmed.strip_prefix('[')
+                && let Some((_, target)) = rest.split_once("]: ")
+                && !target.trim().is_empty()
+            {
+                complain(target.trim());
+                continue;
+            }
+
+            for target in inline_targets(line) {
+                complain(target);
             }
         }
     }
 
     complaints
+}
+
+/// Every `](target)` on one line, skipping brackets the author escaped.
+fn inline_targets(line: &str) -> Vec<&str> {
+    let mut found = Vec::new();
+    let mut at = 0usize;
+
+    while let Some(offset) = line.get(at..).and_then(|rest| rest.find("](")) {
+        let open = at + offset;
+        let after = open + 2;
+
+        // `\](` is a literal bracket, not the seam of a link.
+        let escaped = line
+            .get(..open)
+            .is_some_and(|before| before.ends_with('\\'));
+
+        match line.get(after..).and_then(|rest| rest.find(')')) {
+            Some(close) => {
+                if !escaped && let Some(target) = line.get(after..after + close) {
+                    found.push(target);
+                }
+                at = after + close + 1;
+            }
+            None => break,
+        }
+    }
+
+    found
 }
 
 /// What the written documentation is made of, as far as a link is concerned.
@@ -545,6 +614,77 @@ mod tests {
         )];
         let present = BTreeSet::from(["docs/decisions/0005-a.md".to_owned()]);
 
+        assert_eq!(routes(&pages, &present), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_marker_that_is_not_at_the_end_is_refused() {
+        // Found by review: `contains` accepted a heading that carried a marker
+        // and then contradicted it in its own trailing words.
+        let complaints =
+            architecture("## Fully built — [0001](x.md) · planned, actually not built at all\n");
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(complaints[0].contains("does not end in"), "{complaints:?}");
+    }
+
+    #[test]
+    fn a_heading_that_is_nothing_but_a_marker_is_refused() {
+        let complaints = architecture("## · built\n");
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(
+            complaints[0].contains("no section in front"),
+            "{complaints:?}"
+        );
+    }
+
+    #[test]
+    fn a_link_shown_as_an_example_in_a_code_block_is_not_a_route() {
+        let pages = vec![(
+            "docs/COMMITS.md".to_owned(),
+            "Prose.\n```markdown\n[an example](decisions/0099-invented.md)\n```\nMore prose.\n"
+                .to_owned(),
+        )];
+        assert_eq!(routes(&pages, &BTreeSet::new()), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_fence_that_closes_lets_checking_resume() {
+        let pages = vec![(
+            "docs/a.md".to_owned(),
+            "```\n[x](inside.md)\n```\n[y](outside.md)\n".to_owned(),
+        )];
+        let complaints = routes(&pages, &BTreeSet::new());
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(complaints[0].contains("outside.md"), "{complaints:?}");
+    }
+
+    #[test]
+    fn an_escaped_bracket_is_not_a_link() {
+        let pages = vec![(
+            "docs/a.md".to_owned(),
+            r"a literal \[thing\](not-a-path) in prose".to_owned() + "\n",
+        )];
+        assert_eq!(routes(&pages, &BTreeSet::new()), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_reference_style_definition_is_a_route_like_any_other() {
+        let pages = vec![(
+            "docs/a.md".to_owned(),
+            "See [the record][rec].\n\n[rec]: decisions/0099-gone.md\n".to_owned(),
+        )];
+        let complaints = routes(&pages, &BTreeSet::new());
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(complaints[0].contains("0099-gone.md"), "{complaints:?}");
+    }
+
+    #[test]
+    fn a_reference_style_definition_that_resolves_is_quiet() {
+        let pages = vec![(
+            "docs/a.md".to_owned(),
+            "[rec]: decisions/0005-a.md\n".to_owned(),
+        )];
+        let present = BTreeSet::from(["docs/decisions/0005-a.md".to_owned()]);
         assert_eq!(routes(&pages, &present), Vec::<String>::new());
     }
 }

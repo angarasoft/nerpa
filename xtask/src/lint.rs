@@ -51,9 +51,39 @@ fn walk(directory: &Path, found: &mut Vec<(PathBuf, String)>) {
     }
 }
 
+/// A panic must unwind, so that the guard holding the state lock and the one
+/// holding an open transport get to run their destructors.
+///
+/// This is rule 2, and until now it was held by a comment in the manifest asking
+/// nobody to undo it. An independent review pointed out what this project's own
+/// thesis already says: an obligation with nothing behind it is skipped. It is
+/// one line to check, and the consequence of missing it is a lock file left on a
+/// machine nobody is watching and a half-applied change nobody recorded.
+fn unwinds_on_panic(manifest: &str) -> Vec<String> {
+    manifest
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| {
+            let line = line.split('#').next().unwrap_or_default();
+            let squashed: String = line.chars().filter(|ch| !ch.is_whitespace()).collect();
+            squashed.starts_with("panic=") && squashed.contains("abort")
+        })
+        .map(|(index, _)| {
+            format!(
+                "Cargo.toml:{}: aborting on panic leaves the state lock behind — rule 2",
+                index + 1
+            )
+        })
+        .collect()
+}
+
 pub(crate) fn repository_rules() -> Result<(), String> {
     let sources = library_sources();
     let mut complaints = Vec::new();
+
+    let manifest = shell::root().join("Cargo.toml");
+    let text = fs::read_to_string(&manifest).map_err(|error| format!("Cargo.toml: {error}"))?;
+    complaints.extend(unwinds_on_panic(&text));
 
     for (path, text) in &sources {
         let shown = display(path);
@@ -130,7 +160,7 @@ pub(crate) fn display(path: &Path) -> String {
     reason = "tests may be blunt: an unwrap is an expectation and an index is a claim about shape"
 )]
 mod tests {
-    use super::{bare_unwrap, missing_module_docs};
+    use super::{bare_unwrap, missing_module_docs, unwinds_on_panic};
 
     #[test]
     fn a_bare_unwrap_is_reported_with_its_line() {
@@ -190,5 +220,33 @@ mod tests {
     #[test]
     fn a_module_header_after_blank_lines_still_counts() {
         assert!(missing_module_docs("src/thing.rs", "\n\n//! A module.\n").is_empty());
+    }
+
+    #[test]
+    fn aborting_on_panic_is_refused_wherever_it_is_written() {
+        for manifest in [
+            "[profile.release]\npanic = \"abort\"\n",
+            "[profile.release]\npanic=\"abort\"\n",
+            "[profile.release]\n  panic = 'abort'\n",
+        ] {
+            let complaints = unwinds_on_panic(manifest);
+            assert_eq!(complaints.len(), 1, "{manifest:?} -> {complaints:?}");
+            assert!(complaints[0].contains("rule 2"), "{complaints:?}");
+        }
+    }
+
+    #[test]
+    fn the_comment_asking_nobody_to_do_it_is_not_doing_it() {
+        // The real manifest carries exactly this line, and it must stay quiet.
+        let manifest = "# Do not set panic = \"abort\".\n";
+        assert_eq!(unwinds_on_panic(manifest), Vec::<String>::new());
+    }
+
+    #[test]
+    fn unwinding_says_nothing() {
+        assert_eq!(
+            unwinds_on_panic("[profile.release]\nlto = true\npanic = \"unwind\"\n"),
+            Vec::<String>::new()
+        );
     }
 }

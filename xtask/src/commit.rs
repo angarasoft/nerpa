@@ -77,14 +77,54 @@ impl Review {
     }
 }
 
-/// Whether git itself will consume this message, so its shape is not ours.
+/// Strips the wrappers git puts round a subject it did not invent, leaving the
+/// subject underneath to be judged like any other.
 ///
-/// A merge or a revert is written by git, and `fixup!` and friends are eaten by
-/// `rebase --autosquash` before anybody reads them.
-fn git_writes_it(subject: &str) -> bool {
-    ["Merge ", "Revert ", "fixup!", "squash!", "amend!"]
-        .iter()
-        .any(|prefix| subject.starts_with(prefix))
+/// An earlier version of this took the wrappers as proof that git had written
+/// the line, and exempted the whole message. It was wrong, and an independent
+/// review defeated the entire check with `fixup! anything at all.` — five
+/// literal strings that nothing stopped a person from typing. Nothing eats a
+/// `fixup!` automatically either: `rebase --autosquash` is a command somebody
+/// runs, not a law of nature.
+///
+/// So the wrapper is removed rather than believed. `git commit --fixup` produces
+/// `fixup! <the target's own subject>`, and `git revert` produces
+/// `Revert "<the original subject>"` — in both cases what is left is a subject
+/// this repository already accepted, so checking it is exactly right and a typed
+/// wrapper round nonsense is not.
+///
+/// A merge is the one that cannot be checked this way, because git invents the
+/// text. It is settled by [`Situation`] instead: the repository either is in the
+/// middle of a merge or it is not, and that is not a matter of what was typed.
+fn unwrapped(subject: &str) -> &str {
+    let mut subject = subject;
+    // Bounded: `fixup! fixup! …` is legitimate, an unbounded loop over attacker
+    // controlled text is not.
+    for _ in 0..8 {
+        let stripped = ["fixup! ", "squash! ", "amend! "]
+            .iter()
+            .find_map(|prefix| subject.strip_prefix(prefix))
+            .or_else(|| {
+                subject
+                    .strip_prefix("Revert \"")
+                    .and_then(|rest| rest.strip_suffix('"'))
+            });
+        match stripped {
+            Some(rest) => subject = rest.trim_start(),
+            None => return subject,
+        }
+    }
+    subject
+}
+
+/// What the repository is doing, which decides whether a merge subject is one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Situation {
+    /// An ordinary commit. `Merge …` is then just words somebody typed.
+    Ordinary,
+    /// A merge is in progress, so git wrote the subject and its shape is not
+    /// ours to insist on.
+    Merging,
 }
 
 /// The first line that is neither blank nor one of git's own comments.
@@ -100,16 +140,28 @@ fn subject_of(message: &str) -> Option<(usize, &str)> {
 }
 
 /// Judges one commit message, with no filesystem and no git in sight.
-fn judge(message: &str) -> Review {
+fn judge(message: &str, situation: Situation) -> Review {
     let mut review = Review::default();
 
-    let Some((index, subject)) = subject_of(message) else {
+    let Some((index, written)) = subject_of(message) else {
         review.refuse("the commit message is empty");
         return review;
     };
-    if git_writes_it(subject) {
+
+    // Git writes a merge subject itself, and only when a merge is actually under
+    // way. Typing the word proves nothing.
+    if situation == Situation::Merging {
         return review;
     }
+    if written.starts_with("Merge ") {
+        review.refuse(
+            "this looks like a merge subject, and no merge is in progress. \
+             Git writes those itself; type an ordinary subject instead",
+        );
+        return review;
+    }
+
+    let subject = unwrapped(written);
 
     // The body has to be separated from the subject by a blank line, because
     // every tool that shows a log assumes it and runs them together otherwise.
@@ -184,7 +236,8 @@ fn judge(message: &str) -> Review {
         review.refuse("the subject does not end in a full stop");
     }
 
-    let width = subject.chars().count();
+    // Measured on what actually lands in the log, wrapper and all.
+    let width = written.chars().count();
     if width > REFUSED {
         review.refuse(format!(
             "the subject is {width} characters, and {REFUSED} is the most that is read \
@@ -211,6 +264,24 @@ fn scope_shaped(text: &str) -> bool {
             .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-' || ch == '.')
 }
 
+/// Whether a merge is under way, asked of the repository rather than of the text.
+///
+/// `MERGE_HEAD` exists for exactly as long as a merge is in progress, which is
+/// the only moment a merge subject is one.
+fn situation() -> Situation {
+    let git_dir = shell::git(&["rev-parse", "--git-dir"])
+        .map(|found| found.trim().to_owned())
+        .unwrap_or_default();
+    if git_dir.is_empty() {
+        return Situation::Ordinary;
+    }
+    if std::path::Path::new(&git_dir).join("MERGE_HEAD").exists() {
+        Situation::Merging
+    } else {
+        Situation::Ordinary
+    }
+}
+
 /// Checks a message file, or `HEAD` when given none.
 pub(crate) fn check(path: Option<&str>) -> Result<(), String> {
     let message = match path {
@@ -218,7 +289,7 @@ pub(crate) fn check(path: Option<&str>) -> Result<(), String> {
         None => shell::git(&["log", "-1", "--pretty=%B"])?,
     };
 
-    let review = judge(&message);
+    let review = judge(&message, situation());
     for warning in &review.warnings {
         eprintln!("  commit-msg: {warning}");
     }
@@ -243,10 +314,10 @@ pub(crate) fn check(path: Option<&str>) -> Result<(), String> {
     reason = "tests may be blunt: an unwrap is an expectation and an index is a claim about shape"
 )]
 mod tests {
-    use super::judge;
+    use super::{Situation, judge};
 
     fn refusals(message: &str) -> Vec<String> {
-        judge(message).refusals
+        judge(message, Situation::Ordinary).refusals
     }
 
     #[test]
@@ -321,23 +392,55 @@ mod tests {
     #[test]
     fn a_long_subject_is_mentioned_and_a_much_longer_one_is_refused() {
         let long = format!("[DOCS] core: {}", "a".repeat(70));
-        let review = judge(&long);
+        let review = judge(&long, Situation::Ordinary);
         assert!(review.refusals.is_empty(), "{review:?}");
         assert_eq!(review.warnings.len(), 1, "{review:?}");
 
         let longer = format!("[DOCS] core: {}", "a".repeat(90));
-        assert!(!judge(&longer).refusals.is_empty());
+        assert!(!judge(&longer, Situation::Ordinary).refusals.is_empty());
     }
 
     #[test]
-    fn git_writes_its_own_merges_and_they_are_left_alone() {
+    fn what_git_actually_writes_is_left_alone() {
+        // `git revert` and `git commit --fixup` wrap a subject this repository
+        // already accepted, so the wrapper comes off and the rest is judged.
         for subject in [
-            "Merge branch 'develop' into main",
             "Revert \"[FEAT] core: something\"",
             "fixup! [FEAT] core: something",
+            "squash! [FIX] os: something",
+            "fixup! fixup! [FEAT] core: something",
         ] {
             assert_eq!(refusals(subject), Vec::<String>::new(), "{subject}");
         }
+    }
+
+    #[test]
+    fn a_wrapper_typed_round_nonsense_is_not_a_way_past_the_check() {
+        // The hole an independent review found: five literal prefixes used to
+        // exempt the whole message, and nothing stopped a person typing one.
+        for subject in [
+            "fixup! anything at all.",
+            "Revert \"nothing, just testing the gate\"",
+            "squash! no type here either",
+        ] {
+            assert!(!refusals(subject).is_empty(), "{subject} slipped through");
+        }
+    }
+
+    #[test]
+    fn a_merge_subject_counts_only_while_a_merge_is_happening() {
+        let subject = "Merge branch 'develop' into main";
+        assert_eq!(
+            judge(subject, Situation::Merging).refusals,
+            Vec::<String>::new()
+        );
+
+        let complaints = refusals(subject);
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(
+            complaints[0].contains("no merge is in progress"),
+            "{complaints:?}"
+        );
     }
 
     #[test]

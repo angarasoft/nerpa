@@ -2,6 +2,9 @@
 
 - Status: accepted
 - Date: 2026-09-05
+- Corrected: 2026-09-06 — a miscount of the architecture markers, and two
+  invariants named here as promoted that had to go back. Facts only; the
+  reasoning is as it was written.
 
 ## Context
 
@@ -60,16 +63,24 @@ above moved to `claimed` with its reproduction recorded, and `cargo xtask
 invariants` refuses the promotion of a claim back to a proof without the test,
 which is rule 3.
 
-Two of them did not stay `claimed` for a day. `INV-PLAN-001` and `INV-SECRET-004`
-were closed the same afternoon by tests named after the routes the entries
-described — through a dictionary, through a list, out of a function. That is the
-whole mechanism working in one sitting: the registry named a hole in terms
-somebody could act on, and somebody did. `INV-PLAN-003` and `INV-STATE-004` are
-still open, and now say so where anybody looks.
+Two of them left `claimed` the same afternoon, closed by tests named after the
+routes their entries described — through a dictionary, through a list. The
+registry named a hole in terms somebody could act on, and somebody did.
+
+Then both came back. An independent review found the same comparison still
+answering silently when the value arrives through a function *parameter* and the
+other side is a constant, which is what those entries' own `bypass` field says.
+`enforced` was wrong for them, and this record would have gone on saying
+otherwise. That is the limit of the mechanism, and it is worth stating plainly:
+a gate can check that an adversarial test exists, and cannot check that the test
+attacks the bypass the entry describes. Those are different claims and only the
+first is machine-checkable. The second needs somebody who did not write the
+entry — which is how this correction came to exist.
 
 `docs/ARCHITECTURE.md` marks each section `built`, `partly built` or `planned`.
 The document is written in the present tense because that is how a contract
-reads, and eight of its nineteen sections describe things nobody has built.
+reads, and twelve of its nineteen sections describe something that is not all
+there: seven are partly built and five are not built at all.
 
 `docs/WATCHLIST.md` takes an observation for the price of one row, and
 `docs/OPEN_QUESTIONS.md` takes a question with the stage by which it must be

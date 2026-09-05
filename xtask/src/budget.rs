@@ -34,6 +34,14 @@ use toml::Value;
 
 use crate::shell;
 
+/// How many times the measurement is taken before the fastest is believed.
+///
+/// Three rather than one because an independent review pointed out that a single
+/// wall-clock sample on a shared machine reports the machine's mood as a
+/// regression — the same false-positive failure this file's own header warns
+/// about.
+const SAMPLES: usize = 3;
+
 /// What the registry records about one measurement.
 #[derive(Debug, Clone, Copy)]
 struct Recorded {
@@ -158,19 +166,28 @@ fn measure(resources: usize) -> Result<f64, String> {
         .arg("plan")
         .stdout(std::process::Stdio::null());
 
-    let started = Instant::now();
-    let status = command
-        .status()
-        .map_err(|error| format!("could not run {}: {error}", binary.display()))?;
-    let elapsed = started.elapsed().as_secs_f64();
+    // Three runs, and the fastest is the answer. Noise on a shared machine only
+    // ever adds time — another process took the core, the file cache was cold —
+    // so the lowest sample is the closest thing to what the code actually costs.
+    // One sample would make this gate report the machine's mood as a regression,
+    // which is how a gate teaches people to ignore it.
+    let mut best = f64::INFINITY;
+    for _ in 0..SAMPLES {
+        let started = Instant::now();
+        let status = command
+            .status()
+            .map_err(|error| format!("could not run {}: {error}", binary.display()))?;
+        let elapsed = started.elapsed().as_secs_f64();
 
-    if !status.success() {
-        return Err(format!(
-            "{} could not plan the generated configuration",
-            binary.display()
-        ));
+        if !status.success() {
+            return Err(format!(
+                "{} could not plan the generated configuration",
+                binary.display()
+            ));
+        }
+        best = best.min(elapsed);
     }
-    Ok(elapsed)
+    Ok(best)
 }
 
 /// Measures the planner against what `docs/budgets.toml` records.

@@ -21,6 +21,13 @@ Supersede it with a new one and make both point at each other. The records are
 how a reversal stays legible a year later; editing one rewrites the past into
 something that was always right, and the reasoning that made the reversal
 necessary disappears with it.
+
+What may never be edited is the **reasoning**: the context that forced the
+choice, the decision itself, and the costs it named. A **demonstrable error of
+fact** — a miscount, a dead link, a renamed file — is corrected in place and
+noted in the record, because superseding a whole record over a wrong number
+would bury the reasoning under bookkeeping and teach everybody to ignore the
+rule. If you cannot tell which of the two you are doing, it is reasoning.
 Depth: [docs/decisions/README.md](docs/decisions/README.md).
 
 **2. The release profile never sets `panic = "abort"`.**
@@ -82,6 +89,31 @@ step around has stopped being a gate, and everything the project claims on its
 strength becomes a claim about nothing.
 
 ---
+
+## What holds each of them
+
+A prohibition with nothing behind it is a wish, and this project's own thesis
+says so. An independent review pointed out that this page was making eight
+demands and naming no enforcer for any of them, which is the same failure it
+diagnoses elsewhere. So the column exists now, and the dashes are the honest
+answer rather than a gap in the table.
+
+| Rule | Held by |
+| --- | --- |
+| 1 · a record is never rewritten | — *(a git-history check is the obvious next gate)* |
+| 2 · the release profile unwinds | `cargo xtask lint` |
+| 3 · `enforced` needs an attempt | `cargo xtask invariants`, **partly** — it checks that an adversarial test exists, and cannot check that the test attacks the bypass the entry names. The second half needs somebody who did not write the entry |
+| 4 · no secret is written down | `INV-SECRET-001` … `004` and the tests they name |
+| 5 · the address grammar and state format | **partly** — a state file from an unknown version is refused on read; nothing guards the grammar itself |
+| 6 · failure is not absence | `INV-READ-001` |
+| 7 · no `unwrap` outside tests | `cargo xtask lint`, and `clippy::unwrap_used` |
+| 8 · the gate is not bypassed | — *(by construction: nothing can check that a check was not skipped)* |
+
+Rule 3's half-answer is the interesting one, and it is not a defect to be fixed
+by a cleverer gate. "A test exists" and "the test attacks the named bypass" are
+different claims, and only the first is machine-checkable. Promotion from
+`claimed` to `enforced` therefore wants a reader who did not write the entry —
+which is how two entries came back from `enforced` on the day they left it.
 
 ## Adding a rule here
 

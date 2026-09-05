@@ -69,8 +69,13 @@ first, never by turning the wall on.
 Recheck the claim rather than trusting this paragraph:
 
 ```console
-$ git log --format='%s' | awk 'length>72' | wc -l
+$ git log --format='%s' | tail -25 | awk 'length>72' | wc -l
 ```
+
+`tail -25` on purpose: the claim above is about the first twenty-five commits,
+and a command that measures all of history would drift away from the sentence it
+is meant to check without anybody noticing. Widen the window when you rewrite the
+sentence, not before.
 
 ## What is not checked, deliberately
 
@@ -81,7 +86,17 @@ machine-checkable without false positives, so it stays a matter of review.
 the ones that were hard, and no rule makes somebody explain a decision they did
 not know they were making.
 
-**Merges, reverts and `fixup!`.** Git writes those, or eats them.
+**Merges.** Git writes the subject, and only while a merge is actually in
+progress — which the hook establishes by looking for `MERGE_HEAD`, not by
+believing the word. Typing `Merge whatever` outside a merge is refused.
+
+**Reverts and `fixup!`.** Not exempt, unwrapped. `git revert` produces
+`Revert "<the original subject>"` and `git commit --fixup` produces
+`fixup! <the target's subject>`; in both cases what is inside is a subject this
+repository already accepted, so the wrapper comes off and the rest is judged
+normally. An earlier version took these five words as proof that git had written
+the line, and an independent review defeated the whole check with
+`fixup! anything at all.`
 
 ## The body
 

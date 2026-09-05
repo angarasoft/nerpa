@@ -129,8 +129,8 @@ without ceremony until the first stage is complete.
 
 - `cargo xtask docs` now also checks that every section of `ARCHITECTURE.md` says
   whether it is built, and that every link between written pages resolves. The
-  second found five records linking to their neighbours from the repository root,
-  which meant none of those links opened.
+  second found five links, across four records, pointing at their own neighbours
+  from the repository root, which meant none of them opened.
 
 - A commit subject has a shape, and `.githooks/commit-msg` knows it — installed
   by `cargo xtask hooks`, checked by `cargo xtask commit-msg`, written down in
@@ -145,7 +145,9 @@ without ceremony until the first stage is complete.
   status for a guarantee nobody has attacked. Four entries moved to `claimed`,
   each with a reproduction: `INV-PLAN-001` and `INV-SECRET-004` (a handle or a
   secret laundered through a list or a dict reaches a comparison the syntax pass
-  does not match — both since closed by tests named after those routes),
+  does not match — closed by tests named after those routes, then reopened when
+  an independent review found the same comparison still silent when the value
+  arrives through a function parameter),
   `INV-PLAN-003` (an attribute the provider does not report back never settles,
   so no run is ever empty) and `INV-STATE-004` (the state rename is atomic
   against a stopped process, not a stopped machine). No code got worse; the count
