@@ -487,3 +487,51 @@ adversarial = [
   "a_secret_cannot_be_laundered_through_a_dictionary",
   "a_secret_passed_into_a_function_still_refuses_to_be_compared",
 ]
+
+[[invariant]]
+id = "INV-READ-001"
+status = "enforced"
+statement = "A read reports that nothing is there only when the world says nothing is there, never because looking failed."
+rationale = """
+A provider answers one of three things — what is there, that nothing is there, \
+or that it could not tell — and an `Option` can only carry two. Collapsing the \
+third into absence is the worst available answer: the plan proposes creating \
+what already exists, and the apply overwrites it, losing its contents and \
+resetting its mode. A file that may not be opened, one whose bytes are not text, \
+a symlink, a socket: each is something, and none of them is nothing. \
+`ProviderError::Unreachable` already says this about machines, and says why."""
+bypass = "Any filesystem call whose error is discarded — `.ok()?` on a read, a metadata call, a `read_link` — turns a failure back into absence, and nothing in the type of `read` prevents it. A provider tested only against its own fake would never notice: an in-memory backend has no permissions to deny and no bytes that are not text."
+enforced_by = ["crates/nerpa-provider-os/src/lib.rs"]
+tests = [
+  "a_file_is_written_and_the_second_run_has_nothing_to_do",
+  "a_file_edited_by_hand_is_brought_back",
+]
+adversarial = [
+  "a_file_that_cannot_be_read_is_refused_rather_than_called_absent",
+  "a_file_that_is_not_utf8_is_refused_rather_than_called_absent",
+  "a_symlink_is_reported_as_a_symlink_and_not_followed",
+  "a_broken_symlink_is_there_rather_than_absent",
+]
+
+[[invariant]]
+id = "INV-DELETE-001"
+status = "enforced"
+statement = "Removing a resource removes that resource and nothing that was never declared."
+rationale = """
+A directory nerpa made may since have been filled by somebody else, and a \
+recursive delete of what it never created is not a removal but a second, \
+unannounced change — the plan showed one line and the run destroyed a tree. The \
+same reasoning refuses to write through a symlink: the declaration names a path, \
+and the file on the other side of a pointer is not that path. A directory with \
+something in it fails the removal and says so, which is a person's decision to \
+make rather than the tool's."""
+bypass = "A removal that reaches for `remove_dir_all` because a non-empty directory is inconvenient, or a write that lands on a symlink and follows it into a file the declaration never named. Both read as correct against the in-memory fake, which has no directory that can be non-empty and no link to follow."
+enforced_by = ["crates/nerpa-provider-os/src/lib.rs"]
+tests = [
+  "an_empty_directory_is_still_removed",
+  "a_resource_removed_from_the_configuration_is_removed_from_the_machine",
+]
+adversarial = [
+  "deleting_a_directory_does_not_take_what_nerpa_did_not_make",
+  "writing_where_a_symlink_is_replaces_the_link_and_leaves_its_target_alone",
+]

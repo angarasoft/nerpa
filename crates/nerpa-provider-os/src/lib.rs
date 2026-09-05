@@ -9,7 +9,7 @@
 //! # How the pieces fit
 //!
 //! ```text
-//!   Os ─── read  ─── what is on disk now, or nothing
+//!   Os ─── read  ─── what is on disk now, nothing, or a refusal to guess
 //!      └── apply ─── writes it, and reports back what it became
 //!            │
 //!            └── Backend ─── Disk, or Memory for the fake
@@ -20,6 +20,14 @@
 //! `apply` reports what the resource *became* by reading it back, not by
 //! repeating what it was told. A provider that echoes its input cannot notice
 //! that it wrote nothing, and the next plan would be empty for the wrong reason.
+//!
+//! Reading answers one of **three** things, never two: what is there, that
+//! nothing is there, or that it could not tell. The third is the one that
+//! matters. A provider that reports a file it may not open as absent makes the
+//! plan propose creating it and the apply overwrite it — losing the contents and
+//! resetting the mode — which is the silent wrongness this project exists to
+//! avoid, committed by the tool itself. `ProviderError::Unreachable` says the
+//! same thing about machines and says why.
 //!
 //! Unix only, and not apologetically: file modes are the whole point of the
 //! `mode` attribute, and a portable abstraction over them would describe
@@ -55,8 +63,19 @@ enum Backend {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Entry {
-    Directory { mode: u32 },
-    File { content: String, mode: u32 },
+    Directory {
+        mode: u32,
+    },
+    File {
+        content: String,
+        mode: u32,
+    },
+    /// A pointer to somewhere else. Not a kind this provider manages, and
+    /// reported rather than followed: reading through it would describe one
+    /// object and writing through it would change another.
+    Symlink {
+        target: String,
+    },
 }
 
 const DEFAULT_FILE_MODE: u32 = 0o644;
@@ -81,11 +100,20 @@ impl Os {
         }
     }
 
-    fn entry(&self, path: &Path) -> Option<Entry> {
+    /// What is at a path: something, nothing, or a refusal to say.
+    fn entry(&self, path: &Path) -> Result<Option<Entry>, String> {
         match &self.backend {
-            Backend::Memory(entries) => entries.borrow().get(path).cloned(),
+            Backend::Memory(entries) => Ok(entries.borrow().get(path).cloned()),
             Backend::Disk => read_from_disk(path),
         }
+    }
+
+    /// The same, with the address attached so a failure names the resource.
+    fn entry_for(&self, address: &Address, path: &Path) -> Result<Option<Entry>, ProviderError> {
+        self.entry(path).map_err(|problem| ProviderError::World {
+            address: address.clone(),
+            problem,
+        })
     }
 
     fn store(&self, path: &Path, entry: Entry) -> Result<(), std::io::Error> {
@@ -105,14 +133,46 @@ impl Default for Os {
     }
 }
 
-fn read_from_disk(path: &Path) -> Option<Entry> {
-    let metadata = fs::symlink_metadata(path).ok()?;
-    let mode = metadata.permissions().mode() & 0o7777;
-    if metadata.is_dir() {
-        return Some(Entry::Directory { mode });
+// ENFORCES: INV-READ-001
+fn read_from_disk(path: &Path) -> Result<Option<Entry>, String> {
+    let shown = path.display();
+    let metadata = match fs::symlink_metadata(path) {
+        Ok(metadata) => metadata,
+        // The one error that means what it says.
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("{shown}: {error}")),
+    };
+
+    let kind = metadata.file_type();
+    // Asked before anything else, because `symlink_metadata` describes the link
+    // and reading the path describes its target. Answering with the mode of one
+    // and the contents of the other would be a record of an object that does not
+    // exist.
+    if kind.is_symlink() {
+        let target = fs::read_link(path).map_err(|error| format!("{shown}: {error}"))?;
+        return Ok(Some(Entry::Symlink {
+            target: target.display().to_string(),
+        }));
     }
-    let content = fs::read_to_string(path).ok()?;
-    Some(Entry::File { content, mode })
+
+    let mode = metadata.permissions().mode() & 0o7777;
+    if kind.is_dir() {
+        return Ok(Some(Entry::Directory { mode }));
+    }
+    if !kind.is_file() {
+        return Err(format!(
+            "{shown} is neither a file nor a directory, and this provider has no \
+             way to describe what it is"
+        ));
+    }
+
+    match fs::read_to_string(path) {
+        Ok(content) => Ok(Some(Entry::File { content, mode })),
+        Err(error) if error.kind() == std::io::ErrorKind::InvalidData => Err(format!(
+            "{shown} is not valid UTF-8, and an attribute cannot hold bytes yet"
+        )),
+        Err(error) => Err(format!("{shown}: {error}")),
+    }
 }
 
 fn write_to_disk(path: &Path, entry: &Entry) -> Result<(), std::io::Error> {
@@ -125,9 +185,20 @@ fn write_to_disk(path: &Path, entry: &Entry) -> Result<(), std::io::Error> {
             if let Some(parent) = path.parent() {
                 fs::create_dir_all(parent)?;
             }
+            // A symlink here points at a file the declaration does not name, and
+            // writing through it would change that one instead. Removing a
+            // pointer destroys nothing; the plan showed this path becoming a
+            // file, and this is that.
+            if fs::symlink_metadata(path).is_ok_and(|found| found.file_type().is_symlink()) {
+                fs::remove_file(path)?;
+            }
             fs::write(path, content)?;
             fs::set_permissions(path, fs::Permissions::from_mode(*mode))
         }
+        Entry::Symlink { target } => Err(std::io::Error::other(format!(
+            "{} is a symlink to {target}, and this provider does not make symlinks",
+            path.display()
+        ))),
     }
 }
 
@@ -170,6 +241,9 @@ fn as_attributes(path: &Path, entry: &Entry) -> Attributes {
         Entry::File { content, mode } => {
             attributes.insert("content".to_owned(), Value::Text(content.clone()));
             attributes.insert("mode".to_owned(), Value::Text(format!("{mode:04o}")));
+        }
+        Entry::Symlink { target } => {
+            attributes.insert("symlink_to".to_owned(), Value::Text(target.clone()));
         }
     }
     attributes
@@ -218,7 +292,7 @@ impl Provider for Os {
                 continue;
             };
 
-            if let Some(entry) = self.entry(&path) {
+            if let Some(entry) = self.entry_for(address, &path)? {
                 found.insert(address.clone(), as_attributes(&path, &entry));
             }
         }
@@ -257,7 +331,7 @@ impl Provider for Os {
 
         // Read back rather than echo: a provider that repeats its input cannot
         // notice that it wrote nothing.
-        self.entry(&path)
+        self.entry_for(address, &path)?
             .map(|written| as_attributes(&path, &written))
             .ok_or_else(|| ProviderError::World {
                 address: address.clone(),
@@ -273,11 +347,17 @@ impl Provider for Os {
                 entries.borrow_mut().remove(&path);
                 Ok(())
             }
-            Backend::Disk => match self.entry(&path) {
+            Backend::Disk => match self.entry_for(address, &path)? {
                 // Already gone is the state that was asked for, not a failure.
                 None => Ok(()),
-                Some(Entry::Directory { .. }) => fs::remove_dir_all(&path),
-                Some(Entry::File { .. }) => fs::remove_file(&path),
+                // ENFORCES: INV-DELETE-001
+                // `remove_dir`, never `remove_dir_all`: a directory nerpa made
+                // may since have been filled by somebody else, and recursively
+                // deleting what it never created is not a removal, it is a
+                // second, unannounced change. A non-empty directory fails here
+                // and says so.
+                Some(Entry::Directory { .. }) => fs::remove_dir(&path),
+                Some(Entry::File { .. } | Entry::Symlink { .. }) => fs::remove_file(&path),
             },
         };
 
