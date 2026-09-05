@@ -221,6 +221,60 @@ impl Unreachable {
     }
 }
 
+/// A resource made from something that is no longer declared.
+///
+/// Reported, never acted on. A running machine's boot disk cannot be swapped
+/// underneath it, so an edit to an image reference must not become a proposal to
+/// destroy the fleet — but silence would let a fleet drift years behind with
+/// nobody told. See decision 0021.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Outdated {
+    address: Address,
+    attribute: String,
+    born_with: Option<Value>,
+    declared: Confidence,
+}
+
+impl Outdated {
+    pub(crate) fn new(
+        address: Address,
+        attribute: String,
+        born_with: Option<Value>,
+        declared: Confidence,
+    ) -> Self {
+        Self {
+            address,
+            attribute,
+            born_with,
+            declared,
+        }
+    }
+
+    /// Which resource.
+    #[must_use]
+    pub fn address(&self) -> &Address {
+        &self.address
+    }
+
+    /// Which attribute it was born with.
+    #[must_use]
+    pub fn attribute(&self) -> &str {
+        &self.attribute
+    }
+
+    /// What it was made from, if that is recorded.
+    #[must_use]
+    pub fn born_with(&self) -> Option<&Value> {
+        self.born_with.as_ref()
+    }
+
+    /// What the configuration says now.
+    #[must_use]
+    pub fn declared(&self) -> &Confidence {
+        &self.declared
+    }
+}
+
 /// One topological level of the graph, and what happens in it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlanStage {
@@ -259,6 +313,7 @@ pub struct BlastRadius {
     deletes: usize,
     unresolved: usize,
     unreachable: usize,
+    outdated: usize,
     nodes: BTreeSet<Target>,
 }
 
@@ -299,6 +354,15 @@ impl BlastRadius {
         &self.nodes
     }
 
+    /// Resources made from something no longer declared.
+    ///
+    /// Never work. A number, so that a fleet falling behind is a fact somebody is
+    /// handed rather than one they discover.
+    #[must_use]
+    pub fn outdated(&self) -> usize {
+        self.outdated
+    }
+
     /// Resources nothing can be said about.
     ///
     /// A number rather than a sentence, so something automated can act on it —
@@ -331,13 +395,19 @@ impl BlastRadius {
 pub struct Plan {
     stages: Vec<PlanStage>,
     unreachable: Vec<Unreachable>,
+    outdated: Vec<Outdated>,
     blast_radius: BlastRadius,
 }
 
 impl Plan {
-    pub(crate) fn new(stages: Vec<PlanStage>, unreachable: Vec<Unreachable>) -> Self {
+    pub(crate) fn new(
+        stages: Vec<PlanStage>,
+        unreachable: Vec<Unreachable>,
+        outdated: Vec<Outdated>,
+    ) -> Self {
         let mut blast_radius = BlastRadius {
             unreachable: unreachable.len(),
+            outdated: outdated.len(),
             ..Default::default()
         };
         for change in stages.iter().flat_map(PlanStage::changes) {
@@ -359,8 +429,19 @@ impl Plan {
         Self {
             stages,
             unreachable,
+            outdated,
             blast_radius,
         }
+    }
+
+    /// Resources made from something no longer declared, in a stable order.
+    ///
+    /// Not work, and not a reason to refuse anything. Moving a fleet onto a new
+    /// image is a deliberate act — replacement on demand, or two slots side by
+    /// side until the new one has shown itself.
+    #[must_use]
+    pub fn outdated(&self) -> &[Outdated] {
+        &self.outdated
     }
 
     /// The resources nothing can be said about, in a stable order.

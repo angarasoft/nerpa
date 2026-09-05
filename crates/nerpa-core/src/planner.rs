@@ -22,7 +22,9 @@ use crate::address::{Address, Target};
 use crate::attribute::Attribute;
 use crate::graph::{Graph, GraphError, StageKind};
 use crate::observed::Observed;
-use crate::plan::{AttributeDelta, Change, ChangeKind, Confidence, Plan, PlanStage, Unreachable};
+use crate::plan::{
+    AttributeDelta, Change, ChangeKind, Confidence, Outdated, Plan, PlanStage, Unreachable,
+};
 use crate::resource::Resource;
 use crate::schema::Schema;
 use crate::state::{Record, State, Written};
@@ -66,6 +68,7 @@ pub fn plan_at(
 ) -> Result<Plan, GraphError> {
     let mut stages = removals(graph, state);
     let mut unreachable = Vec::new();
+    let mut outdated = Vec::new();
     // Marked as the walk goes. Stages are topological, so a resource's
     // dependencies have already been decided by the time it is reached, and
     // unreachability travels forward along the edges in a single pass.
@@ -100,7 +103,7 @@ pub fn plan_at(
                 continue;
             }
 
-            if let Some(change) = change_for(resource, observed, schema) {
+            if let Some(change) = change_for(resource, observed, schema, &mut outdated) {
                 changes.push(change);
             }
         }
@@ -111,7 +114,7 @@ pub fn plan_at(
         }
     }
 
-    Ok(Plan::new(stages, unreachable))
+    Ok(Plan::new(stages, unreachable, outdated))
 }
 
 /// How old the newest thing known about a machine is, in seconds.
@@ -153,7 +156,12 @@ fn removals(graph: &Graph, state: &State) -> Vec<PlanStage> {
 }
 
 /// What has to happen to one resource, or nothing if it already matches.
-fn change_for(resource: &Resource, observed: &Observed, schema: &Schema) -> Option<Change> {
+fn change_for(
+    resource: &Resource,
+    observed: &Observed,
+    schema: &Schema,
+    outdated: &mut Vec<Outdated>,
+) -> Option<Change> {
     let address = resource.address();
     let existing = observed.get(address);
 
@@ -167,6 +175,16 @@ fn change_for(resource: &Resource, observed: &Observed, schema: &Schema) -> Opti
             .and_then(|attributes| attributes.get(name))
             .cloned();
         if settled(before.as_ref(), &after) {
+            continue;
+        }
+
+        // Born with, not held to. A machine's boot disk cannot be swapped
+        // underneath it, so this is reported and never turned into work — but
+        // reported every time, because a fleet quietly years behind is the
+        // failure this is meant to prevent. See decision 0021.
+        // ENFORCES: INV-BIRTH-001
+        if existing.is_some() && schema.is_at_birth(address, name) {
+            outdated.push(Outdated::new(address.clone(), name.clone(), before, after));
             continue;
         }
         let forces_replacement = existing.is_some() && schema.forces_replacement(address, name);

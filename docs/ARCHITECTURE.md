@@ -127,6 +127,18 @@ document carrying blast radius and confidence per change; errors are typed with 
 remediation; `apply` takes an idempotency key; dry run shares the code path with
 apply and declares what it could not check.
 
+## What a resource is born with — [0021](decisions/0021-attributes-a-resource-is-born-with.md)
+
+Three kinds of attribute, not two. Converged ones are corrected in place;
+immutable ones are corrected by replacement; and ones a resource was **born
+with** — its image, its user data — are never corrected, because a running
+machine's boot disk cannot be swapped underneath it.
+
+Not ignored, though. The difference is reported on every plan, so a fleet running
+on something no longer declared is a fact somebody is handed rather than one they
+discover. Moving onto a new image is a deliberate act: replacement on demand, or
+two slots side by side until the new one has shown itself.
+
 ## Drift, and the rest from Portage — [0013](decisions/0013-borrow-from-portage.md)
 
 A resource may be marked so that drift stops the stage and produces a three-way

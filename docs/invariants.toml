@@ -245,6 +245,48 @@ enforced_by = ["crates/nerpa-core/src/plan.rs", "crates/nerpa-cli/src/render.rs"
 tests = ["a_plan_survives_a_trip_through_json"]
 
 [[invariant]]
+id = "INV-BIRTH-001"
+status = "enforced"
+statement = "An attribute a resource was born with is reported, never turned into work."
+rationale = """
+A running machine's boot disk cannot be swapped underneath it, so editing an \
+image reference must not become a proposal to destroy the fleet. But silence is \
+the other failure: `ignore_changes` is how a fleet ends up years behind with \
+nobody aware. Reported on every plan, acted on never. Moving a fleet is a \
+deliberate act. See 0021."""
+enforced_by = ["crates/nerpa-core/src/planner.rs", "crates/nerpa-cli/src/render.rs"]
+tests = [
+  "editing_the_image_does_not_propose_to_destroy_anything",
+  "but_it_is_reported_every_time",
+  "being_born_with_something_never_becomes_a_replacement",
+  "a_fleet_behind_its_declaration_is_told_about_and_never_planned",
+]
+
+[[invariant]]
+id = "INV-COMPAT-001"
+status = "planned"
+statement = "A configuration declares the versions it needs, and a build that does not satisfy it refuses."
+rationale = """
+Ansible's playbooks broke every release because a playbook declares nothing: it \
+calls a module by name and hopes, and finds out at runtime on a machine. A stated \
+requirement turns a silent change of behaviour into a refusal before anything is \
+touched. See 0022."""
+enforced_by = []
+tests = []
+
+[[invariant]]
+id = "INV-COMPAT-002"
+status = "planned"
+statement = "The plan for a recorded configuration does not change without the change being declared."
+rationale = """
+The plan is the compatibility surface, and a corpus of configurations with their \
+plans checked in makes that promise something a machine verifies rather than \
+something a person intends. A version that changes one either has a bug or has \
+made a decision, and the changelog entry is what failed the build until written."""
+enforced_by = []
+tests = []
+
+[[invariant]]
 id = "INV-WIRE-001"
 status = "enforced"
 statement = "A frame written by a protocol version this build does not know is refused, not partly believed."

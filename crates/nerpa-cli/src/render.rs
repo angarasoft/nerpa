@@ -14,13 +14,13 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use nerpa_core::plan::Unreachable;
+use nerpa_core::plan::{Outdated, Unreachable};
 use nerpa_core::{BlastRadius, Change, ChangeKind, Confidence, Plan, StageKind, Target};
 
 /// The whole plan, as text.
 // ENFORCES: INV-AGENT-001
 pub(crate) fn plan(plan: &Plan) -> String {
-    if plan.is_empty() && plan.is_complete() {
+    if plan.is_empty() && plan.is_complete() && plan.outdated().is_empty() {
         return "nothing to do: the world already matches the configuration\n".to_owned();
     }
 
@@ -30,6 +30,7 @@ pub(crate) fn plan(plan: &Plan) -> String {
         summary(plan.blast_radius())
     };
     out.push_str(&out_of_reach(plan.unreachable()));
+    out.push_str(&behind(plan.outdated()));
 
     for (number, stage) in plan.stages().iter().enumerate() {
         let _ = writeln!(out, "\nstage {} · {}", number + 1, describe(stage.kind()));
@@ -45,6 +46,44 @@ pub(crate) fn plan(plan: &Plan) -> String {
 }
 
 // ENFORCES: INV-REACH-003
+/// What is running on something no longer declared.
+///
+/// Never among the stages, because it is not work and never will be until
+/// somebody decides it is. Printed anyway, on every plan, because the failure
+/// this exists to prevent is a fleet quietly years behind. See decision 0021.
+// ENFORCES: INV-BIRTH-001
+fn behind(outdated: &[Outdated]) -> String {
+    if outdated.is_empty() {
+        return String::new();
+    }
+
+    let mut out = format!(
+        "\n  {} resources were made from something no longer declared:\n",
+        outdated.len()
+    );
+    for entry in outdated {
+        let born = entry
+            .born_with()
+            .map_or_else(|| "—".to_owned(), ToString::to_string);
+        let declared = match entry.declared() {
+            Confidence::Known(value) => value.to_string(),
+            Confidence::Unknown(reference) => format!("unknown until apply, from {reference}"),
+            _ => "unrecognised".to_owned(),
+        };
+        let _ = writeln!(
+            out,
+            "    {} · {} was {born}, declared {declared}",
+            entry.address(),
+            entry.attribute()
+        );
+    }
+    out.push_str(
+        "  nothing is proposed: a running machine cannot be rebuilt underneath itself.\n  \
+         replace them deliberately, or run a new slot beside the old one\n",
+    );
+    out
+}
+
 /// What could not be looked at, and how old the last look was.
 ///
 /// Printed with the summary rather than among the stages: it is not work, and a
@@ -481,6 +520,77 @@ mod tests {
                 "and so does the total: {text}"
             );
         }
+    }
+
+    #[test]
+    fn a_fleet_behind_its_declaration_is_told_about_and_never_planned() {
+        let graph = graph_of(vec![
+            Resource::new(address("yandex:instance.web")).with("image", "gentoo-2026-09"),
+        ]);
+        let mut observed = Observed::new();
+        let mut attributes = BTreeMap::new();
+        attributes.insert("image".to_owned(), Value::Text("gentoo-2026-01".to_owned()));
+        observed.record(address("yandex:instance.web"), attributes);
+
+        let schema = Schema::new().at_birth(
+            Provider::new("yandex").unwrap(),
+            Kind::new("instance").unwrap(),
+            "image",
+        );
+
+        let text = render(&planner::plan(&graph, &observed, &State::new(), &schema).unwrap());
+
+        assert!(text.contains("no longer declared"), "{text}");
+        assert!(text.contains("image was \"gentoo-2026-01\""), "{text}");
+        assert!(text.contains("declared \"gentoo-2026-09\""), "{text}");
+        assert!(text.contains("nothing is proposed"), "{text}");
+        assert!(
+            text.contains("run a new slot beside the old one"),
+            "and says the way out: {text}"
+        );
+        assert!(
+            !text.contains("[replace"),
+            "nothing is being destroyed: {text}"
+        );
+        assert!(
+            !text.contains("nothing to do:"),
+            "it is not silence either: {text}"
+        );
+    }
+
+    /// The image a machine should have been born from can itself be something
+    /// that does not exist yet — built by an earlier stage. Being behind is still
+    /// reported, and the report says where the answer will come from.
+    #[test]
+    fn a_fleet_behind_a_value_that_does_not_exist_yet_still_says_so() {
+        let graph = graph_of(vec![
+            Resource::new(address("yandex:image.base")),
+            Resource::new(address("yandex:instance.web"))
+                .with("image", Reference::to(address("yandex:image.base"), "id")),
+        ]);
+
+        let mut observed = Observed::new();
+        let mut attributes = BTreeMap::new();
+        attributes.insert("image".to_owned(), Value::Text("gentoo-2026-01".to_owned()));
+        observed.record(address("yandex:instance.web"), attributes);
+
+        let schema = Schema::new().at_birth(
+            Provider::new("yandex").unwrap(),
+            Kind::new("instance").unwrap(),
+            "image",
+        );
+
+        let text = render(&planner::plan(&graph, &observed, &State::new(), &schema).unwrap());
+
+        assert!(text.contains("no longer declared"), "{text}");
+        assert!(
+            text.contains("declared unknown until apply, from yandex:image.base.id"),
+            "the report says where the answer will come from: {text}"
+        );
+        assert!(
+            !text.contains("[replace"),
+            "and still proposes nothing: {text}"
+        );
     }
 
     #[test]

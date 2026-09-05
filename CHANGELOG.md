@@ -111,6 +111,10 @@ without ceremony until the first stage is complete.
   Length-prefixed CBOR frames, every one stamped with the protocol version it was
   written by, and a size that is checked before anything is allocated.
 
+- A third kind of attribute: what a resource was born with. Editing an image
+  reference no longer proposes to destroy the fleet, and the difference is
+  reported on every plan rather than ignored.
+
 ### Changed
 
 - Renamed from `sarma` to `nerpa`, and the Gentoo package manager that held the
