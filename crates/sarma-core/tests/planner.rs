@@ -359,3 +359,46 @@ fn the_total_counts_removals_alongside_everything_else() {
         "two made and one removed is three changes"
     );
 }
+
+/// A plan is what an agent decides from, so it has to survive being written out
+/// and read back exactly — including the values that are not known yet.
+#[test]
+fn a_plan_survives_a_trip_through_json() {
+    let graph = graph_of(vec![
+        Resource::new(address("yandex:instance.db"))
+            .with("zone", "e")
+            .with("cores", 8),
+        Resource::new(address("os:file.conf@web-01"))
+            .with("path", "/etc/app.conf")
+            .with("listen", Reference::to(address("yandex:instance.db"), "ip")),
+    ]);
+    let observed = observed_with(&[(
+        "yandex:instance.db",
+        &[
+            ("zone", Value::Text("a".to_owned())),
+            ("cores", Value::Integer(8)),
+        ],
+    )]);
+    let schema = Schema::new().immutable(
+        Provider::new("yandex").unwrap(),
+        Kind::new("instance").unwrap(),
+        "zone",
+    );
+
+    let written = plan(&graph, &observed, &State::new(), &schema).expect("plannable");
+    let text = serde_json::to_string(&written).expect("writes");
+    let read: sarma_core::Plan = serde_json::from_str(&text).expect("reads");
+
+    assert_eq!(
+        read, written,
+        "everything came back, including what is not known yet"
+    );
+    assert!(
+        text.contains("\"yandex:instance.db\""),
+        "addresses travel as text: {text}"
+    );
+    assert!(
+        text.contains("replace"),
+        "and so does the kind of change: {text}"
+    );
+}

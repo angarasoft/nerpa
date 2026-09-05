@@ -79,7 +79,8 @@ pub enum GraphError {
 /// the stage belong to. A mixed stage is legitimate — two independent subtrees
 /// can be at the same depth — and is worth naming so that plan output can say so
 /// instead of implying an order that is not there.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum StageKind {
     /// Everything in this stage is reachable through an API.

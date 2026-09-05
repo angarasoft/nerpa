@@ -12,7 +12,8 @@ use std::fmt;
 /// Maps are ordered because a plan is hashed: two runs that produce the same
 /// attributes must produce the same bytes, and hash map iteration order would
 /// make that untrue on alternate Tuesdays.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
 /// Non-exhaustive: provider schemas will want types this does not have yet, and
 /// adding one should not be a breaking change for everybody matching on it.
 #[non_exhaustive]

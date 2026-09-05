@@ -28,7 +28,10 @@ use crate::graph::StageKind;
 use crate::value::Value;
 
 /// What is about to happen to one resource.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum ChangeKind {
     /// It does not exist, and will.
@@ -51,7 +54,8 @@ impl ChangeKind {
 }
 
 /// A value the plan is about to write, and whether it is known yet.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Confidence {
     /// Settled: this exact value will be written.
@@ -62,7 +66,7 @@ pub enum Confidence {
 }
 
 /// One attribute changing.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AttributeDelta {
     name: String,
     before: Option<Value>,
@@ -116,7 +120,7 @@ impl AttributeDelta {
 /// applicable on its own — that is what makes it worth signing, and what lets it
 /// be handed to something that never saw the configuration. Deltas are for
 /// reading; `desired` is for doing.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Change {
     address: Address,
     kind: ChangeKind,
@@ -175,7 +179,7 @@ impl Change {
 }
 
 /// One topological level of the graph, and what happens in it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlanStage {
     kind: StageKind,
     changes: Vec<Change>,
@@ -204,7 +208,7 @@ impl PlanStage {
 /// Read before the detail rather than after it, because the first question is
 /// always how bad this could be — and for an agent it is the only question that
 /// can be answered without reading everything.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct BlastRadius {
     creates: usize,
     updates: usize,
@@ -267,8 +271,9 @@ impl BlastRadius {
     }
 }
 
+// ENFORCES: INV-AGENT-001
 /// Everything a run intends to do, in the order it will do it.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Plan {
     stages: Vec<PlanStage>,
     blast_radius: BlastRadius,

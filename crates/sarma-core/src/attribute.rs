@@ -23,7 +23,9 @@ use crate::address::Address;
 use crate::value::Value;
 
 /// Where a value will come from once it exists.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct Reference {
     source: Address,
     attribute: String,

@@ -89,6 +89,13 @@ without ceremony until the first stage is complete.
   declaration now points, so changing a location is a replacement instead of a
   silent duplication.
 
+- State on disk: JSON a person can read, written whole or not at all, behind a
+  lock so two runs cannot each write what the other did not know about.
+- The `sarma` command: `plan` and `apply`, with plan output shaped after
+  `emerge -pv` — fixed action column, deltas rather than values, summary before
+  detail, the cause of a replacement named where it happens.
+- `sarma plan --json` prints the same object the text is rendered from.
+
 ### Changed
 
 - Workspace lints set to their strictest: `unsafe` forbidden, `missing_docs`

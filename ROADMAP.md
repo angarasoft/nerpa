@@ -23,9 +23,9 @@ belong.
 **Risk retired:** that the ban on branching over an unresolved value is
 expressible at all, and that violating it produces an error naming the line.
 
-**Exit:** `sarma apply` converges a local example from an empty machine, a second
-run produces an empty plan, and `sarma plan --json` round-trips through the typed
-schema. Branching on a handle fails evaluation with a line number.
+**Exit:** met. `sarma apply` converges a local example from an empty machine, a
+second run prints "nothing to do", `sarma plan --json` round-trips through the
+typed schema, and branching on a handle fails evaluation naming the line.
 `cargo xtask ci` green, no cloud involved.
 
 ## Stage 1 — reaching machines

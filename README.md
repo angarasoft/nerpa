@@ -9,9 +9,39 @@ static key. It is built for a world where the operator is often not a person:
 the plan is a typed document before it is a page of text, and a change can be
 made to require a signature from somebody other than whoever proposed it.
 
-> **Status: stage 0, not usable.** The resource model is in place and covered by
-> tests. There is no planner, no provider and no command line yet — see the
+> **Status: stage 0 complete, and useful for nothing yet.** `sarma apply`
+> converges files and directories on the machine it runs on, and a second run has
+> nothing to do. No transport, no cloud, no packages — see the
 > [roadmap](ROADMAP.md).
+
+```console
+$ cat main.star
+node("localhost")
+etc = resource("os:directory.etc@localhost", {"path": "/tmp/demo/etc"})
+resource("os:file.app@localhost", {
+    "path": "/tmp/demo/etc/app.conf",
+    "content": "listen 80;\n",
+    "mode": "0640",
+})
+
+$ sarma plan
+  2 changes: 2 to create
+  touches 1 node: localhost
+
+stage 1 · target: localhost
+  [create   ] os:directory.etc@localhost
+               ~ path           — → "/tmp/demo/etc"
+  [create   ] os:file.app@localhost
+               ~ content        — → "listen 80;\n"
+               ~ mode           — → "0640"
+               ~ path           — → "/tmp/demo/etc/app.conf"
+
+$ sarma apply
+applied 2 changes
+
+$ sarma plan
+nothing to do: the world already matches the configuration
+```
 
 ## What it is not
 

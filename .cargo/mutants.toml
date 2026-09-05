@@ -40,6 +40,9 @@ exclude_globs = [
     "**/contract.rs",
     "xtask/src/main.rs",
     "xtask/src/shell.rs",
+    # The command's own entry point: argument parsing and sequencing the calls
+    # the tests already cover. Same reason as xtask's.
+    "crates/sarma-cli/src/main.rs",
 ]
 
 # The whole suite for every mutant, not just the mutated package's. The tests

@@ -22,7 +22,13 @@ default = ["strict-contracts"]
 strict-contracts = []
 
 [dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# The round-trip test writes a plan out and reads it back.
+serde_json = { workspace = true }

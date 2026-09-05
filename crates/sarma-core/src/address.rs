@@ -320,6 +320,28 @@ impl std::str::FromStr for Address {
     }
 }
 
+/// Written and read as text, which works because an address round-trips exactly.
+/// A structure would be a second representation to keep in step with the first.
+macro_rules! serde_as_text {
+    ($name:ident) => {
+        impl serde::Serialize for $name {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                serializer.serialize_str(&self.to_string())
+            }
+        }
+
+        impl<'de> serde::Deserialize<'de> for $name {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let text = String::deserialize(deserializer)?;
+                text.parse().map_err(serde::de::Error::custom)
+            }
+        }
+    };
+}
+
+serde_as_text!(Address);
+serde_as_text!(Target);
+
 /// Reads an address, panicking on malformed input.
 ///
 /// For tests and for literals written in Sarma's own source, where a bad address

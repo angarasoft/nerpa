@@ -216,6 +216,35 @@ enforced_by = []
 tests = []
 
 [[invariant]]
+id = "INV-STATE-004"
+status = "enforced"
+statement = "State is written whole, or the previous one is left intact."
+rationale = """
+A half-written state file claims things that are not true, which is worse than \
+no state file: it will be believed. Written beside the target and moved into \
+place, so an interrupted run leaves the previous state rather than half of two. \
+And two runs cannot hold it at once, because each would write what the other did \
+not know about."""
+enforced_by = ["crates/sarma-core/src/store.rs"]
+tests = [
+  "writing_replaces_the_previous_file_only_once_it_is_whole",
+  "two_runs_cannot_hold_the_state_at_once",
+  "a_file_from_a_version_this_one_does_not_understand_is_refused",
+]
+
+[[invariant]]
+id = "INV-AGENT-001"
+status = "enforced"
+statement = "The plan a person reads and the plan a machine reads are the same object."
+rationale = """
+Every machine-readable output in this space is an afterthought bolted onto text \
+meant for people, which is why automating them means parsing prose. Here the text \
+is a rendering of the typed plan and `--json` writes the same object, so the two \
+cannot come to disagree about what the plan says."""
+enforced_by = ["crates/sarma-core/src/plan.rs", "crates/sarma-cli/src/render.rs"]
+tests = ["a_plan_survives_a_trip_through_json"]
+
+[[invariant]]
 id = "INV-DRIFT-001"
 status = "planned"
 statement = "A resource marked for merging is never overwritten without a person."
