@@ -245,6 +245,23 @@ enforced_by = ["crates/nerpa-core/src/plan.rs", "crates/nerpa-cli/src/render.rs"
 tests = ["a_plan_survives_a_trip_through_json"]
 
 [[invariant]]
+id = "INV-BATCH-001"
+status = "enforced"
+statement = "Reading a machine takes one journey, however many resources are on it."
+rationale = """
+The difference between reading a fleet in seconds and reading it in minutes, and \
+a property of the interface rather than of any transport: an interface that can \
+only ask about one resource makes the fast version unrepresentable however good \
+the connection underneath is. This is what Ansible gets wrong, one round trip per \
+task. The engine groups by machine before asking, and a batch never spans two."""
+enforced_by = ["crates/nerpa-core/src/run.rs", "crates/nerpa-core/src/provider.rs"]
+tests = [
+  "every_resource_on_one_machine_is_asked_for_at_once",
+  "separate_machines_are_separate_journeys",
+  "something_only_state_remembers_travels_with_the_rest",
+]
+
+[[invariant]]
 id = "INV-REACH-001"
 status = "enforced"
 statement = "A machine that did not answer is refused per resource, not per run."

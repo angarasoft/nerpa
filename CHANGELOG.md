@@ -104,6 +104,9 @@ without ceremony until the first stage is complete.
   merely out of reach.
 - State records when each entry was written, and the format goes to version 2.
 
+- Reads happen in batches, grouped by machine before anything is asked. Reading a
+  machine takes one journey however many resources are on it.
+
 ### Changed
 
 - Renamed from `sarma` to `nerpa`, and the Gentoo package manager that held the

@@ -76,6 +76,11 @@ nobody can approve a change to infrastructure they could not look at.
 
 ## Observed state — [0011](decisions/0011-observed-state-in-three-tiers.md)
 
+The interface is a batch: the engine groups by machine before asking, and a
+provider is handed everything on one node at once. That shape is what makes the
+rest possible — an interface that can only ask about a single resource makes the
+fast version unrepresentable however good the transport underneath is.
+
 Three tiers, cheapest first: a fingerprint that lets an unchanged node be skipped
 whole, batch introspection that returns every host resource in one round trip,
 and optional pushed reports that let planning happen without touching the node.

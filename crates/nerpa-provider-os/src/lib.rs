@@ -33,7 +33,7 @@ use std::path::{Path, PathBuf};
 
 use nerpa_core::address::{Address, Kind, Provider as ProviderName};
 use nerpa_core::plan::ChangeKind;
-use nerpa_core::provider::{Attributes, Provider, ProviderError};
+use nerpa_core::provider::{Attributes, Provider, ProviderError, Reading};
 use nerpa_core::schema::Schema;
 use nerpa_core::value::Value;
 
@@ -193,28 +193,37 @@ impl Provider for Os {
             .immutable(self.name.clone(), kind("directory"), "path")
     }
 
-    fn read(
-        &self,
-        address: &Address,
-        declared: &Attributes,
-    ) -> Result<Option<Attributes>, ProviderError> {
-        match address.kind().as_str() {
-            "file" | "directory" => {}
-            _ => {
-                return Err(ProviderError::UnknownKind {
-                    provider: self.name.clone(),
-                    address: address.clone(),
-                });
+    /// Reads the batch one path at a time, because on this machine there is
+    /// nothing to save: `stat` is `stat` whether it is asked for once or ten
+    /// times. The batch exists for the version that has to cross a network, and
+    /// this one keeps the shape so that version can slot underneath unchanged.
+    fn read(&self, batch: &[Reading]) -> Result<BTreeMap<Address, Attributes>, ProviderError> {
+        let mut found = BTreeMap::new();
+
+        for reading in batch {
+            let address = reading.address();
+            match address.kind().as_str() {
+                "file" | "directory" => {}
+                _ => {
+                    return Err(ProviderError::UnknownKind {
+                        provider: self.name.clone(),
+                        address: address.clone(),
+                    });
+                }
+            }
+
+            // No settled path means the declaration is waiting on something that
+            // has not happened. Nothing to look at, and nothing to guess.
+            let Some(path) = text(reading.locator(), "path").map(PathBuf::from) else {
+                continue;
+            };
+
+            if let Some(entry) = self.entry(&path) {
+                found.insert(address.clone(), as_attributes(&path, &entry));
             }
         }
 
-        // No settled path means the declaration is waiting on something that has
-        // not happened. Nothing to look at, and nothing to guess.
-        let Some(path) = text(declared, "path").map(PathBuf::from) else {
-            return Ok(None);
-        };
-
-        Ok(self.entry(&path).map(|entry| as_attributes(&path, &entry)))
+        Ok(found)
     }
 
     fn apply(

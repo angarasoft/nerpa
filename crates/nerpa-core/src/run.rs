@@ -8,14 +8,14 @@
 //!
 //! Nothing here touches the world itself. It calls providers, which do.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
-use crate::address::Address;
+use crate::address::{Address, Provider as ProviderName, Target};
 use crate::attribute::Attribute;
 use crate::graph::Graph;
 use crate::observed::Observed;
 use crate::plan::{Change, ChangeKind, Confidence, Plan};
-use crate::provider::{Attributes, ProviderError, Providers};
+use crate::provider::{Attributes, ProviderError, Providers, Reading};
 use crate::resource::Resource;
 use crate::state::{Record, State};
 use crate::{ensures, requires};
@@ -35,54 +35,68 @@ pub fn observe(
 ) -> Result<Observed, ProviderError> {
     let mut observed = Observed::new();
 
-    for stage in graph.stages().into_iter().flatten() {
-        for address in stage.addresses() {
-            let Some(resource) = graph.get(address) else {
-                continue;
-            };
-            // ENFORCES: INV-STATE-003
+    // ENFORCES: INV-BATCH-001
+    // Grouped before anything is asked, so that one machine takes one journey
+    // rather than one per resource. The key is the pair that decides who is
+    // asked and where they have to go; a batch never spans either.
+    let mut batches: BTreeMap<(ProviderName, Option<Target>), Vec<Reading>> = BTreeMap::new();
+
+    for address in declared_and_remembered(graph, state) {
+        let locator = match (graph.get(&address), state.get(&address)) {
             // Where it is, not where the declaration now says it should be. A
             // resource whose location changed has to be found where it was left,
-            // or the change reads as making a second one and the first is
-            // abandoned.
-            let locator = state.get(address).map_or_else(
-                || settled_declaration(resource),
-                |record| record.attributes().clone(),
-            );
+            // or the change reads as making a second one and abandoning the
+            // first.
+            // ENFORCES: INV-STATE-003
+            (_, Some(record)) => record.attributes().clone(),
+            (Some(resource), None) => settled_declaration(resource),
+            (None, None) => continue,
+        };
 
-            let provider = providers.for_address(address)?;
-            match provider.read(address, &locator) {
-                Ok(Some(attributes)) => observed.record(address.clone(), attributes),
-                Ok(None) => {}
-                // ENFORCES: INV-REACH-002
-                // The one failure a run survives. Everything else still stops it,
-                // because everything else means something is wrong rather than
-                // merely absent. See decision 0020.
-                Err(ProviderError::Unreachable { node, .. }) => observed.unreachable(node),
-                Err(other) => return Err(other),
-            }
-        }
+        let key = (address.provider().clone(), address.target().cloned());
+        batches
+            .entry(key)
+            .or_default()
+            .push(Reading::new(address, locator));
     }
 
-    // Anything state remembers and the configuration no longer declares still
-    // has to be read, or its removal would be planned blind.
-    for address in state.addresses() {
-        if graph.get(address).is_some() {
-            continue;
-        }
-        let Some(record) = state.get(address) else {
-            continue;
-        };
-        let provider = providers.for_address(address)?;
-        match provider.read(address, record.attributes()) {
-            Ok(Some(attributes)) => observed.record(address.clone(), attributes),
-            Ok(None) => {}
+    for ((provider_name, _), batch) in batches {
+        let provider = providers.named(&provider_name)?;
+        match provider.read(&batch) {
+            Ok(found) => {
+                for (address, attributes) in found {
+                    observed.record(address, attributes);
+                }
+            }
+            // ENFORCES: INV-REACH-002
+            // The one failure a run survives. Everything else still stops it,
+            // because everything else means something is wrong rather than
+            // merely out of reach. See decision 0020.
             Err(ProviderError::Unreachable { node, .. }) => observed.unreachable(node),
             Err(other) => return Err(other),
         }
     }
 
     Ok(observed)
+}
+
+/// Every address worth looking at: what the configuration declares, and what
+/// state remembers making.
+///
+/// The second half matters as much as the first. A resource the configuration no
+/// longer mentions still has to be read, or its removal would be planned blind.
+fn declared_and_remembered(graph: &Graph, state: &State) -> BTreeSet<Address> {
+    let declared = graph
+        .stages()
+        .into_iter()
+        .flatten()
+        .flat_map(|stage| stage.addresses().to_vec())
+        .collect::<BTreeSet<_>>();
+
+    declared
+        .into_iter()
+        .chain(state.addresses().cloned())
+        .collect()
 }
 
 /// The declared attributes that are values already.

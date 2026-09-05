@@ -28,6 +28,42 @@ use crate::value::Value;
 /// What a provider carries a resource's state as.
 pub type Attributes = BTreeMap<String, Value>;
 
+/// One resource to look at, and what is known about where to find it.
+///
+/// Reads arrive in batches, and a batch never spans machines: the engine groups
+/// by node before asking, so a provider can turn a whole batch into one journey.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reading {
+    address: Address,
+    locator: Attributes,
+}
+
+impl Reading {
+    /// Names a resource and where to look for it.
+    #[must_use]
+    pub fn new(address: Address, locator: Attributes) -> Self {
+        Self { address, locator }
+    }
+
+    /// Which resource.
+    #[must_use]
+    pub fn address(&self) -> &Address {
+        &self.address
+    }
+
+    /// What the declaration or the last record says about where it is.
+    ///
+    /// An address does not always say where in the world to look — a file is
+    /// found by its path, and that lives in the declaration. Only settled values
+    /// are here; anything still waiting on another resource is left out, because
+    /// a resource whose very location depends on something uncreated cannot be
+    /// there yet.
+    #[must_use]
+    pub fn locator(&self) -> &Attributes {
+        &self.locator
+    }
+}
+
 /// Why a provider could not do what it was asked.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
@@ -83,24 +119,26 @@ pub trait Provider {
     /// What this provider refuses to change in place.
     fn schema(&self) -> Schema;
 
-    /// What the resource looks like now, or `None` if it does not exist.
+    /// What these resources look like now.
     ///
-    /// `declared` is needed because an address does not always say where in the
-    /// world to look: a file is found by its `path`, and that lives in the
-    /// declaration. Only settled values are passed — anything still waiting on
-    /// another resource is left out, which is correct, because a resource whose
-    /// very location depends on something that has not been created cannot be
-    /// there yet.
+    /// Only what exists comes back; an address absent from the answer does not
+    /// exist. Not existing is an answer, not a failure.
+    ///
+    // ENFORCES: INV-BATCH-001
+    /// **A batch, not one at a time**, and that is the whole shape of it. The
+    /// difference between one journey to a machine and one per resource is what
+    /// makes Ansible slow, and an interface that can only ask about a single
+    /// resource makes the fast version unrepresentable however good the transport
+    /// underneath is. A provider with nothing to gain may simply loop.
+    ///
+    /// The engine groups by machine before calling, so every batch belongs to one
+    /// node — which is what lets [`ProviderError::Unreachable`] speak for the
+    /// whole of it.
     ///
     /// # Errors
     ///
-    /// Returns [`ProviderError`] if the resource could not be read at all. Not
-    /// existing is an answer, not a failure.
-    fn read(
-        &self,
-        address: &Address,
-        declared: &Attributes,
-    ) -> Result<Option<Attributes>, ProviderError>;
+    /// Returns [`ProviderError`] if the batch could not be read at all.
+    fn read(&self, batch: &[Reading]) -> Result<BTreeMap<Address, Attributes>, ProviderError>;
 
     /// Makes the resource match `attributes`, and reports what it became.
     ///
@@ -174,6 +212,18 @@ impl Providers {
     /// Returns [`ProviderError::Unregistered`] if nothing answers to that name.
     /// Failing closed: a resource nobody owns cannot be read, and pretending it
     /// does not exist would propose creating it for ever.
+    pub fn named(&self, name: &ProviderName) -> Result<&dyn Provider, ProviderError> {
+        self.registered
+            .get(name)
+            .map(AsRef::as_ref)
+            .ok_or_else(|| ProviderError::Unregistered(name.clone()))
+    }
+
+    /// The provider for an address.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError::Unregistered`] if nothing answers to that name.
     pub fn for_address(&self, address: &Address) -> Result<&dyn Provider, ProviderError> {
         self.registered
             .get(address.provider())

@@ -11,7 +11,7 @@ use std::collections::BTreeSet;
 use nerpa_core::address::address;
 use nerpa_core::plan::ChangeKind;
 use nerpa_core::planner::plan_at;
-use nerpa_core::provider::{Attributes, Provider, ProviderError, Providers};
+use nerpa_core::provider::{Attributes, Provider, ProviderError, Providers, Reading};
 use nerpa_core::run::observe;
 use nerpa_core::schema::Schema;
 use nerpa_core::state::{Record, State, Written};
@@ -215,16 +215,21 @@ impl Provider for Refusing {
 
     fn read(
         &self,
-        address: &Address,
-        _declared: &Attributes,
-    ) -> Result<Option<Attributes>, ProviderError> {
+        batch: &[Reading],
+    ) -> Result<std::collections::BTreeMap<Address, Attributes>, ProviderError> {
+        let address = batch
+            .first()
+            .map(Reading::address)
+            .cloned()
+            .unwrap_or_else(|| address("os:file.nothing@nowhere"));
+
         match self.how {
             Refusal::Unreachable => Err(ProviderError::Unreachable {
                 node: address.target().cloned().unwrap_or_else(|| node("nowhere")),
                 problem: "no route to host".to_owned(),
             }),
             Refusal::Broken => Err(ProviderError::World {
-                address: address.clone(),
+                address,
                 problem: "permission denied".to_owned(),
             }),
         }
