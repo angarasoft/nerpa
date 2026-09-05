@@ -8,7 +8,7 @@ use std::path::PathBuf;
 
 use nerpa_core::address::address;
 use nerpa_core::planner::plan;
-use nerpa_core::provider::{Provider, Providers};
+use nerpa_core::provider::{Attributes, Provider, Providers};
 use nerpa_core::run::{apply, observe};
 use nerpa_core::secret::{Key, Remembered, Secrets};
 use nerpa_core::state::State;
@@ -578,4 +578,48 @@ fn what_was_already_made_is_recorded_before_the_next_thing_is_touched() {
         state.get(&address("os:file.first@localhost")).is_some(),
         "and it is still in state after the failure"
     );
+}
+
+/// A provider is shared across threads, because machines are visited in
+/// parallel and one registry serves all of them. Decision 0031.
+///
+/// A compile-time bound would say the type is `Sync`; this says the code behind
+/// it survives being used that way, which is the part a bound cannot promise.
+#[test]
+fn one_provider_serves_two_threads_at_once() {
+    fn shareable<T: Send + Sync>(_: &T) {}
+
+    let scratch = Scratch::new("threads");
+    let providers = providers();
+    shareable(&providers);
+
+    let paths: Vec<String> = (0..8).map(|n| scratch.join(&format!("file-{n}"))).collect();
+
+    std::thread::scope(|threads| {
+        for (index, path) in paths.iter().enumerate() {
+            let providers = &providers;
+            threads.spawn(move || {
+                let mut wanted = Attributes::new();
+                wanted.insert("path".to_owned(), Value::Text(path.clone()));
+                wanted.insert("content".to_owned(), Value::Text(format!("{index}\n")));
+                providers
+                    .for_address(&address("os:file.subject@localhost"))
+                    .expect("registered")
+                    .apply(
+                        &address("os:file.subject@localhost"),
+                        ChangeKind::Create,
+                        &wanted,
+                    )
+                    .expect("it writes");
+            });
+        }
+    });
+
+    for (index, path) in paths.iter().enumerate() {
+        assert_eq!(
+            fs::read_to_string(path).expect("written"),
+            format!("{index}\n"),
+            "every thread's file survived the others"
+        );
+    }
 }

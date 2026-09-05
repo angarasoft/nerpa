@@ -112,7 +112,8 @@ pub enum ProviderError {
 }
 
 /// Reads and changes resources of the kinds it owns.
-pub trait Provider {
+// ENFORCES: INV-PROVIDER-001
+pub trait Provider: Send + Sync {
     /// The name this provider answers to in an address.
     fn name(&self) -> &ProviderName;
 

@@ -33,11 +33,11 @@
 //! `mode` attribute, and a portable abstraction over them would describe
 //! something nobody runs.
 
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use nerpa_core::address::{Address, Kind, Provider as ProviderName};
 use nerpa_core::plan::ChangeKind;
@@ -58,7 +58,11 @@ enum Backend {
     /// The machine this is running on.
     Disk,
     /// Nothing at all, for tests.
-    Memory(RefCell<BTreeMap<PathBuf, Entry>>),
+    ///
+    /// A `Mutex` rather than a `RefCell` because a provider is `Sync`: machines
+    /// are visited in parallel, so one provider is shared across threads. See
+    /// decision 0031.
+    Memory(Mutex<BTreeMap<PathBuf, Entry>>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,7 +111,7 @@ impl Os {
     /// What is at a path: something, nothing, or a refusal to say.
     fn entry(&self, path: &Path) -> Result<Option<Entry>, String> {
         match &self.backend {
-            Backend::Memory(entries) => Ok(entries.borrow().get(path).cloned()),
+            Backend::Memory(entries) => Ok(held(entries)?.get(path).cloned()),
             Backend::Disk => read_from_disk(path),
         }
     }
@@ -123,12 +127,25 @@ impl Os {
     fn store(&self, path: &Path, entry: Entry) -> Result<(), std::io::Error> {
         match &self.backend {
             Backend::Memory(entries) => {
-                entries.borrow_mut().insert(path.to_owned(), entry);
+                let mut held = entries
+                    .lock()
+                    .map_err(|_| std::io::Error::other("the in-memory backend was poisoned"))?;
+                held.insert(path.to_owned(), entry);
                 Ok(())
             }
             Backend::Disk => write_to_disk(path, &entry),
         }
     }
+}
+
+/// The in-memory backend, or a message rather than a panic if a thread died
+/// holding it.
+fn held(
+    entries: &Mutex<BTreeMap<PathBuf, Entry>>,
+) -> Result<std::sync::MutexGuard<'_, BTreeMap<PathBuf, Entry>>, String> {
+    entries
+        .lock()
+        .map_err(|_| "the in-memory backend was poisoned".to_owned())
 }
 
 impl Default for Os {
@@ -367,7 +384,17 @@ impl Provider for Os {
 
         let removed = match &self.backend {
             Backend::Memory(entries) => {
-                entries.borrow_mut().remove(&path);
+                match entries.lock() {
+                    Ok(mut held) => {
+                        held.remove(&path);
+                    }
+                    Err(_) => {
+                        return Err(ProviderError::World {
+                            address: address.clone(),
+                            problem: "the in-memory backend was poisoned".to_owned(),
+                        });
+                    }
+                }
                 Ok(())
             }
             Backend::Disk => match self.entry_for(address, &path)? {
@@ -397,7 +424,7 @@ impl Provider for Os {
         )]
         Self {
             name: ProviderName::new("os").expect("`os` is a valid provider name"),
-            backend: Backend::Memory(RefCell::new(BTreeMap::new())),
+            backend: Backend::Memory(Mutex::new(BTreeMap::new())),
         }
     }
 }

@@ -721,3 +721,19 @@ tests = [
   "a_resource_removed_from_the_configuration_is_removed_from_the_machine",
 ]
 adversarial = ["what_was_already_made_is_recorded_before_the_next_thing_is_touched"]
+
+[[invariant]]
+id = "INV-PROVIDER-001"
+status = "enforced"
+statement = "One provider serves every machine, so the interface is shareable across threads."
+rationale = """
+Stage 3 visits machines in parallel and one registry serves all of them, so a \
+provider is used from several threads at once. The bound sits on the trait rather \
+than on each implementation because the trait is what people outside this \
+repository write against, and it is added now because there are none of them yet: \
+after the repository opens, adding it breaks somebody else's code and they are \
+not in the room to argue. See decision 0031."""
+bypass = "Taking the bound off again, because nothing needs it until stage 3 and everything compiles without it until then. That is the whole risk: it is a promise about an interface that no caller depends on yet, so nothing but this entry and the test beside it notices its absence."
+enforced_by = ["crates/nerpa-core/src/provider.rs"]
+tests = ["a_file_is_written_and_the_second_run_has_nothing_to_do"]
+adversarial = ["one_provider_serves_two_threads_at_once"]
