@@ -1035,6 +1035,7 @@ dependencies = [
 name = "nerpa-proto"
 version = "0.0.1"
 dependencies = [
+ "blake3",
  "ciborium",
  "serde",
  "serde_bytes",

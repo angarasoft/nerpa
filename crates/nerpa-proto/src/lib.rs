@@ -37,7 +37,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// Bumped when the meaning of anything below changes. An executor that reads a
 /// version it does not know refuses the frame; it does not attempt a subset.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// The largest frame either end will read.
 ///
@@ -114,16 +114,30 @@ impl Request {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Ask {
-    /// What do these paths look like now?
+    /// What do these look like now?
     ///
     /// A batch, because the whole reason this wire exists is that one journey to
     /// a machine should answer for everything on it.
     Look {
-        /// Everything on this machine worth looking at, in one go.
-        paths: Vec<String>,
+        /// Everything on this machine worth looking at, in one go. Answered by
+        /// [`Answer::Found`], one [`Seen`] for each, in this order.
+        observations: Vec<Observation>,
     },
     /// Make these so, in the order given.
     Perform {
+        /// Which plan this came from, or `None` if that plan had none.
+        ///
+        /// A plan that could not look at everything has no number, and one of
+        /// those can still be applied to the machines that did answer — so this
+        /// is optional on the wire and refusing it is a policy above the wire
+        /// rather than a shape below it. See `INV-PLAN-006`.
+        plan: Option<[u8; 32]>,
+        /// What the plan was computed from, and what it hashed to.
+        ///
+        /// Checked before anything is done. Between the looking and this, the
+        /// machine can change; without this the batch would act on a reading
+        /// that is minutes old and possibly wrong. See decision 0034.
+        premise: Vec<Premise>,
         /// Carried out in the order given, and stopping at the first failure.
         operations: Vec<Operation>,
     },
@@ -132,6 +146,69 @@ pub enum Ask {
     /// The cheapest of the three tiers in decision 0011: a node whose digest
     /// matches what state remembers is skipped whole.
     Fingerprint,
+}
+
+/// Something the engine wants looked at.
+///
+/// Reading and acting are the same shape on purpose: a small closed set that
+/// includes running a program. A provider that has to run `qlist -I` to know
+/// what is installed needs it as much as one that has to run `emerge` to change
+/// it, and a wire that allowed only one of the two would send every package
+/// provider looking for a back door. See decision 0033.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum Observation {
+    /// What is at this path.
+    Path {
+        /// Where to look.
+        path: String,
+    },
+    /// What this program says when it is run.
+    Output {
+        /// The program, found on the far end's `PATH` or named absolutely.
+        program: String,
+        /// Its arguments, one to an entry and never a single shell string — a
+        /// shell string is where somebody else's quoting becomes somebody
+        /// else's command.
+        arguments: Vec<String>,
+    },
+}
+
+/// What one observation found.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum Seen {
+    /// There is nothing at that path.
+    ///
+    /// Only ever said when the far end is sure. A path it was not allowed to
+    /// read is an [`Answer::Failed`], because a file nobody may open is not a
+    /// file that is not there — the distinction `INV-READ-001` makes on the
+    /// other side of this wire.
+    Nothing,
+    /// This is what is at the path.
+    Entry(Entry),
+    /// The program ran, and this is what it said.
+    Said {
+        /// What it exited with.
+        status: i32,
+        /// What it printed, as bytes: not everything a program prints is text.
+        #[serde(with = "serde_bytes")]
+        out: Vec<u8>,
+        /// What it printed on the other stream.
+        #[serde(with = "serde_bytes")]
+        complaint: Vec<u8>,
+    },
+}
+
+/// Something that was true when the plan was made and has to still be true.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Premise {
+    /// What to look at again.
+    pub observation: Observation,
+    /// What it hashed to when the plan was computed, by [`digest`].
+    pub digest: [u8; 32],
 }
 
 /// One thing to make true on a machine.
@@ -162,6 +239,36 @@ pub enum Operation {
         /// Permission bits.
         mode: u32,
     },
+    /// Run a program, and take what it does as the change.
+    ///
+    /// Installing a package *is* running `emerge`; there is no honest way to
+    /// describe it that does not end there. So the set stays small and general
+    /// rather than growing a variant per kind of resource, which is what lets it
+    /// be frozen at all.
+    ///
+    /// Emitted by providers and never by the author of a configuration
+    /// (decision 0033). The moment a person can write one of these, this is
+    /// Terraform's `remote-exec` and deserves everything said about it.
+    Process {
+        /// The program, found on the far end's `PATH` or named absolutely.
+        program: String,
+        /// Its arguments, one to an entry and never a single shell string.
+        arguments: Vec<String>,
+        /// What to write to it, if anything.
+        ///
+        /// The only place a secret may go. `/proc/*/cmdline` is world-readable,
+        /// so a credential in `arguments` is a credential anybody on the machine
+        /// can read while it runs.
+        #[serde(with = "serde_bytes")]
+        stdin: Vec<u8>,
+        /// Whether what is written to it must never be recorded.
+        ///
+        /// The far end keeps it out of anything it logs, and so does this end.
+        /// See decision 0027.
+        private: bool,
+        /// Which exit codes mean it worked. Empty means only zero does.
+        expect: Vec<i32>,
+    },
     /// Gone.
     Remove {
         /// What to take away.
@@ -170,13 +277,19 @@ pub enum Operation {
 }
 
 impl Operation {
-    /// Where this operation acts.
+    /// Where this operation acts, when that is a place.
+    ///
+    /// A process acts wherever it acts, and this wire has no way to say where —
+    /// which is the honest answer rather than a missing feature. Anything
+    /// reporting *which* operation stopped a batch uses its index; this is for
+    /// the things that genuinely have a path.
     #[must_use]
-    pub fn path(&self) -> &str {
+    pub fn path(&self) -> Option<&str> {
         match self {
             Operation::Directory { path, .. }
             | Operation::File { path, .. }
-            | Operation::Remove { path } => path,
+            | Operation::Remove { path } => Some(path),
+            Operation::Process { .. } => None,
         }
     }
 }
@@ -216,15 +329,24 @@ impl Response {
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum Answer {
-    /// What was found, by path. A path that is absent does not exist.
+    /// What each observation found, in the order they were asked about.
     Found {
-        /// Only what is there.
-        entries: BTreeMap<String, Entry>,
+        /// One for each [`Observation`], and always the same number of them.
+        seen: Vec<Seen>,
     },
     /// Everything asked for was done, and this is what those paths became.
     Done {
         /// Read back rather than echoed, so that writing nothing is noticed.
         entries: BTreeMap<String, Entry>,
+    },
+    /// The machine is not what the plan was computed from, so nothing was done.
+    ///
+    /// Not a failure. The plan is reasoning from a reading that has since gone
+    /// stale, and the answer is to look again and plan again — which is a
+    /// different thing to tell somebody than that an operation went wrong.
+    Moved {
+        /// Which premise no longer holds, as an index into the batch's.
+        at: usize,
     },
     /// One number standing for everything the executor last applied.
     Fingerprint {
@@ -233,13 +355,15 @@ pub enum Answer {
     },
     /// It could not be done, and this is as far as it got.
     Failed {
-        /// Where it stopped.
-        path: String,
+        /// Which operation or observation stopped it, by index.
+        ///
+        /// An index rather than a path, because not everything either end talks
+        /// about has one — and because it doubles as how many went through
+        /// before it, so the engine knows what happened rather than assuming
+        /// nothing did.
+        at: usize,
         /// What the machine said.
         problem: String,
-        /// How many operations had already succeeded, so the engine knows what
-        /// happened rather than assuming nothing did.
-        completed: usize,
     },
 }
 
@@ -261,6 +385,72 @@ pub enum Entry {
         /// Permission bits.
         mode: u32,
     },
+    /// A pointer somewhere else.
+    ///
+    /// Reported, never followed. Reading through a link describes one object and
+    /// writing through it changes another, and a record of the two together is a
+    /// record of something that does not exist.
+    Symlink {
+        /// What it points at, as the machine has it.
+        target: String,
+    },
+}
+
+/// One number standing for what an observation found.
+///
+/// Computed identically on both ends, which is what lets a [`Premise`] be
+/// checked where the machine is rather than where the plan was made. Written out
+/// rather than borrowed from the serialisation format because it has to mean the
+/// same thing for ever, and every variable-length part carries its length so
+/// that no two different answers can encode alike.
+#[must_use]
+pub fn digest(seen: &Seen) -> [u8; 32] {
+    let mut out = Vec::from(b"nerpa-seen-1".as_slice());
+    match seen {
+        Seen::Nothing => out.push(0),
+        Seen::Entry(entry) => {
+            out.push(1);
+            match entry {
+                Entry::Directory { mode } => {
+                    out.push(1);
+                    out.extend_from_slice(&mode.to_le_bytes());
+                }
+                Entry::File { content, mode } => {
+                    out.push(2);
+                    out.extend_from_slice(&length(content.len()));
+                    out.extend_from_slice(content);
+                    out.extend_from_slice(&mode.to_le_bytes());
+                }
+                Entry::Symlink { target } => {
+                    out.push(3);
+                    out.extend_from_slice(&length(target.len()));
+                    out.extend_from_slice(target.as_bytes());
+                }
+            }
+        }
+        Seen::Said {
+            status,
+            out: said,
+            complaint,
+        } => {
+            out.push(2);
+            out.extend_from_slice(&status.to_le_bytes());
+            out.extend_from_slice(&length(said.len()));
+            out.extend_from_slice(said);
+            out.extend_from_slice(&length(complaint.len()));
+            out.extend_from_slice(complaint);
+        }
+    }
+    *blake3::hash(&out).as_bytes()
+}
+
+/// A length as eight canonical bytes.
+///
+/// `usize` is never wider than `u64` on any target this builds for, so the
+/// fallback is unreachable; it is written rather than unwrapped because a digest
+/// is not a place to put a panic.
+fn length(count: usize) -> [u8; 8] {
+    u64::try_from(count).unwrap_or(u64::MAX).to_le_bytes()
 }
 
 /// Whether a frame of this size may be handled at all.

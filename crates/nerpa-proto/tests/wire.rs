@@ -11,7 +11,8 @@ use std::collections::BTreeMap;
 use std::io::Cursor;
 
 use nerpa_proto::{
-    Answer, Ask, Entry, MAX_FRAME, Operation, PROTOCOL_VERSION, Request, Response, WireError,
+    Answer, Ask, Entry, MAX_FRAME, Observation, Operation, PROTOCOL_VERSION, Premise, Request,
+    Response, Seen, WireError,
 };
 
 fn round_trip_request(body: Ask) -> Request {
@@ -24,7 +25,15 @@ fn round_trip_request(body: Ask) -> Request {
 #[test]
 fn a_batch_of_paths_survives_the_trip() {
     let asked = Ask::Look {
-        paths: vec!["/etc/motd".to_owned(), "/etc/hosts".to_owned()],
+        observations: vec![
+            Observation::Path {
+                path: "/etc/motd".to_owned(),
+            },
+            Observation::Output {
+                program: "qlist".to_owned(),
+                arguments: vec!["-I".to_owned()],
+            },
+        ],
     };
     let back = round_trip_request(asked.clone());
     assert_eq!(back.body(), &asked);
@@ -38,6 +47,8 @@ fn a_batch_of_paths_survives_the_trip() {
 #[test]
 fn every_operation_survives_the_trip() {
     let asked = Ask::Perform {
+        plan: Some([7; 32]),
+        premise: Vec::new(),
         operations: vec![
             Operation::Directory {
                 path: "/etc/app".to_owned(),
@@ -60,10 +71,10 @@ fn every_operation_survives_the_trip() {
         &asked,
         "including the mode bits and a non-ASCII body"
     );
-    let Ask::Perform { operations } = back.body() else {
+    let Ask::Perform { operations, .. } = back.body() else {
         panic!("shape changed")
     };
-    assert_eq!(operations[1].path(), "/etc/app/conf");
+    assert_eq!(operations[1].path(), Some("/etc/app/conf"));
 }
 
 #[test]
@@ -80,16 +91,26 @@ fn every_answer_survives_the_trip() {
 
     for answer in [
         Answer::Found {
-            entries: entries.clone(),
+            seen: vec![
+                Seen::Nothing,
+                Seen::Entry(Entry::Symlink {
+                    target: "/etc/hostname".to_owned(),
+                }),
+                Seen::Said {
+                    status: 0,
+                    out: b"nginx-1.27\n".to_vec(),
+                    complaint: Vec::new(),
+                },
+            ],
         },
         Answer::Done { entries },
+        Answer::Moved { at: 2 },
         Answer::Fingerprint {
             digest: "9f86d081".to_owned(),
         },
         Answer::Failed {
-            path: "/etc/motd".to_owned(),
+            at: 2,
             problem: "permission denied".to_owned(),
-            completed: 2,
         },
     ] {
         let response = Response::new(answer.clone());
@@ -177,7 +198,9 @@ fn an_enormous_announced_frame_is_refused_before_anything_is_allocated() {
 #[test]
 fn a_pipe_that_ends_mid_frame_says_so() {
     let request = Request::new(Ask::Look {
-        paths: vec!["/etc/motd".to_owned()],
+        observations: vec![Observation::Path {
+            path: "/etc/motd".to_owned(),
+        }],
     });
     let mut wire = Vec::new();
     nerpa_proto::write(&mut wire, &request).unwrap();
@@ -212,7 +235,9 @@ fn bytes_that_are_not_the_expected_shape_are_refused() {
 fn frames_follow_one_another_on_one_pipe() {
     let first = Request::new(Ask::Fingerprint);
     let second = Request::new(Ask::Look {
-        paths: vec!["/etc/motd".to_owned()],
+        observations: vec![Observation::Path {
+            path: "/etc/motd".to_owned(),
+        }],
     });
 
     let mut wire = Vec::new();
@@ -236,6 +261,8 @@ fn frames_follow_one_another_on_one_pipe() {
 fn a_large_but_reasonable_file_still_fits() {
     let content = vec![b'x'; 4 * 1024 * 1024];
     let asked = Ask::Perform {
+        plan: Some([7; 32]),
+        premise: Vec::new(),
         operations: vec![Operation::File {
             path: "/var/big".to_owned(),
             content: content.clone(),
@@ -244,7 +271,7 @@ fn a_large_but_reasonable_file_still_fits() {
     };
 
     let back = round_trip_request(asked);
-    let Ask::Perform { operations } = back.body() else {
+    let Ask::Perform { operations, .. } = back.body() else {
         panic!("shape changed")
     };
     let Operation::File {
@@ -254,4 +281,108 @@ fn a_large_but_reasonable_file_still_fits() {
         panic!("shape changed")
     };
     assert_eq!(carried.len(), content.len());
+}
+
+/// The number a premise is checked by. Computed on both ends, so two answers
+/// that differ must never hash alike — otherwise a machine that moved reads as
+/// one that did not, which is the failure the premise exists to prevent.
+#[test]
+fn two_different_answers_never_hash_alike() {
+    let answers = [
+        Seen::Nothing,
+        Seen::Entry(Entry::Directory { mode: 0o755 }),
+        Seen::Entry(Entry::Directory { mode: 0o750 }),
+        Seen::Entry(Entry::File {
+            content: b"hello\n".to_vec(),
+            mode: 0o644,
+        }),
+        Seen::Entry(Entry::File {
+            content: b"hello\n".to_vec(),
+            mode: 0o600,
+        }),
+        Seen::Entry(Entry::File {
+            content: b"hello".to_vec(),
+            mode: 0o644,
+        }),
+        Seen::Entry(Entry::Symlink {
+            target: "/etc/hostname".to_owned(),
+        }),
+        Seen::Said {
+            status: 0,
+            out: b"ab".to_vec(),
+            complaint: b"c".to_vec(),
+        },
+        // The same bytes, split differently. Without a length in front of each
+        // part these two run together into one sequence and collide.
+        Seen::Said {
+            status: 0,
+            out: b"a".to_vec(),
+            complaint: b"bc".to_vec(),
+        },
+        Seen::Said {
+            status: 1,
+            out: b"ab".to_vec(),
+            complaint: b"c".to_vec(),
+        },
+    ];
+
+    for (index, left) in answers.iter().enumerate() {
+        assert_eq!(
+            nerpa_proto::digest(left),
+            nerpa_proto::digest(left),
+            "the same answer twice: {left:?}"
+        );
+        for right in answers.iter().skip(index + 1) {
+            assert_ne!(
+                nerpa_proto::digest(left),
+                nerpa_proto::digest(right),
+                "{left:?} and {right:?} hash alike"
+            );
+        }
+    }
+}
+
+/// A batch says which plan it came from and what that plan was reasoning about,
+/// and both survive the trip. Without them the far end is being asked to act on
+/// a reading it cannot check and an intent it cannot name.
+#[test]
+fn a_batch_carries_the_plan_it_came_from_and_what_it_assumed() {
+    let premise = Premise {
+        observation: Observation::Path {
+            path: "/etc/motd".to_owned(),
+        },
+        digest: nerpa_proto::digest(&Seen::Nothing),
+    };
+    let asked = Ask::Perform {
+        plan: Some([9; 32]),
+        premise: vec![premise.clone()],
+        operations: vec![Operation::Process {
+            program: "emerge".to_owned(),
+            arguments: vec!["--quiet".to_owned(), "nginx".to_owned()],
+            stdin: Vec::new(),
+            private: false,
+            expect: vec![0],
+        }],
+    };
+
+    let mut wire = Vec::new();
+    nerpa_proto::write(&mut wire, &Request::new(asked.clone())).unwrap();
+    let back = nerpa_proto::read_request(&mut Cursor::new(wire)).unwrap();
+    assert_eq!(back.body(), &asked);
+
+    let Ask::Perform {
+        plan,
+        premise: carried,
+        operations,
+    } = back.body()
+    else {
+        panic!("shape changed")
+    };
+    assert_eq!(*plan, Some([9; 32]));
+    assert_eq!(carried, &vec![premise]);
+    assert_eq!(
+        operations[0].path(),
+        None,
+        "a process acts wherever it acts, and this wire cannot say where"
+    );
 }
