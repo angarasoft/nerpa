@@ -15,6 +15,15 @@ use nerpa_core::state::State;
 use nerpa_core::{ChangeKind, Graph, Reference, Resource, Target, Value};
 use nerpa_provider_os::Os;
 
+/// A run that does not care where state goes, only what ends up in it.
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "the shape belongs to `apply`, not to this function"
+)]
+fn kept(_: &State) -> Result<(), String> {
+    Ok(())
+}
+
 /// A fixed key and a store holding nothing.
 ///
 /// No test in this file declares a secret; planning still has to be told where
@@ -83,7 +92,15 @@ fn a_file_is_written_and_the_second_run_has_nothing_to_do() {
     let first = plan(&graph, &before, &state, &providers.schema(), secrets()).expect("plannable");
     assert_eq!(first.blast_radius().creates(), 1);
 
-    let applied = apply(&first, &providers, &before, &mut state, secrets()).expect("applies");
+    let applied = apply(
+        &first,
+        &providers,
+        &before,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
     assert_eq!(applied.changed(), 1);
     assert_eq!(fs::read_to_string(&path).expect("written"), "hello\n");
 
@@ -115,6 +132,7 @@ fn a_file_edited_by_hand_is_brought_back() {
         &observed,
         &mut state,
         secrets(),
+        &mut kept,
     )
     .expect("applies");
 
@@ -128,7 +146,15 @@ fn a_file_edited_by_hand_is_brought_back() {
         ChangeKind::Update
     );
 
-    apply(&repair, &providers, &drifted, &mut state, secrets()).expect("applies");
+    apply(
+        &repair,
+        &providers,
+        &drifted,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
     assert_eq!(fs::read_to_string(&path).expect("written"), "listen 80;\n");
 }
 
@@ -151,7 +177,15 @@ fn a_directory_comes_before_the_file_in_it() {
     let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
     assert_eq!(plan.stages().len(), 2, "the file waits for the directory");
 
-    let applied = apply(&plan, &providers, &observed, &mut state, secrets()).expect("applies");
+    let applied = apply(
+        &plan,
+        &providers,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
     assert_eq!(applied.changed(), 2, "the directory and the file in it");
     assert!(fs::metadata(&directory).expect("made").is_dir());
     assert_eq!(
@@ -184,6 +218,7 @@ fn moving_a_file_replaces_it_and_takes_the_old_one_with_it() {
         &observed,
         &mut state,
         secrets(),
+        &mut kept,
     )
     .expect("applies");
     assert!(fs::metadata(&old).is_ok(), "the first file was made");
@@ -201,7 +236,15 @@ fn moving_a_file_replaces_it_and_takes_the_old_one_with_it() {
     assert_eq!(change.cause().expect("a cause").name(), "path");
     assert!(plan.blast_radius().has_irreversible());
 
-    apply(&plan, &providers, &observed, &mut state, secrets()).expect("applies");
+    apply(
+        &plan,
+        &providers,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
     assert!(fs::metadata(&new).is_ok(), "the new file is there");
     assert!(fs::metadata(&old).is_err(), "and the old one went with it");
 }
@@ -227,6 +270,7 @@ fn a_resource_removed_from_the_configuration_is_removed_from_the_machine() {
         &observed,
         &mut state,
         secrets(),
+        &mut kept,
     )
     .expect("applies");
     assert!(fs::metadata(&path).is_ok());
@@ -247,7 +291,15 @@ fn a_resource_removed_from_the_configuration_is_removed_from_the_machine() {
         ChangeKind::Delete
     );
 
-    apply(&plan, &providers, &observed, &mut state, secrets()).expect("applies");
+    apply(
+        &plan,
+        &providers,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
     assert!(fs::metadata(&path).is_err(), "the file is gone");
     assert!(state.is_empty(), "and so is the memory of it");
 }
@@ -277,6 +329,7 @@ fn what_depended_on_a_thing_is_removed_before_the_thing() {
         &observed,
         &mut state,
         secrets(),
+        &mut kept,
     )
     .expect("applies");
 
@@ -296,7 +349,15 @@ fn what_depended_on_a_thing_is_removed_before_the_thing() {
         "whatever read from the directory goes first"
     );
 
-    apply(&plan, &providers, &observed, &mut state, secrets()).expect("applies");
+    apply(
+        &plan,
+        &providers,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
     assert!(fs::metadata(&directory).is_err());
     assert!(state.is_empty());
 }
@@ -328,7 +389,15 @@ fn an_unresolved_value_is_settled_from_the_stage_before_it() {
         "the content is not known yet"
     );
 
-    apply(&plan, &providers, &observed, &mut state, secrets()).expect("applies");
+    apply(
+        &plan,
+        &providers,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
     assert_eq!(
         fs::read_to_string(format!("{directory}/where")).expect("written"),
         directory,
@@ -349,7 +418,15 @@ fn the_fake_touches_nothing() {
 
     let observed = observe(&graph, &providers, &state).expect("readable");
     let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
-    let applied = apply(&plan, &providers, &observed, &mut state, secrets()).expect("applies");
+    let applied = apply(
+        &plan,
+        &providers,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
 
     assert_eq!(applied.changed(), 1);
     assert!(
@@ -373,8 +450,15 @@ fn a_declaration_without_a_path_is_refused_rather_than_guessed_at() {
     let observed = observe(&graph, &providers, &state).expect("readable");
     let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
 
-    let refusal = apply(&plan, &providers, &observed, &mut state, secrets())
-        .expect_err("a file needs a path");
+    let refusal = apply(
+        &plan,
+        &providers,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect_err("a file needs a path");
     assert!(refusal.to_string().contains("needs a `path`"), "{refusal}");
 }
 
@@ -440,5 +524,58 @@ fn a_file_that_was_already_there_is_adopted_rather_than_remade() {
     assert!(
         plan.is_empty(),
         "nothing to do about a file that already matches: {plan:?}"
+    );
+}
+
+/// State is written as the run goes, not once when it finishes.
+///
+/// A run that stops half way has made real changes. Recording them only at the
+/// end means a machine that goes away, a contract violation panicking by design,
+/// or somebody's Ctrl-C leaves every resource already made with nothing saying
+/// it exists — not rolled back, forgotten.
+#[test]
+fn what_was_already_made_is_recorded_before_the_next_thing_is_touched() {
+    let scratch = Scratch::new("checkpoint");
+    let first = scratch.join("first");
+
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.first@localhost"))
+            .with("path", first.clone())
+            .with("content", "one\n"),
+        // The second one cannot be made: its parent is the first, which is a
+        // file, so the directory cannot be created under it.
+        Resource::new(address("os:file.second@localhost"))
+            .with("path", format!("{first}/under-a-file"))
+            .with("content", "two\n")
+            .after(address("os:file.first@localhost")),
+    ]);
+
+    let providers = providers();
+    let mut state = State::new();
+    let observed = observe(&graph, &providers, &state).expect("readable");
+    let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+
+    let mut seen = Vec::new();
+    let outcome = apply(
+        &plan,
+        &providers,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |state: &State| {
+            seen.push(state.len());
+            Ok(())
+        },
+    );
+
+    assert!(outcome.is_err(), "the second file cannot be written");
+    assert_eq!(
+        seen,
+        vec![1],
+        "the first resource was recorded before the second was attempted"
+    );
+    assert!(
+        state.get(&address("os:file.first@localhost")).is_some(),
+        "and it is still in state after the failure"
     );
 }

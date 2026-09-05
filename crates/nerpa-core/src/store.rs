@@ -81,10 +81,12 @@ pub enum StoreError {
         problem: String,
     },
     /// Another run holds the lock.
-    #[error("{path} is locked by another run; remove it if you are sure there is not one")]
+    #[error("{path} is held by {holder}; check that run before removing the file")]
     Locked {
         /// The lock file that is in the way.
         path: String,
+        /// What the file says about who took it.
+        holder: String,
     },
 }
 
@@ -137,10 +139,27 @@ impl Lock {
             .create_new(true)
             .open(&path)
         {
-            Ok(_) => Ok(Self { path }),
+            Ok(mut file) => {
+                // Who holds it, so the refusal can say. A lock file that names
+                // nobody leaves a person one option — delete it — which is the
+                // one thing the lock exists to stop them doing carelessly.
+                use std::io::Write as _;
+                let _ = write!(
+                    file,
+                    "pid {} since {}",
+                    std::process::id(),
+                    Written::now().seconds()
+                );
+                Ok(Self { path })
+            }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                let holder = fs::read_to_string(&path)
+                    .ok()
+                    .filter(|written| !written.trim().is_empty())
+                    .unwrap_or_else(|| "a run that did not say which".to_owned());
                 Err(StoreError::Locked {
                     path: path.display().to_string(),
+                    holder: holder.trim().to_owned(),
                 })
             }
             Err(error) => Err(StoreError::File {
@@ -303,9 +322,41 @@ pub fn save(path: &Path, state: &State, key: &Key) -> Result<(), StoreError> {
     temporary.push(".new");
     let temporary = PathBuf::from(temporary);
 
-    let write = fs::write(&temporary, text).and_then(|()| fs::rename(&temporary, path));
-    write.map_err(|error| StoreError::File {
+    durably(&temporary, path, text.as_bytes()).map_err(|error| StoreError::File {
         path: path.display().to_string(),
         problem: error.to_string(),
     })
+}
+
+/// Writes bytes and puts them under a name, so that both survive the machine
+/// stopping rather than only the process.
+///
+/// A write followed by a rename is atomic against a process that dies: a reader
+/// sees the old file or the new one. It is not atomic against a machine that
+/// loses power, because neither the bytes nor the new directory entry are on the
+/// disk yet — the file can come back empty, or under its temporary name, or not
+/// at all. Three calls make the difference, and this module's promise of "whole
+/// or not at all" was worth two of them less than it said.
+// ENFORCES: INV-STATE-004
+fn durably(temporary: &Path, path: &Path, bytes: &[u8]) -> Result<(), std::io::Error> {
+    use std::io::Write as _;
+
+    let mut file = fs::File::create(temporary)?;
+    file.write_all(bytes)?;
+    // The bytes.
+    file.sync_all()?;
+    drop(file);
+
+    fs::rename(temporary, path)?;
+    // And the name. A rename changes a directory, and a directory is a file
+    // that has to be written down like any other.
+    fs::File::open(directory_of(path))?.sync_all()
+}
+
+/// The directory a path sits in, which for a bare name is the current one.
+fn directory_of(path: &Path) -> &Path {
+    match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    }
 }

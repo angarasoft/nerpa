@@ -20,6 +20,15 @@ use nerpa_core::state::State;
 use nerpa_core::{Graph, Resource};
 use nerpa_provider_os::Os;
 
+/// A run that does not care where state goes, only what ends up in it.
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "the shape belongs to `apply`, not to this function"
+)]
+fn kept(_: &State) -> Result<(), String> {
+    Ok(())
+}
+
 /// The credential this whole file is about. Written once so that every search
 /// below is looking for the same bytes.
 const PASSWORD: &str = "correct-horse-battery-staple";
@@ -97,7 +106,10 @@ fn a_password_reaches_the_file_and_nothing_else() {
         "the machine-facing plan carries the password: {as_json}"
     );
 
-    apply(&intended, &providers, &observed, &mut state, secrets).expect("applies");
+    apply(
+        &intended, &providers, &observed, &mut state, secrets, &mut kept,
+    )
+    .expect("applies");
 
     // The provider did get the real value: this is a credentials file, and a
     // masked one would be useless.
@@ -141,7 +153,10 @@ fn a_secret_that_did_not_change_converges() {
 
     let observed = observe(&graph, &providers, &state).expect("readable");
     let first = plan(&graph, &observed, &state, &providers.schema(), secrets).expect("plannable");
-    apply(&first, &providers, &observed, &mut state, secrets).expect("applies");
+    apply(
+        &first, &providers, &observed, &mut state, secrets, &mut kept,
+    )
+    .expect("applies");
 
     let again = observe(&graph, &providers, &state).expect("readable");
     let second = plan(&graph, &again, &state, &providers.schema(), secrets).expect("plannable");
@@ -166,7 +181,10 @@ fn a_rotated_secret_is_reported_as_changed() {
     let secrets = Secrets::new(&DIGEST_KEY, &before);
     let observed = observe(&graph, &providers, &state).expect("readable");
     let first = plan(&graph, &observed, &state, &providers.schema(), secrets).expect("plannable");
-    apply(&first, &providers, &observed, &mut state, secrets).expect("applies");
+    apply(
+        &first, &providers, &observed, &mut state, secrets, &mut kept,
+    )
+    .expect("applies");
 
     let after = Remembered::new().holding("db/password", "something-else-entirely");
     let rotated = Secrets::new(&DIGEST_KEY, &after);

@@ -32,6 +32,7 @@ use nerpa_core::planner;
 use nerpa_core::provider::Providers;
 use nerpa_core::run;
 use nerpa_core::secret::{Remembered, Secrets};
+use nerpa_core::state::State;
 use nerpa_core::store::{self, Lock};
 use nerpa_provider_os::Os;
 
@@ -122,10 +123,24 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
         return Ok(());
     }
 
-    let applied = run::apply(&plan, &providers, &observed, &mut state, secrets);
+    // Written after every change rather than once at the end. A run that stops
+    // half way — a machine that goes away, a contract violation panicking by
+    // design, somebody's Ctrl-C — made real changes, and forgetting them would
+    // leave them unowned for ever.
+    let mut written = |state: &State| {
+        store::save(&arguments.state, state, &key).map_err(|error| error.to_string())
+    };
+    let applied = run::apply(
+        &plan,
+        &providers,
+        &observed,
+        &mut state,
+        secrets,
+        &mut written,
+    );
 
-    // Written whatever happened. A run that stopped half way made real changes,
-    // and forgetting them would leave them unowned for ever.
+    // And once more at the end, so that a run which changed nothing still leaves
+    // a state file where the next one expects it.
     store::save(&arguments.state, &state, &key).map_err(|error| error.to_string())?;
 
     let applied = applied.map_err(|error| error.to_string())?;

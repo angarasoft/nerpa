@@ -160,6 +160,7 @@ pub fn apply(
     known: &Observed,
     state: &mut State,
     secrets: Secrets<'_>,
+    record: &mut dyn FnMut(&State) -> Result<(), String>,
 ) -> Result<Applied, RunError> {
     let mut observed = known.clone();
     let mut changed = 0usize;
@@ -174,6 +175,7 @@ pub fn apply(
                     provider.delete(address, &record.locator())?;
                 }
                 state.forget(address);
+                record(state).map_err(RunError::Record)?;
                 changed += 1;
                 continue;
             }
@@ -194,6 +196,14 @@ pub fn apply(
                 Record::new(recording(&result, change, secrets), dependencies(change)),
             );
             observed.record(address.clone(), result);
+            // Written down before the next resource is touched. State used to be
+            // saved once, after this whole loop returned, so anything that
+            // stopped it — a contract violation panicking by design, a machine
+            // going away, somebody's Ctrl-C — left every resource this run had
+            // already made with nothing recording that it exists. They were not
+            // rolled back; they were forgotten.
+            // ENFORCES: INV-STATE-005
+            record(state).map_err(RunError::Record)?;
             changed += 1;
         }
     }
@@ -263,6 +273,13 @@ pub enum RunError {
     /// and nothing to do.
     #[error(transparent)]
     Graph(#[from] GraphError),
+    /// What had been done could not be written down.
+    ///
+    /// Stops the run. Carrying on would make more changes that nothing is
+    /// recording, and the gap between the world and the record is the one thing
+    /// this tool cannot recover by looking.
+    #[error("what had been done could not be recorded: {0}")]
+    Record(String),
 }
 
 /// Every attribute of a change, with what was unknown at plan time filled in.
