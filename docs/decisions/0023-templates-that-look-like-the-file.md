@@ -48,6 +48,42 @@ input is still unresolved is rendered during apply from what the earlier stage
 produced, and the plan says so — the same `Confidence` the rest of the model
 already uses.
 
+## Alternatives considered
+
+Measured rather than assumed, by running twenty idioms taken from the way Ansible
+templates are actually written against each candidate.
+
+**Tera 2.3** is the serious alternative and is better than its reputation from
+version 1: the built-in functions that used to reach the world — `get_env`,
+`now`, `get_random` — are gone, leaving only `range` and `throw`, and every
+default filter is pure. Hermeticity is not what separates it.
+
+Two things do. **Tera requires filter arguments to be keyword arguments**:
+`join(sep=' ')`, not `join(' ')`; `default(value='x')`, not `default('x')`. That
+single divergence rejects most real templates at parse time, and Tera 2 also
+removed `{% macro %}`. Of the twenty idioms it accepted twelve unmodified; the
+eight it refused were not exotic — `default`, `join`, `replace`, `map`,
+`selectattr`, `batch`, `macro`. minijinja accepted nineteen, and twenty with
+`minijinja-contrib`'s `pycompat`, which exists to answer exactly this by mapping
+Python method syntax such as `.items()` onto filters.
+
+The second is that Tera has **no bound on execution** — no fuel, no recursion
+limit, nothing in its public API. minijinja has `set_fuel`, `set_recursion_limit`
+and a built-in cap on `range()`, and a template arriving from a configuration
+repository is precisely where an unbounded loop should not be possible. It also
+offers `Environment::empty()`, which starts with no filters at all rather than
+with a set to be pruned, and a loader callback through which every `include` is
+resolved — an attempt at `../../etc/shadow` is refused by our own code.
+
+One knob must not be forgotten: Tera errors on an undefined variable by default
+and minijinja does not, so `UndefinedBehavior::Strict` is set explicitly. For a
+configuration file a missing value must fail, never render as empty.
+
+**Askama** compiles templates into the binary, so a template from somebody's
+configuration directory could not be rendered at all. **Handlebars** and
+**Liquid** are competent and use a different syntax, which forfeits the one
+property this decision is about.
+
 ## Consequences
 
 The plan can show what a file will contain, line by line, **before anything
