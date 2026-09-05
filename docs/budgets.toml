@@ -1,0 +1,42 @@
+# What a plan is allowed to cost.
+#
+# Planning touches no network and no disk: it is arithmetic over declarations,
+# so its cost is a property of the code rather than of the day. That makes it
+# something a gate can hold, and `cargo xtask budget` holds it.
+#
+# Two numbers, and the difference between them is the point.
+#
+#   baseline_seconds — what the code does today. Exceeding it is a regression
+#                      and is refused. Raising it needs a changelog entry saying
+#                      what was bought with it.
+#   budget_seconds   — what it ought to cost. The gap is printed on every run,
+#                      so it stays a number somebody is looking at rather than
+#                      an intention.
+#
+# The gap below is not an estimate. Planning walks the graph once and asks
+# `Graph::dependencies_of` for every resource, and that call rebuilds every edge
+# in the graph — so the work grows with the square of the number of resources.
+# Measured on the author's machine, release build, one run per point:
+#
+#     200 resources   0.01 s
+#    2000 resources   0.29 s
+#    4000 resources   1.26 s
+#    8000 resources   6.37 s
+#
+# Four times the resources, twenty-one times the work. A hundred machines
+# carrying eighty resources each is 8000, and reaching a fleet is what stage 1
+# exists to do.
+#
+# The budget is what the same shape costs once the edges are built once and
+# handed down. Closing the gap means lowering both numbers in the commit that
+# earns it.
+#
+# The baseline carries headroom over the measurement above, because this runs on
+# whatever machine is free rather than on a bench. Headroom is not slack to
+# spend: a measurement that has crept up to meet it is a regression that has not
+# been noticed yet.
+
+[plan]
+resources = 4000
+budget_seconds = 0.5
+baseline_seconds = 2.5

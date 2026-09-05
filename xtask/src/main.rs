@@ -18,6 +18,10 @@
 //!   cargo xtask deny        dependency licences and advisories
 //!
 //!   cargo xtask mutants     mutation testing — minutes, so not on the commit path
+//!   cargo xtask budget      what a plan costs — a release build, so likewise
+//!
+//!   cargo xtask hooks       install the git hooks, once per clone
+//!   cargo xtask commit-msg  the shape of a commit subject (the hook calls this)
 //! ```
 //!
 //! Everything this project uses is reached through here, including tools that
@@ -37,6 +41,8 @@
 
 use std::process::ExitCode;
 
+mod budget;
+mod commit;
 mod docs;
 mod invariants;
 mod lint;
@@ -54,6 +60,9 @@ tasks:
   docs        decision records, then rustdoc with warnings denied
   deny        dependency licences and advisories
   mutants     mutation testing (minutes; not part of ci)
+  budget      what a plan costs, against docs/budgets.toml (not part of ci)
+  commit-msg  the shape of a commit subject; takes a file, or judges HEAD
+  hooks       point git at .githooks, so commit-msg runs where it is written
 ";
 
 fn main() -> ExitCode {
@@ -66,6 +75,9 @@ fn main() -> ExitCode {
         Some("invariants") => invariants::check(),
         Some("docs") => docs::check(),
         Some("deny") => deny(),
+        Some("budget") => budget::check(),
+        Some("commit-msg") => commit::check(std::env::args().nth(2).as_deref()),
+        Some("hooks") => hooks(),
         Some("mutants") => mutants(),
         Some(unknown) => Err(format!("unknown task {unknown:?}\n\n{USAGE}")),
         None => Err(USAGE.to_owned()),
@@ -87,6 +99,17 @@ fn ci() -> Result<(), String> {
     invariants::check()?;
     docs::check()?;
     deny()
+}
+
+/// Points git at the hooks kept in this repository.
+///
+/// Hooks are not cloned, so every working copy starts without them. One command
+/// rather than a line in a document somebody reads once: a convention that has
+/// to be installed by hand is a convention half the clones do not have.
+fn hooks() -> Result<(), String> {
+    shell::git(&["config", "core.hooksPath", ".githooks"])?;
+    eprintln!("  hooks: git will now run .githooks for this clone");
+    Ok(())
 }
 
 fn deny() -> Result<(), String> {

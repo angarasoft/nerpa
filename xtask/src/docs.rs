@@ -5,10 +5,13 @@
 //! is sound and every supersession points both ways — otherwise the trail that
 //! explains a reversal breaks, and the reversal looks like an accident.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 
 use crate::shell;
+
+/// One Markdown page: a repository-relative path, and its text.
+type Page = (String, String);
 
 const REQUIRED_SECTIONS: [&str; 3] = ["## Context", "## Decision", "## Consequences"];
 
@@ -121,18 +124,184 @@ fn audit(records: &[Record]) -> Vec<String> {
     complaints
 }
 
-/// Verifies the decision records, then that the API documentation builds clean.
+/// The three words a section of the architecture may use about itself.
+///
+/// Ordered longest-first nowhere on purpose: none is a prefix of another after
+/// the separator, so a plain `contains` cannot confuse them.
+const BUILD_MARKERS: [&str; 3] = ["· built", "· partly built", "· planned"];
+
+/// Every section of the architecture says whether it exists yet.
+///
+/// The document is written in the present tense throughout, because that is how
+/// a contract reads. Without a marker there is nothing on the page telling a
+/// reader that a section describes something nobody has built, and the file
+/// becomes indistinguishable from a description of a working program.
+fn architecture(text: &str) -> Vec<String> {
+    let mut complaints = Vec::new();
+    let mut sections = 0usize;
+
+    for (index, line) in text.lines().enumerate() {
+        let Some(heading) = line.strip_prefix("## ") else {
+            continue;
+        };
+        sections += 1;
+        if !BUILD_MARKERS.iter().any(|marker| line.contains(marker)) {
+            complaints.push(format!(
+                "docs/ARCHITECTURE.md:{}: {heading:?} does not end in `· built`, \
+                 `· partly built` or `· planned`",
+                index + 1
+            ));
+        }
+    }
+
+    if sections == 0 {
+        complaints.push("docs/ARCHITECTURE.md: no sections to judge".to_owned());
+    }
+    complaints
+}
+
+/// Where a link in `page` points, as a repository-relative path.
+///
+/// `None` for anything that does not name a file in this repository: an external
+/// address, or a bare fragment pointing within the page itself.
+fn resolve(page: &str, target: &str) -> Option<String> {
+    let target = target.split('#').next().unwrap_or_default();
+    if target.is_empty()
+        || target.starts_with("http://")
+        || target.starts_with("https://")
+        || target.starts_with("mailto:")
+    {
+        return None;
+    }
+
+    let mut parts: Vec<&str> = page.split('/').collect();
+    parts.pop();
+    for step in target.split('/') {
+        match step {
+            "." | "" => {}
+            ".." => {
+                parts.pop()?;
+            }
+            name => parts.push(name),
+        }
+    }
+    Some(parts.join("/"))
+}
+
+/// Every link between written documents points at something that is there.
+///
+/// The failure this exists to prevent is specific rather than theoretical: a
+/// route that goes on looking plausible after the file it names has moved, so a
+/// reader follows it and believes whatever they land on. A broken link is
+/// noticed; a link into the wrong place is not.
+fn routes(pages: &[Page], present: &BTreeSet<String>) -> Vec<String> {
+    let mut complaints = Vec::new();
+
+    for (page, text) in pages {
+        for (number, line) in text.lines().enumerate() {
+            let mut rest = line;
+            while let Some((_, tail)) = rest.split_once("](") {
+                let Some((target, after)) = tail.split_once(')') else {
+                    break;
+                };
+                rest = after;
+
+                let Some(path) = resolve(page, target) else {
+                    continue;
+                };
+                if !present.contains(&path) {
+                    complaints.push(format!(
+                        "{page}:{}: links to {target:?}, which is not there",
+                        number + 1
+                    ));
+                }
+            }
+        }
+    }
+
+    complaints
+}
+
+/// What the written documentation is made of, as far as a link is concerned.
+#[derive(Debug)]
+struct Written {
+    /// Every Markdown page, as a repository-relative path and its text.
+    pages: Vec<Page>,
+    /// Every path in the repository, which is what a link may point at.
+    present: BTreeSet<String>,
+}
+
+fn written() -> Result<Written, String> {
+    let root = shell::root();
+    let mut pages = Vec::new();
+    let mut present = BTreeSet::new();
+    let mut pending = vec![root.clone()];
+
+    while let Some(directory) = pending.pop() {
+        let entries = fs::read_dir(&directory)
+            .map_err(|error| format!("{}: {error}", directory.display()))?;
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(relative) = path.strip_prefix(&root) else {
+                continue;
+            };
+            let shown = relative.to_string_lossy().replace('\\', "/");
+            // Build output and version control are not documentation, and
+            // walking them is seconds rather than milliseconds.
+            if matches!(
+                shown.as_str(),
+                "target" | ".git" | "mutants.out" | ".cargo" | "node_modules"
+            ) {
+                continue;
+            }
+
+            present.insert(shown.clone());
+            if path.is_dir() {
+                pending.push(path);
+            } else if path
+                .extension()
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
+                && let Ok(text) = fs::read_to_string(&path)
+            {
+                pages.push((shown, text));
+            }
+        }
+    }
+
+    Ok(Written { pages, present })
+}
+
+/// Verifies the decision records and the written documentation, then that the
+/// API documentation builds clean.
 pub(crate) fn check() -> Result<(), String> {
     let records = read_records()?;
     let complaints = audit(&records);
     if !complaints.is_empty() {
         return Err(complaints.join("\n"));
     }
-
     eprintln!(
         "  decisions: {} records, numbering and supersessions sound",
         records.len()
     );
+
+    let architecture_path = shell::root().join("docs/ARCHITECTURE.md");
+    let text = fs::read_to_string(&architecture_path)
+        .map_err(|error| format!("{}: {error}", architecture_path.display()))?;
+    let complaints = architecture(&text);
+    if !complaints.is_empty() {
+        return Err(complaints.join("\n"));
+    }
+
+    let Written { pages, present } = written()?;
+    let complaints = routes(&pages, &present);
+    if !complaints.is_empty() {
+        return Err(complaints.join("\n"));
+    }
+    eprintln!(
+        "  written: {} pages, every section placed and every route resolving",
+        pages.len()
+    );
+
     shell::cargo_with_doc_warnings_denied(&["doc", "--no-deps", "--all-features"])
 }
 
@@ -171,7 +340,8 @@ fn check_supersession(record: &Record, successor: &str, records: &[Record]) -> V
     reason = "tests may be blunt: an unwrap is an expectation and an index is a claim about shape"
 )]
 mod tests {
-    use super::{Record, audit};
+    use super::{Record, architecture, audit, resolve, routes};
+    use std::collections::BTreeSet;
 
     fn record(number: u16, status: &str, extra: &str) -> Record {
         Record {
@@ -275,5 +445,106 @@ mod tests {
                 .any(|line| line.contains("unknown status")),
             "{complaints:?}"
         );
+    }
+
+    // Every rule above is shown a fixture that breaks it. A check nobody has
+    // watched go red is a check nobody has any grounds to trust.
+
+    #[test]
+    fn a_section_that_does_not_say_whether_it_is_built_is_reported() {
+        let complaints = architecture("# Architecture\n\n## Secrets — [0027](x.md)\n\nProse.\n");
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(complaints[0].contains("does not end in"), "{complaints:?}");
+    }
+
+    #[test]
+    fn each_of_the_three_words_is_accepted() {
+        for marker in ["built", "partly built", "planned"] {
+            let text = format!("## A section — [0001](x.md) · {marker}\n");
+            assert_eq!(architecture(&text), Vec::<String>::new(), "{marker}");
+        }
+    }
+
+    #[test]
+    fn partly_built_is_not_read_as_built() {
+        // The two markers share a word, and a careless `contains` would let a
+        // section claiming half of itself pass as a section claiming all of it.
+        let complaints = architecture("## A section — [0001](x.md) · partly\n");
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+    }
+
+    #[test]
+    fn an_architecture_with_no_sections_is_itself_a_complaint() {
+        assert_eq!(architecture("# Architecture\n\nProse only.\n").len(), 1);
+    }
+
+    #[test]
+    fn a_link_is_resolved_against_the_page_that_holds_it() {
+        assert_eq!(
+            resolve("docs/MAP.md", "decisions/0005-a.md").as_deref(),
+            Some("docs/decisions/0005-a.md")
+        );
+        assert_eq!(
+            resolve("docs/decisions/0005-a.md", "../ARCHITECTURE.md").as_deref(),
+            Some("docs/ARCHITECTURE.md")
+        );
+        assert_eq!(
+            resolve("README.md", "ROADMAP.md").as_deref(),
+            Some("ROADMAP.md")
+        );
+    }
+
+    #[test]
+    fn an_anchor_names_the_page_it_sits_on() {
+        assert_eq!(
+            resolve("docs/MAP.md", "ARCHITECTURE.md#addresses").as_deref(),
+            Some("docs/ARCHITECTURE.md")
+        );
+    }
+
+    #[test]
+    fn what_is_not_a_file_in_this_repository_is_left_alone() {
+        assert_eq!(resolve("docs/MAP.md", "https://example.invalid/a"), None);
+        assert_eq!(resolve("docs/MAP.md", "#a-heading-here"), None);
+        assert_eq!(
+            resolve("docs/MAP.md", "mailto:someone@example.invalid"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_route_to_something_that_moved_is_reported_with_its_line() {
+        let pages = vec![(
+            "docs/MAP.md".to_owned(),
+            "One line.\nSee [the plan](decisions/0099-gone.md).\n".to_owned(),
+        )];
+        let present = BTreeSet::from(["docs/MAP.md".to_owned()]);
+
+        let complaints = routes(&pages, &present);
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(complaints[0].contains("docs/MAP.md:2"), "{complaints:?}");
+    }
+
+    #[test]
+    fn several_routes_on_one_line_are_each_checked() {
+        let pages = vec![(
+            "docs/MAP.md".to_owned(),
+            "[a](a.md) and [b](b.md) and [c](c.md)\n".to_owned(),
+        )];
+        let present = BTreeSet::from(["docs/b.md".to_owned()]);
+
+        let complaints = routes(&pages, &present);
+        assert_eq!(complaints.len(), 2, "{complaints:?}");
+    }
+
+    #[test]
+    fn a_route_that_resolves_is_quiet() {
+        let pages = vec![(
+            "docs/MAP.md".to_owned(),
+            "See [the record](decisions/0005-a.md).\n".to_owned(),
+        )];
+        let present = BTreeSet::from(["docs/decisions/0005-a.md".to_owned()]);
+
+        assert_eq!(routes(&pages, &present), Vec::<String>::new());
     }
 }

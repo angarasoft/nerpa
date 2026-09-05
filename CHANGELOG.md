@@ -115,7 +115,45 @@ without ceremony until the first stage is complete.
   reference no longer proposes to destroy the fleet, and the difference is
   reported on every plan rather than ignored.
 
+- Project management, sized to this repository rather than to the one it is
+  borrowed from ([0030](docs/decisions/0030-claim-less-and-attack-what-is-claimed.md)):
+  `docs/MAP.md` says which kind of knowledge lives where and what has to move
+  with what, `RULES.md` holds the eight prohibitions a later commit cannot
+  repair, `docs/WATCHLIST.md` takes an observation for the price of a row, and
+  `docs/OPEN_QUESTIONS.md` takes a question with the stage by which it is due.
+
+- `cargo xtask budget`: what a plan costs, measured against `docs/budgets.toml`.
+  A baseline refuses a regression against what the code already did; a budget
+  reports the distance to what it ought to cost. Nightly, beside `mutants`, for
+  the same reason.
+
+- `cargo xtask docs` now also checks that every section of `ARCHITECTURE.md` says
+  whether it is built, and that every link between written pages resolves. The
+  second found five records linking to their neighbours from the repository root,
+  which meant none of those links opened.
+
+- A commit subject has a shape, and `.githooks/commit-msg` knows it — installed
+  by `cargo xtask hooks`, checked by `cargo xtask commit-msg`, written down in
+  `docs/COMMITS.md`. Twenty-five commits in, the history already spelled one type
+  two ways: `[DOC]` twice and `[docs]` three times, for the same act.
+
 ### Changed
+
+- The invariant registry says what is proven rather than what is hoped. Every
+  built entry records the `bypass` it could suffer; `enforced` now requires
+  `adversarial` tests that carry that bypass out, and `claimed` is the honest
+  status for a guarantee nobody has attacked. Four entries moved to `claimed`,
+  each with a reproduction: `INV-PLAN-001` and `INV-SECRET-004` (a handle or a
+  secret laundered through a list or a dict reaches a comparison the syntax pass
+  does not match — both since closed by tests named after those routes),
+  `INV-PLAN-003` (an attribute the provider does not report back never settles,
+  so no run is ever empty) and `INV-STATE-004` (the state rename is atomic
+  against a stopped process, not a stopped machine). No code got worse; the count
+  of demonstrated guarantees fell because it was being counted wrongly.
+
+- `docs/ARCHITECTURE.md` marks each section `built`, `partly built` or `planned`.
+  Eight of nineteen describe things nobody has built, which the present tense
+  they are written in did not say.
 
 - Renamed from `sarma` to `nerpa`, and the Gentoo package manager that held the
   name to `barguzin`. Speed was never the thing being sold; reach across domains

@@ -1,5 +1,8 @@
 # Contributing
 
+Read [RULES.md](RULES.md) first. It is eight prohibitions and one page, and each
+of them breaks something a later commit cannot repair.
+
 ## Before anything else
 
 The repository is private while the early stages are in progress. Once it opens,
@@ -10,6 +13,18 @@ tried on something real — the gate passing is necessary and not sufficient.
 
 ## Building and checking
 
+Once per clone, before anything else:
+
+```console
+$ cargo xtask hooks
+```
+
+Git does not clone hooks, so until that runs, nothing is checking the commits
+this working copy writes. What the hook checks and why:
+[docs/COMMITS.md](docs/COMMITS.md).
+
+Then, for the code:
+
 ```console
 $ cargo xtask ci
 ```
@@ -19,12 +34,19 @@ configurations, this repository's own rules, and the invariant registry. CI runs
 the same command and nothing else, so what passes locally passes there.
 
 Individual steps are available as `cargo xtask fmt`, `lint`, `test`,
-`invariants` and `docs` when a full run is more than you need.
+`invariants` and `docs` when a full run is more than you need. `cargo xtask
+mutants` and `cargo xtask budget` are not part of the gate: both want a release
+build and an otherwise idle machine, so they run nightly.
 
-What each rule is and why it exists:
-[docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md). Which documentation a change
-has to bring with it: [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md). Why anything
-is the way it is: [docs/decisions/](docs/decisions/).
+Where anything goes: [docs/MAP.md](docs/MAP.md). What each rule is and why it
+exists: [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md). Which documentation
+a change has to bring with it: [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md).
+Why anything is the way it is: [docs/decisions/](docs/decisions/).
+
+Something noticed that is not yet a decision goes in
+[docs/WATCHLIST.md](docs/WATCHLIST.md); a question nobody has to answer yet goes
+in [docs/OPEN_QUESTIONS.md](docs/OPEN_QUESTIONS.md). Both are cheaper than a
+decision record on purpose.
 
 ## Two layers of correctness
 

@@ -53,6 +53,9 @@ mutants:
     - test -x .cargo/bin/cargo-binstall || curl -fsSL https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
     - test -x .cargo/bin/cargo-mutants || cargo binstall --no-confirm --locked cargo-mutants
   script:
+    # Both want a release build and an otherwise idle machine, so they share the
+    # runner rather than the commit path.
+    - cargo xtask budget
     - cargo xtask mutants
   artifacts:
     when: always

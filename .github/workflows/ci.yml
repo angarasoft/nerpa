@@ -43,6 +43,11 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-mutants
 
+      # Cheap next to mutation testing, and it needs the same thing: a release
+      # build and a machine that is not also doing something else.
+      - name: Plan budget
+        run: cargo xtask budget
+
       - name: Mutation testing
         run: cargo xtask mutants
 

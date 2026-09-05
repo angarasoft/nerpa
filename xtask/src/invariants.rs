@@ -65,6 +65,29 @@ fn list_field(entry: &toml::Table, name: &str, id: &str) -> Result<Vec<String>, 
         .collect()
 }
 
+/// What an entry writes as its `bypass` when the types make a violation
+/// impossible to express, so no test could carry one out.
+const UNREPRESENTABLE: &str = "unrepresentable";
+
+/// A list that an entry is allowed not to have, read as empty when it does not.
+///
+/// Separate from [`list_field`] on purpose: a missing `tests` is a malformed
+/// registry and stops the audit, while a missing `adversarial` is exactly the
+/// thing being reported, and reporting it needs the audit to keep going.
+fn optional_list(entry: &toml::Table, name: &str) -> Vec<String> {
+    entry
+        .get(name)
+        .and_then(Value::as_array)
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn well_formed(id: &str) -> bool {
     let mut parts = id.split('-');
     let (Some(prefix), Some(area), Some(number), None) =
@@ -108,13 +131,32 @@ fn audit(registry: &str, sources: &[Source]) -> Result<Vec<String>, String> {
         }
 
         let status = text_field(entry, "status")?;
-        if !matches!(status.as_str(), "enforced" | "planned") {
+        if !matches!(status.as_str(), "enforced" | "claimed" | "planned") {
             complaints.push(format!("{id} has unknown status {status:?}"));
             continue;
         }
-        if status != "enforced" {
+        if status == "planned" {
             continue;
         }
+
+        // Anything that claims to be built has to say how it could fail. A
+        // guarantee nobody can describe a way around has not been examined, and
+        // the registry would then be recording a hope.
+        let bypass = match text_field(entry, "bypass") {
+            // The one permitted short answer, and it is a word rather than a
+            // sentence because it says there is nothing to describe.
+            Ok(prose) if prose == UNREPRESENTABLE || prose.len() > 30 => prose,
+            Ok(_) => {
+                complaints.push(format!("{id} has a bypass too short to describe one"));
+                continue;
+            }
+            Err(_) => {
+                complaints.push(format!(
+                    "{id} is {status} but does not say how it could be bypassed"
+                ));
+                continue;
+            }
+        };
 
         let files = list_field(entry, "enforced_by", &id)?;
         let tests = list_field(entry, "tests", &id)?;
@@ -139,6 +181,28 @@ fn audit(registry: &str, sources: &[Source]) -> Result<Vec<String>, String> {
             let signature = format!("fn {test}(");
             if !sources.iter().any(|(_, text)| text.contains(&signature)) {
                 complaints.push(format!("{id} names test {test}, which no longer exists"));
+            }
+        }
+
+        // The whole difference between the two built statuses, and the reason
+        // the third exists at all. `enforced` is a claim that somebody carried
+        // out the attempt above and watched it be turned away; without the test
+        // it is a claim about the code's intentions.
+        if status == "enforced" && bypass != UNREPRESENTABLE {
+            let adversarial = optional_list(entry, "adversarial");
+            if adversarial.is_empty() {
+                complaints.push(format!(
+                    "{id} is enforced but names no adversarial test for the bypass it \
+                     describes; write one, or mark it claimed"
+                ));
+            }
+            for test in adversarial {
+                let signature = format!("fn {test}(");
+                if !sources.iter().any(|(_, text)| text.contains(&signature)) {
+                    complaints.push(format!(
+                        "{id} names adversarial test {test}, which no longer exists"
+                    ));
+                }
             }
         }
     }
@@ -186,13 +250,21 @@ pub(crate) fn check() -> Result<(), String> {
     }
 
     let entries = parse(&registry)?;
-    let enforced = entries
-        .iter()
-        .filter(|entry| entry.get("status").and_then(Value::as_str) == Some("enforced"))
-        .count();
+    let count = |wanted: &str| {
+        entries
+            .iter()
+            .filter(|entry| entry.get("status").and_then(Value::as_str) == Some(wanted))
+            .count()
+    };
+    // Claimed is printed beside enforced rather than folded into it. The number
+    // that matters is how many guarantees are believed but undemonstrated, and a
+    // total hides exactly that.
     eprintln!(
-        "  invariants: {} registered, {enforced} enforced and anchored",
-        entries.len()
+        "  invariants: {} registered, {} enforced, {} claimed, {} planned",
+        entries.len(),
+        count("enforced"),
+        count("claimed"),
+        count("planned"),
     );
     Ok(())
 }
@@ -214,8 +286,10 @@ id = "INV-TEST-001"
 status = "enforced"
 statement = "A statement long enough to count as one."
 rationale = "A rationale that is also long enough to count as one."
+bypass = "A description of the way around it, long enough to be a real one."
 enforced_by = ["crates/thing/src/lib.rs"]
 tests = ["the_thing_holds"]
+adversarial = ["the_way_around_it_is_refused"]
 "#;
 
     fn sources() -> Vec<Source> {
@@ -226,7 +300,7 @@ tests = ["the_thing_holds"]
             ),
             (
                 "crates/thing/tests/thing.rs".to_owned(),
-                "fn the_thing_holds() {}\n".to_owned(),
+                "fn the_thing_holds() {}\nfn the_way_around_it_is_refused() {}\n".to_owned(),
             ),
         ]
     }
@@ -234,6 +308,69 @@ tests = ["the_thing_holds"]
     #[test]
     fn a_registry_that_agrees_with_the_code_is_quiet() {
         assert_eq!(audit(SOUND, &sources()).unwrap(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn an_invariant_that_does_not_say_how_it_could_fail_is_reported() {
+        let registry = SOUND
+            .lines()
+            .filter(|line| !line.starts_with("bypass = "))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let complaints = audit(&registry, &sources()).unwrap();
+        assert!(
+            complaints.iter().any(|line| line.contains("bypassed")),
+            "{complaints:?}"
+        );
+    }
+
+    #[test]
+    fn an_enforced_invariant_with_no_attempt_at_its_own_bypass_is_reported() {
+        let registry = SOUND.replace(r#"adversarial = ["the_way_around_it_is_refused"]"#, "");
+
+        let complaints = audit(&registry, &sources()).unwrap();
+        assert!(
+            complaints
+                .iter()
+                .any(|line| line.contains("no adversarial test")),
+            "{complaints:?}"
+        );
+    }
+
+    #[test]
+    fn the_same_entry_marked_claimed_is_accepted_without_one() {
+        let registry = SOUND
+            .replace(r#"status = "enforced""#, r#"status = "claimed""#)
+            .replace(r#"adversarial = ["the_way_around_it_is_refused"]"#, "");
+
+        assert_eq!(audit(&registry, &sources()).unwrap(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_guarantee_the_types_make_impossible_needs_no_attempt() {
+        let registry = SOUND
+            .replace(
+                r#"bypass = "A description of the way around it, long enough to be a real one.""#,
+                r#"bypass = "unrepresentable""#,
+            )
+            .replace(r#"adversarial = ["the_way_around_it_is_refused"]"#, "");
+
+        assert_eq!(audit(&registry, &sources()).unwrap(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_renamed_adversarial_test_is_reported() {
+        let mut sources = sources();
+        sources[1].1 = "fn the_thing_holds() {}\n".to_owned();
+
+        let complaints = audit(SOUND, &sources).unwrap();
+        assert!(
+            complaints
+                .iter()
+                .any(|line| line.contains("adversarial test the_way_around_it_is_refused")),
+            "{complaints:?}"
+        );
     }
 
     #[test]
@@ -249,7 +386,8 @@ tests = ["the_thing_holds"]
     #[test]
     fn a_renamed_test_is_reported() {
         let mut sources = sources();
-        sources[1].1 = "fn the_thing_still_holds() {}\n".to_owned();
+        sources[1].1 =
+            "fn the_thing_still_holds() {}\nfn the_way_around_it_is_refused() {}\n".to_owned();
 
         let complaints = audit(SOUND, &sources).unwrap();
         assert_eq!(complaints.len(), 1, "{complaints:?}");

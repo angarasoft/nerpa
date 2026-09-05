@@ -12,7 +12,7 @@ precedence levels, resolved silently, so that answering "where did this value co
 from" means consulting a table in the documentation.
 
 There is also a question the inventory raises for this design specifically.
-[0006](docs/decisions/0006-static-plan-staged-execution.md) says composition is
+[0006](0006-static-plan-staged-execution.md) says composition is
 known before anything runs, and iteration over a deferred handle is refused. But
 `for node in group("web")` is iteration, and building the graph for a fleet is
 exactly that.
@@ -24,7 +24,7 @@ may be iterated freely. Handles may not. The line between them is not arbitrary:
 the inventory says which machines exist, which is decided by a person or by the
 cloud stage, while a fact says what a machine turned out to be, which is
 discovered by looking at it. The first can be known before planning. The second
-cannot, and [0029](docs/decisions/0029-a-fact-is-a-value-not-a-branch.md) covers
+cannot, and [0029](0029-a-fact-is-a-value-not-a-branch.md) covers
 it.
 
 Groups carry values. Two groups giving a node the same key **is an error naming

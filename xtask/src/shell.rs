@@ -12,6 +12,27 @@ pub(crate) fn root() -> PathBuf {
         .to_path_buf()
 }
 
+/// Runs git and hands back what it printed.
+///
+/// Separate from [`cargo`] because the output is the answer here rather than a
+/// side effect: a hook needs the message, not an exit code.
+pub(crate) fn git(args: &[&str]) -> Result<String, String> {
+    let output = Command::new("git")
+        .current_dir(root())
+        .args(args)
+        .output()
+        .map_err(|error| format!("could not run git {}: {error}", args.join(" ")))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "git {} failed: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
 pub(crate) fn cargo(args: &[&str]) -> Result<(), String> {
     run(args, Denied::None)
 }

@@ -4,7 +4,21 @@ The shape of the thing as it stands. Every section names the decision record tha
 settled it — this document says **what is**, the records say **why, and when**.
 When they disagree, the records are right and this file is stale.
 
-## Configuration is a Starlark program — [0005](decisions/0005-starlark-not-hcl.md)
+Every heading also carries one of three words, and they are the most important
+thing on the page:
+
+* **built** — the code is there, and the sections below describe it.
+* **partly built** — some of what follows exists and some does not. The section
+  says which.
+* **planned** — settled by its record, written here in the present tense because
+  that is how a contract reads, and **not implemented**. Nothing below such a
+  heading is a description of this program.
+
+The markers exist because a document written entirely in the present tense cannot
+be told apart from a working system, and this one describes rather more than has
+been built. `cargo xtask docs` fails if a heading loses its marker.
+
+## Configuration is a Starlark program — [0005](decisions/0005-starlark-not-hcl.md) · built
 
 Evaluated with no I/O, no clock and no network, so the same source always yields
 the same graph. Unresolved values are opaque handles: they can be passed around
@@ -19,7 +33,7 @@ An unresolved value is refused three different ways, because the language allows
 only some of them to be precise — see
 [0018](decisions/0018-what-starlark-will-not-refuse.md).
 
-## Execution domains — [0001](decisions/0001-one-graph-two-execution-domains.md)
+## Execution domains — [0001](decisions/0001-one-graph-two-execution-domains.md) · built
 
 | Domain | Read and changed | Examples |
 | --- | --- | --- |
@@ -29,7 +43,7 @@ only some of them to be precise — see
 The distinction that lets a VM and the packages on it sit in one graph, and the
 one neither Terraform nor Ansible expresses.
 
-## Addresses — [0002](decisions/0002-addresses-carry-a-slot-and-no-index.md)
+## Addresses — [0002](decisions/0002-addresses-carry-a-slot-and-no-index.md) · built
 
 ```text
 provider ":" kind "." name [ ":" slot ] [ "@" target ]
@@ -39,7 +53,7 @@ No index anywhere. Two instances of one declaration are told apart by a slot.
 Frozen the moment a state file exists outside this machine, which is why it was
 built first.
 
-## The inventory — [0025](decisions/0025-the-inventory-is-known-facts-are-not.md)
+## The inventory — [0025](decisions/0025-the-inventory-is-known-facts-are-not.md) · partly built
 
 The inventory is data, settled before the configuration is evaluated, and it may
 be iterated: `for node in group("web")` builds a graph for a fleet without
@@ -53,7 +67,7 @@ dynamic inventory is a `control` read, materialised into the plan and covered by
 its hash, so a plan is reproducible against a recorded fleet rather than against
 whatever the cloud says next.
 
-## Renaming — [0028](decisions/0028-a-rename-is-a-migration-that-can-be-deleted.md)
+## Renaming — [0028](decisions/0028-a-rename-is-a-migration-that-can-be-deleted.md) · planned
 
 Because the address is the identity, a rename needs a declaration:
 `moved(from, to)`, identified by its endpoints. State records the migrations it
@@ -62,7 +76,7 @@ migration is spent and its declaration can be deleted, instead of accumulating
 `moved` blocks forever. A rename changes nothing else: the plan for that resource
 is empty afterwards, and a real difference appears as an ordinary update.
 
-## A single planning pass — [0006](decisions/0006-static-plan-staged-execution.md)
+## A single planning pass — [0006](decisions/0006-static-plan-staged-execution.md) · built
 
 Planning happens once, over the whole graph. Stages exist but belong to
 execution. This works because the set of resources is always known after
@@ -82,7 +96,7 @@ the configuration that described the dependency is exactly what was deleted. And
 a resource is looked for where state left it, not where the declaration now
 points — otherwise moving one reads as making a second and abandoning the first.
 
-## Facts as values — [0029](decisions/0029-a-fact-is-a-value-not-a-branch.md)
+## Facts as values — [0029](decisions/0029-a-fact-is-a-value-not-a-branch.md) · planned
 
 A fact may decide what an attribute says and never whether a resource exists.
 `node.fact(...)` is an unresolved value in that node's `target` domain, refused
@@ -92,7 +106,7 @@ the value open — within a set the plan can print, which says more than "known
 after apply" does. A fact arriving outside the mapping fails at apply, naming the
 fact, the value and the line.
 
-## A machine that will not answer — [0020](decisions/0020-a-machine-that-cannot-be-reached.md)
+## A machine that will not answer — [0020](decisions/0020-a-machine-that-cannot-be-reached.md) · built
 
 The unit of refusal is the resource, not the run. Everything readable is planned;
 what could not be read appears saying so, carrying the machine and the age of the
@@ -107,7 +121,7 @@ A plan containing one of these cannot be signed: it holds an age, an age moves
 every second, and a hash over it never settles. That is the intended answer —
 nobody can approve a change to infrastructure they could not look at.
 
-## Observed state — [0011](decisions/0011-observed-state-in-three-tiers.md)
+## Observed state — [0011](decisions/0011-observed-state-in-three-tiers.md) · partly built
 
 The interface is a batch: the engine groups by machine before asking, and a
 provider is handed everything on one node at once. That shape is what makes the
@@ -119,7 +133,7 @@ whole, batch introspection that returns every host resource in one round trip,
 and optional pushed reports that let planning happen without touching the node.
 Load-bearing rather than an optimisation, because the plan is single-pass.
 
-## The executor and transports — [0010](decisions/0010-static-executor-pluggable-transport.md)
+## The executor and transports — [0010](decisions/0010-static-executor-pluggable-transport.md) · partly built
 
 A static Rust binary on the target, speaking framed CBOR over stdin and stdout —
 four bytes of length, then the body. Every frame carries the protocol version it
@@ -131,7 +145,7 @@ The transport carries bytes and knows nothing about them: `teleport`, `ssh`,
 `local`, `container`. The executor holds no secrets and no state beyond its
 fingerprint, and is signed and verified in both directions.
 
-## Configuration files — [0023](decisions/0023-templates-that-look-like-the-file.md)
+## Configuration files — [0023](decisions/0023-templates-that-look-like-the-file.md) · planned
 
 Files come from Jinja templates rendered by `minijinja`, because a template that
 looks like the file it produces is the reason anyone can read a configuration.
@@ -145,7 +159,7 @@ Rendering happens at plan time wherever the inputs are settled, so the plan show
 what a file will contain before anything happens — earlier than Ansible's
 `--diff`, which reports during the run.
 
-## Reacting to change — [0026](decisions/0026-a-reaction-is-an-edge-and-can-be-owed.md)
+## Reacting to change — [0026](decisions/0026-a-reaction-is-an-edge-and-can-be-owed.md) · planned
 
 `service("nginx", restart_on = [conf])` is an edge, not a notification. A typo is
 an evaluation error rather than silence, two files notifying one restart coalesce
@@ -157,7 +171,7 @@ and appears as pending in the next plan. The state Ansible reaches when a play
 fails between the write and its handlers — new file, old process, no record — is
 not reachable here.
 
-## Providers — [0004](decisions/0004-providers-in-tree-and-wasm.md)
+## Providers — [0004](decisions/0004-providers-in-tree-and-wasm.md) · partly built
 
 | Tier | What it is | Isolation |
 | --- | --- | --- |
@@ -169,7 +183,7 @@ A WASM provider receives credentials as a handle rather than a value and can
 reach only the hosts its manifest declares. Provider schemas are harvested from
 Terraform as data at build time; the binaries they came from are never shipped.
 
-## Zero trust — [0009](decisions/0009-carry-identity-not-keys.md)
+## Zero trust — [0009](decisions/0009-carry-identity-not-keys.md) · planned
 
 A run carries an actor identity; static keys are not a mode. A grant limits it to
 named kinds, targets and operations, with an expiry, checked by the engine. Where
@@ -179,27 +193,40 @@ provider versions, state version and a digest of observed state, so it cannot be
 replayed against a changed world. State holds references and digests, never
 secret values. The log is an append-only hash chain.
 
-## Secrets — [0027](decisions/0027-secrets-are-tainted-and-masked-by-span.md)
+## Secrets — [0027](decisions/0027-secrets-are-tainted-and-masked-by-span.md) · partly built
 
-Secrecy is a taint carried by the value model: anything derived from a secret is
-secret, including a rendered file. State holds a reference — provider, path,
-version — and a keyed digest, never a value, because a digest answers the only
-question state has, which is whether it changed. A plan reports
-`password: (secret) → (secret, changed)`: enough to approve, nothing more.
+`secret("lockbox", "prod/db/password")` names a value without reading it. What
+comes back can be given to a resource and nothing else — comparison, indexing,
+iteration and truthiness are all refused, by the same three mechanisms
+[0018](decisions/0018-what-starlark-will-not-refuse.md) needed for handles and for
+the same reasons.
 
-A rendered file is masked by span rather than suppressed. The renderer runs twice,
-once with real values and once with a random sentinel per secret, and the
-difference locates where each secret landed. The diff stays readable and the
-credential does not appear in it.
+An attribute holding one is `Attribute::Secret`, and it answers `None` to
+`known()` — the accessor every part of the engine that persists or prints goes
+through. State keeps `Recorded`, which is either a value or a keyed digest and
+has no path back to a value, so "state never holds a credential" is a property of
+the types rather than a rule to remember. In the state file the digests sit in a
+map of their own, so `jq .resources[].attributes` shows a person that none of it
+is a credential.
 
-## The machine-facing surface — [0012](decisions/0012-machine-facing-surface-is-first-class.md)
+Two places see a real value: the planner, which fetches it to hash it and drops
+it, and the step that hands a provider what to write. A plan reports
+`password: (secret) → (secret, changed)` — enough to approve, nothing more — and
+a store that cannot answer stops the plan rather than reporting "unchanged",
+which is the answer that would be believed and could be wrong.
+
+Two parts of `0027` arrive with templating, because they have nothing to act on
+until a template exists: taint propagating through derivation, and masking a
+rendered file by span rather than suppressing it.
+
+## The machine-facing surface — [0012](decisions/0012-machine-facing-surface-is-first-class.md) · partly built
 
 One core, three equal front ends: CLI, MCP server, HTTP/JSON. The plan is a typed
 document carrying blast radius and confidence per change; errors are typed with a
 remediation; `apply` takes an idempotency key; dry run shares the code path with
 apply and declares what it could not check.
 
-## What a resource is born with — [0021](decisions/0021-attributes-a-resource-is-born-with.md)
+## What a resource is born with — [0021](decisions/0021-attributes-a-resource-is-born-with.md) · built
 
 Three kinds of attribute, not two. Converged ones are corrected in place;
 immutable ones are corrected by replacement; and ones a resource was **born
@@ -211,7 +238,7 @@ on something no longer declared is a fact somebody is handed rather than one the
 discover. Moving onto a new image is a deliberate act: replacement on demand, or
 two slots side by side until the new one has shown itself.
 
-## Drift, and the rest from Portage — [0013](decisions/0013-borrow-from-portage.md)
+## Drift, and the rest from Portage — [0013](decisions/0013-borrow-from-portage.md) · partly built
 
 A resource may be marked so that drift stops the stage and produces a three-way
 merge rather than being silently corrected. A `pretend` phase runs during
@@ -221,7 +248,7 @@ Executor operations run inside a declared filesystem and network scope.
 Plan output follows `emerge -pv`: fixed action column, deltas rather than values,
 the origin of each value, summary before detail, identical changes aggregated.
 
-## What holds it together
+## What holds it together · built
 
 `docs/invariants.toml` lists the guarantees that must not break, each naming the
 code that enforces it and the tests that prove it. `cargo xtask ci` fails if

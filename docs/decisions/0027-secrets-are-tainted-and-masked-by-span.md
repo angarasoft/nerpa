@@ -16,7 +16,7 @@ The complaint is not that state is unencrypted. It is that a value nobody needed
 to keep was kept anyway.
 
 Two things make this urgent rather than tidy. Retrofitting a state format after
-anyone's state exists is a migration. And [0023](docs/decisions/0023-templates-that-look-like-the-file.md)
+anyone's state exists is a migration. And [0023](0023-templates-that-look-like-the-file.md)
 just promised that a plan shows what a file will contain — which, for a file with
 a password in it, is a promise to print the password.
 

@@ -5,7 +5,7 @@
 
 ## Context
 
-[0006](docs/decisions/0006-static-plan-staged-execution.md) refuses to let a fact
+[0006](0006-static-plan-staged-execution.md) refuses to let a fact
 gathered from a machine decide which resources exist, and that refusal is what
 makes a single-pass plan possible. It is right and it stays.
 

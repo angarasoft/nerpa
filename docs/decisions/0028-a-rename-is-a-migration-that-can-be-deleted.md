@@ -5,7 +5,7 @@
 
 ## Context
 
-[0002](docs/decisions/0002-addresses-carry-a-slot-and-no-index.md) makes the
+[0002](0002-addresses-carry-a-slot-and-no-index.md) makes the
 address the identity of a resource. That is what makes state stable and diffs
 legible, and it means renaming `os:file.old` to `os:file.new` currently reads as
 "delete one thing, create another" — which for a database, a disk, or a machine
