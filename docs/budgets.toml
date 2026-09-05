@@ -13,23 +13,31 @@
 #                      so it stays a number somebody is looking at rather than
 #                      an intention.
 #
-# The gap below is not an estimate. Planning walks the graph once and asks
-# `Graph::dependencies_of` for every resource, and that call rebuilds every edge
-# in the graph — so the work grows with the square of the number of resources.
-# Measured on the author's machine, release build, one run per point:
+# The gap this file was written to record has been closed. Planning used to walk
+# the graph and ask `Graph::dependencies_of` for every resource, and that call
+# rebuilt every edge in the graph, so the work grew with the square of the
+# number of resources. It now asks `Graph::dependencies` once and reads the
+# answer. Measured on one machine, release build, one run per point:
 #
-#     200 resources   0.01 s
-#    2000 resources   0.29 s
-#    4000 resources   1.26 s
-#    8000 resources   6.37 s
+#                    before      after
+#     2000            0.29 s     0.03 s
+#     4000            1.26 s     0.06 s
+#     8000            6.37 s     0.12 s
+#    16000              —        0.24 s
 #
-# Four times the resources, twenty-one times the work. A hundred machines
-# carrying eighty resources each is 8000, and reaching a fleet is what stage 1
-# exists to do.
+# Four times the resources used to be twenty-one times the work and is now four
+# times the work. A hundred machines carrying eighty resources each is 8000, and
+# reaching a fleet is what stage 1 exists to do.
 #
-# The budget is what the same shape costs once the edges are built once and
-# handed down. Closing the gap means lowering both numbers in the commit that
-# earns it.
+# The budget now sits at what the code actually does, which is what a closed gap
+# looks like. `cargo xtask budget` says "lower both numbers" whenever the
+# measurement is under the budget, so leaving a decorative gap would leave a
+# standing complaint — and it would be recording an aspiration nobody has a plan
+# for, in a file that exists to hold facts.
+#
+# The measurement sits between 0.06 and 0.08 depending on what else the machine
+# is doing, and the budget is set at the top of that band. Chasing the noise
+# downward would only make the report alternate between its two wordings.
 #
 # The baseline carries headroom over the measurement above, because this runs on
 # whatever machine is free rather than on a bench. Headroom is not slack to
@@ -38,5 +46,5 @@
 
 [plan]
 resources = 4000
-budget_seconds = 0.5
-baseline_seconds = 2.5
+budget_seconds = 0.07
+baseline_seconds = 0.15

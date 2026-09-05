@@ -84,6 +84,11 @@ pub fn plan_at(
     secrets: Secrets<'_>,
     now: Written,
 ) -> Result<Plan, PlanError> {
+    // Once, not once per resource. Asking the graph for a single resource's
+    // dependencies rebuilds every edge it has, and this loop asks for every
+    // resource.
+    let dependencies = graph.dependencies()?;
+
     let mut stages = removals(graph, state);
     let mut unreachable = Vec::new();
     let mut outdated = Vec::new();
@@ -107,10 +112,11 @@ pub fn plan_at(
             // so nothing can be said about it either.
             let node = address.domain().target().cloned();
             let out_of_reach = node.as_ref().is_some_and(|node| !observed.reached(node));
-            let blocked = graph
-                .dependencies_of(address)?
-                .iter()
-                .any(|dependency| unplannable.contains(dependency));
+            let blocked = dependencies.get(address).is_some_and(|of_this| {
+                of_this
+                    .iter()
+                    .any(|dependency| unplannable.contains(*dependency))
+            });
 
             if out_of_reach || blocked {
                 unplannable.insert(address.clone());
