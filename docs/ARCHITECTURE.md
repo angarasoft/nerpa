@@ -59,6 +59,21 @@ the configuration that described the dependency is exactly what was deleted. And
 a resource is looked for where state left it, not where the declaration now
 points — otherwise moving one reads as making a second and abandoning the first.
 
+## A machine that will not answer — [0020](decisions/0020-a-machine-that-cannot-be-reached.md)
+
+The unit of refusal is the resource, not the run. Everything readable is planned;
+what could not be read appears saying so, carrying the machine and the age of the
+newest knowledge of it, and nothing else. Unreachability travels along edges the
+same way an unresolved value does.
+
+Only "the machine did not answer" lets a run continue. Every other refusal stops
+it, because treating a permission error as unreachability would quietly stop
+managing a resource over a typo in an access rule.
+
+A plan containing one of these cannot be signed: it holds an age, an age moves
+every second, and a hash over it never settles. That is the intended answer —
+nobody can approve a change to infrastructure they could not look at.
+
 ## Observed state — [0011](decisions/0011-observed-state-in-three-tiers.md)
 
 Three tiers, cheapest first: a fingerprint that lets an unchanged node be skipped

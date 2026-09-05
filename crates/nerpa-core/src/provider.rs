@@ -20,7 +20,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::address::{Address, Provider as ProviderName};
+use crate::address::{Address, Provider as ProviderName, Target};
 use crate::plan::ChangeKind;
 use crate::schema::Schema;
 use crate::value::Value;
@@ -49,6 +49,20 @@ pub enum ProviderError {
         /// The resource whose declaration was wrong.
         address: Address,
         /// What was wrong with it.
+        problem: String,
+    },
+    // ENFORCES: INV-REACH-002
+    /// The machine could not be contacted at all.
+    ///
+    /// Deliberately separate from every other failure. Treating a permission
+    /// error as unreachability would quietly stop managing a resource because of
+    /// a typo in an access rule, and that is the class of silent wrongness this
+    /// project exists to avoid. Only this variant lets a run continue.
+    #[error("{node}: could not be reached: {problem}")]
+    Unreachable {
+        /// The machine that did not answer.
+        node: Target,
+        /// What was tried, and what came back.
         problem: String,
     },
     /// The world refused.

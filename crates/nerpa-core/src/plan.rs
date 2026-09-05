@@ -178,6 +178,49 @@ impl Change {
     }
 }
 
+/// A resource nothing can be said about, because its machine did not answer.
+///
+/// Not a change, and deliberately not inside a stage: putting it there would let
+/// it be iterated as work to do. It carries the machine and the age of the newest
+/// thing known about it, and nothing else — a difference computed from stale data
+/// looks exactly like one computed from a live read, and there is no honest way
+/// to show both. See decision 0020.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Unreachable {
+    address: Address,
+    node: Target,
+    known_for: Option<u64>,
+}
+
+impl Unreachable {
+    pub(crate) fn new(address: Address, node: Target, known_for: Option<u64>) -> Self {
+        Self {
+            address,
+            node,
+            known_for,
+        }
+    }
+
+    /// Which resource cannot be spoken for.
+    #[must_use]
+    pub fn address(&self) -> &Address {
+        &self.address
+    }
+
+    /// The machine that did not answer.
+    #[must_use]
+    pub fn node(&self) -> &Target {
+        &self.node
+    }
+
+    /// How many seconds old the newest knowledge of it is, or `None` if there is
+    /// none at all.
+    #[must_use]
+    pub fn known_for(&self) -> Option<u64> {
+        self.known_for
+    }
+}
+
 /// One topological level of the graph, and what happens in it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlanStage {
@@ -215,6 +258,7 @@ pub struct BlastRadius {
     replaces: usize,
     deletes: usize,
     unresolved: usize,
+    unreachable: usize,
     nodes: BTreeSet<Target>,
 }
 
@@ -255,6 +299,16 @@ impl BlastRadius {
         &self.nodes
     }
 
+    /// Resources nothing can be said about.
+    ///
+    /// A number rather than a sentence, so something automated can act on it —
+    /// and the reason a plan may not be signed, because nobody can approve a
+    /// change to infrastructure they could not look at.
+    #[must_use]
+    pub fn unreachable(&self) -> usize {
+        self.unreachable
+    }
+
     /// Whether anything here cannot be undone.
     ///
     /// A replacement destroys the resource that is there now, and a deletion
@@ -276,12 +330,16 @@ impl BlastRadius {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Plan {
     stages: Vec<PlanStage>,
+    unreachable: Vec<Unreachable>,
     blast_radius: BlastRadius,
 }
 
 impl Plan {
-    pub(crate) fn new(stages: Vec<PlanStage>) -> Self {
-        let mut blast_radius = BlastRadius::default();
+    pub(crate) fn new(stages: Vec<PlanStage>, unreachable: Vec<Unreachable>) -> Self {
+        let mut blast_radius = BlastRadius {
+            unreachable: unreachable.len(),
+            ..Default::default()
+        };
         for change in stages.iter().flat_map(PlanStage::changes) {
             match change.kind() {
                 ChangeKind::Create => blast_radius.creates += 1,
@@ -300,8 +358,26 @@ impl Plan {
         }
         Self {
             stages,
+            unreachable,
             blast_radius,
         }
+    }
+
+    /// The resources nothing can be said about, in a stable order.
+    #[must_use]
+    pub fn unreachable(&self) -> &[Unreachable] {
+        &self.unreachable
+    }
+
+    // ENFORCES: INV-REACH-003
+    /// Whether everything the configuration declares could be looked at.
+    ///
+    /// A plan that is not complete cannot be signed: it holds an age, an age
+    /// moves every second, and a hash over it never settles. That is the right
+    /// answer rather than an inconvenience — see decision 0020.
+    #[must_use]
+    pub fn is_complete(&self) -> bool {
+        self.unreachable.is_empty()
     }
 
     /// The stages, in execution order. Stages with nothing to do are not here.

@@ -180,6 +180,21 @@ impl Graph {
         &self.inventory
     }
 
+    /// What one resource has to come after, however that ordering arose.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GraphError`] for the same reasons [`Graph::stages`] does: the
+    /// edges have to be derived before any of them can be reported.
+    pub fn dependencies_of(&self, address: &Address) -> Result<BTreeSet<Address>, GraphError> {
+        Ok(self
+            .edges()?
+            .into_iter()
+            .filter(|(dependent, _)| *dependent == address)
+            .map(|(_, dependency)| dependency.clone())
+            .collect())
+    }
+
     /// Every ordering the graph implies, as `(dependent, dependency)`.
     ///
     /// Three sources, and only one of them is written by hand. An explicit

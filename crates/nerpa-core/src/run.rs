@@ -27,6 +27,7 @@ use crate::{ensures, requires};
 /// Returns [`ProviderError`] if any resource could not be read. A partial
 /// reading is not a smaller reading: planning against it would propose
 /// creating things that are already there.
+// ENFORCES: INV-REACH-001
 pub fn observe(
     graph: &Graph,
     providers: &Providers,
@@ -50,8 +51,15 @@ pub fn observe(
             );
 
             let provider = providers.for_address(address)?;
-            if let Some(attributes) = provider.read(address, &locator)? {
-                observed.record(address.clone(), attributes);
+            match provider.read(address, &locator) {
+                Ok(Some(attributes)) => observed.record(address.clone(), attributes),
+                Ok(None) => {}
+                // ENFORCES: INV-REACH-002
+                // The one failure a run survives. Everything else still stops it,
+                // because everything else means something is wrong rather than
+                // merely absent. See decision 0020.
+                Err(ProviderError::Unreachable { node, .. }) => observed.unreachable(node),
+                Err(other) => return Err(other),
             }
         }
     }
@@ -66,8 +74,11 @@ pub fn observe(
             continue;
         };
         let provider = providers.for_address(address)?;
-        if let Some(attributes) = provider.read(address, record.attributes())? {
-            observed.record(address.clone(), attributes);
+        match provider.read(address, record.attributes()) {
+            Ok(Some(attributes)) => observed.record(address.clone(), attributes),
+            Ok(None) => {}
+            Err(ProviderError::Unreachable { node, .. }) => observed.unreachable(node),
+            Err(other) => return Err(other),
         }
     }
 

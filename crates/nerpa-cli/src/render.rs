@@ -11,18 +11,25 @@
 //! `--json` prints the same object; the moment these become two code paths they
 //! start disagreeing.
 
+use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
+use nerpa_core::plan::Unreachable;
 use nerpa_core::{BlastRadius, Change, ChangeKind, Confidence, Plan, StageKind, Target};
 
 /// The whole plan, as text.
 // ENFORCES: INV-AGENT-001
 pub(crate) fn plan(plan: &Plan) -> String {
-    if plan.is_empty() {
+    if plan.is_empty() && plan.is_complete() {
         return "nothing to do: the world already matches the configuration\n".to_owned();
     }
 
-    let mut out = summary(plan.blast_radius());
+    let mut out = if plan.is_empty() {
+        "nothing to do about what could be read\n".to_owned()
+    } else {
+        summary(plan.blast_radius())
+    };
+    out.push_str(&out_of_reach(plan.unreachable()));
 
     for (number, stage) in plan.stages().iter().enumerate() {
         let _ = writeln!(out, "\nstage {} · {}", number + 1, describe(stage.kind()));
@@ -35,6 +42,53 @@ pub(crate) fn plan(plan: &Plan) -> String {
         out.push_str("\n! marks a change that destroys what is there now\n");
     }
     out
+}
+
+// ENFORCES: INV-REACH-003
+/// What could not be looked at, and how old the last look was.
+///
+/// Printed with the summary rather than among the stages: it is not work, and a
+/// reader scanning the action column must not find it there.
+fn out_of_reach(unreachable: &[Unreachable]) -> String {
+    if unreachable.is_empty() {
+        return String::new();
+    }
+
+    let mut nodes: BTreeMap<&str, Option<u64>> = BTreeMap::new();
+    let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
+    for entry in unreachable {
+        let node = entry.node().as_str();
+        *counts.entry(node).or_default() += 1;
+        nodes.entry(node).or_insert_with(|| entry.known_for());
+    }
+
+    let mut out = format!(
+        "\n  {} resources could not be looked at, and nothing is claimed about them:\n",
+        unreachable.len()
+    );
+    for (node, age) in nodes {
+        let count = counts.get(node).copied().unwrap_or_default();
+        let known = match age {
+            Some(seconds) => format!("last seen {}", ago(seconds)),
+            None => "never seen".to_owned(),
+        };
+        let _ = writeln!(
+            out,
+            "    {node} did not answer · {known} · {count} resources"
+        );
+    }
+    out.push_str("  this plan cannot be signed: it describes a world nobody could look at\n");
+    out
+}
+
+/// An age a person reads, not a number of seconds they have to divide.
+fn ago(seconds: u64) -> String {
+    match seconds {
+        0..=90 => format!("{seconds}s ago"),
+        91..=5400 => format!("{}m ago", seconds / 60),
+        5401..=172_800 => format!("{}h ago", seconds / 3600),
+        _ => format!("{}d ago", seconds / 86400),
+    }
 }
 
 fn summary(radius: &BlastRadius) -> String {
@@ -145,9 +199,10 @@ mod tests {
     use nerpa_core::address::address;
     use nerpa_core::planner;
     use nerpa_core::provider::Attributes;
-    use nerpa_core::state::{Record, State};
+    use nerpa_core::state::{Record, State, Written};
     use nerpa_core::{
-        ExecutionDomain, Graph, Kind, Observed, Provider, Reference, Resource, Schema, Value,
+        ExecutionDomain, Graph, Kind, Observed, Provider, Reference, Resource, Schema, Target,
+        Value,
     };
 
     use super::plan as render;
@@ -320,6 +375,136 @@ mod tests {
 
         let text = rendered(&graph, &Observed::new(), &State::new(), &Schema::new());
         assert!(text.contains("2 values will only be known"), "{text}");
+    }
+
+    #[test]
+    fn what_could_not_be_looked_at_is_reported_with_its_age_and_never_as_work() {
+        let graph = graph_of(vec![
+            Resource::new(address("os:file.motd@web-01")).with("path", "/etc/motd"),
+            Resource::new(address("yandex:instance.db")).with("cores", 8),
+        ]);
+        let mut observed = Observed::new();
+        observed.unreachable(Target::new("web-01").unwrap());
+
+        let mut state = State::new();
+        state.record(
+            address("os:file.motd@web-01"),
+            Record::written_at(
+                Attributes::new(),
+                std::collections::BTreeSet::new(),
+                Written::at(1_700_000_000 - 7200),
+            ),
+        );
+
+        let text = render(
+            &planner::plan_at(
+                &graph,
+                &observed,
+                &state,
+                &Schema::new(),
+                Written::at(1_700_000_000),
+            )
+            .unwrap(),
+        );
+
+        assert!(text.contains("could not be looked at"), "{text}");
+        assert!(text.contains("web-01 did not answer"), "{text}");
+        assert!(
+            text.contains("last seen 2h ago"),
+            "the age is readable: {text}"
+        );
+        assert!(
+            text.contains("cannot be signed"),
+            "and the consequence is stated: {text}"
+        );
+        assert!(
+            !text.contains("[create   ] os:file.motd"),
+            "it is not work: {text}"
+        );
+        assert!(
+            text.contains("[create   ] yandex:instance.db"),
+            "the rest still is: {text}"
+        );
+    }
+
+    /// Every band of the scale, and two resources on one machine so that counting
+    /// them wrongly cannot pass unnoticed.
+    #[test]
+    fn ages_are_reported_in_units_a_person_reads() {
+        for (seconds, expected) in [
+            (45_u64, "45s ago"),
+            (600, "10m ago"),
+            (7200, "2h ago"),
+            (400_000, "4d ago"),
+        ] {
+            let graph = graph_of(vec![
+                Resource::new(address("os:file.one@web-01")).with("path", "/one"),
+                Resource::new(address("os:file.two@web-01")).with("path", "/two"),
+            ]);
+            let mut observed = Observed::new();
+            observed.unreachable(Target::new("web-01").unwrap());
+
+            let mut state = State::new();
+            state.record(
+                address("os:file.one@web-01"),
+                Record::written_at(
+                    Attributes::new(),
+                    std::collections::BTreeSet::new(),
+                    Written::at(1_700_000_000 - seconds),
+                ),
+            );
+
+            let text = render(
+                &planner::plan_at(
+                    &graph,
+                    &observed,
+                    &state,
+                    &Schema::new(),
+                    Written::at(1_700_000_000),
+                )
+                .unwrap(),
+            );
+
+            assert!(
+                text.contains(expected),
+                "{seconds}s should read as {expected}: {text}"
+            );
+            // Asserted on the machine's own line, not on the total: the total
+            // counts entries directly, so a broken per-machine counter slips
+            // past a looser check. Mutation testing found exactly that.
+            assert!(
+                text.contains(&format!("{expected} · 2 resources")),
+                "the machine's own line counts both: {text}"
+            );
+            assert!(
+                text.contains("2 resources could not"),
+                "and so does the total: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_machine_never_seen_is_reported_as_never_seen() {
+        let graph = graph_of(vec![Resource::new(address("os:file.motd@web-09"))]);
+        let mut observed = Observed::new();
+        observed.unreachable(Target::new("web-09").unwrap());
+
+        let text = render(
+            &planner::plan_at(
+                &graph,
+                &observed,
+                &State::new(),
+                &Schema::new(),
+                Written::at(1_700_000_000),
+            )
+            .unwrap(),
+        );
+
+        assert!(text.contains("never seen"), "{text}");
+        assert!(
+            text.contains("nothing to do about what could be read"),
+            "{text}"
+        );
     }
 
     #[test]

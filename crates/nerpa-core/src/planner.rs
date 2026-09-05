@@ -18,13 +18,14 @@
 
 use std::collections::BTreeSet;
 
+use crate::address::{Address, Target};
 use crate::attribute::Attribute;
 use crate::graph::{Graph, GraphError, StageKind};
 use crate::observed::Observed;
-use crate::plan::{AttributeDelta, Change, ChangeKind, Confidence, Plan, PlanStage};
+use crate::plan::{AttributeDelta, Change, ChangeKind, Confidence, Plan, PlanStage, Unreachable};
 use crate::resource::Resource;
 use crate::schema::Schema;
-use crate::state::State;
+use crate::state::{Record, State, Written};
 use crate::value::Value;
 
 /// Computes what would have to happen for the world to match the configuration.
@@ -45,7 +46,30 @@ pub fn plan(
     state: &State,
     schema: &Schema,
 ) -> Result<Plan, GraphError> {
+    plan_at(graph, observed, state, schema, Written::now())
+}
+
+/// The same, with the clock supplied.
+///
+/// Only the age of stale knowledge needs a clock, and a test that asserts on an
+/// age cannot have one moving underneath it.
+///
+/// # Errors
+///
+/// The same as [`plan`].
+pub fn plan_at(
+    graph: &Graph,
+    observed: &Observed,
+    state: &State,
+    schema: &Schema,
+    now: Written,
+) -> Result<Plan, GraphError> {
     let mut stages = removals(graph, state);
+    let mut unreachable = Vec::new();
+    // Marked as the walk goes. Stages are topological, so a resource's
+    // dependencies have already been decided by the time it is reached, and
+    // unreachability travels forward along the edges in a single pass.
+    let mut unplannable: BTreeSet<Address> = BTreeSet::new();
 
     // One walk of the graph, in the order the work will happen. Stages are the
     // order of execution; there is no second pass over any of them.
@@ -55,6 +79,27 @@ pub fn plan(
             let Some(resource) = graph.get(address) else {
                 continue;
             };
+
+            // ENFORCES: INV-REACH-001
+            // Out of reach, or downstream of something that is. A resource whose
+            // dependency could not be read has nowhere to take its values from,
+            // so nothing can be said about it either.
+            let node = address.domain().target().cloned();
+            let out_of_reach = node.as_ref().is_some_and(|node| !observed.reached(node));
+            let blocked = graph
+                .dependencies_of(address)?
+                .iter()
+                .any(|dependency| unplannable.contains(dependency));
+
+            if out_of_reach || blocked {
+                unplannable.insert(address.clone());
+                if let Some(node) = node {
+                    let age = known_for(state, &node, now);
+                    unreachable.push(Unreachable::new(address.clone(), node, age));
+                }
+                continue;
+            }
+
             if let Some(change) = change_for(resource, observed, schema) {
                 changes.push(change);
             }
@@ -66,7 +111,21 @@ pub fn plan(
         }
     }
 
-    Ok(Plan::new(stages))
+    Ok(Plan::new(stages, unreachable))
+}
+
+/// How old the newest thing known about a machine is, in seconds.
+///
+/// Taken from state, the only record of when nerpa last saw it. `None` means the
+/// machine has never been touched, so there is nothing stale to be old.
+fn known_for(state: &State, node: &Target, now: Written) -> Option<u64> {
+    state
+        .addresses()
+        .filter(|address| address.target() == Some(node))
+        .filter_map(|address| state.get(address))
+        .map(Record::written)
+        .max()
+        .map(|written| written.age(now).as_secs())
 }
 
 /// What state remembers and the configuration no longer declares.
@@ -75,7 +134,7 @@ pub fn plan(
 /// its way out can be holding something a new one needs — a name, a port, a path
 /// — and because nothing being created can want something that is leaving.
 fn removals(graph: &Graph, state: &State) -> Vec<PlanStage> {
-    let declared: BTreeSet<&crate::address::Address> = state
+    let declared: BTreeSet<&Address> = state
         .addresses()
         .filter(|address| graph.get(address).is_some())
         .collect();

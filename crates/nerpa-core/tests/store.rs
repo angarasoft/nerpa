@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use nerpa_core::Value;
 use nerpa_core::address::address;
 use nerpa_core::provider::Attributes;
-use nerpa_core::state::{Record, State};
+use nerpa_core::state::{Record, State, Written};
 use nerpa_core::store::{self, Lock, StoreError};
 
 struct Scratch(PathBuf);
@@ -86,7 +86,7 @@ fn the_file_is_readable_by_a_person() {
     store::save(&scratch.file(), &populated()).expect("writes");
 
     let text = fs::read_to_string(scratch.file()).expect("written");
-    assert!(text.contains("\"version\": 1"), "{text}");
+    assert!(text.contains("\"version\": 2"), "{text}");
     assert!(
         text.contains("\"os:file.motd@web-01\""),
         "addresses are text: {text}"
@@ -128,7 +128,7 @@ fn an_address_the_model_refuses_is_refused_on_the_way_in_too() {
     let scratch = Scratch::new("address");
     fs::write(
         scratch.file(),
-        r#"{"version": 1, "resources": {"not-an-address": {"attributes": {}, "depends_on": []}}}"#,
+        r#"{"version": 2, "resources": {"not-an-address": {"attributes": {}, "depends_on": [], "written": 0}}}"#,
     )
     .expect("written");
 
@@ -191,4 +191,37 @@ fn a_lock_that_cannot_be_created_is_not_reported_as_held() {
 
     let refusal = Lock::take(&nowhere).expect_err("there is no directory to put it in");
     assert!(matches!(refusal, StoreError::File { .. }), "{refusal:?}");
+}
+
+/// The age of what is known about a machine survives the trip, because that is
+/// the only thing it exists for: saying how stale a plan's silence is.
+#[test]
+fn when_a_record_was_written_comes_back_too() {
+    let scratch = Scratch::new("written");
+    let mut state = State::new();
+    state.record(
+        address("os:file.motd@web-01"),
+        Record::written_at(
+            Attributes::new(),
+            BTreeSet::new(),
+            Written::at(1_700_000_000),
+        ),
+    );
+
+    store::save(&scratch.file(), &state).expect("writes");
+    let read = store::load(&scratch.file()).expect("reads");
+
+    let recorded = read.get(&address("os:file.motd@web-01")).expect("recorded");
+    assert_eq!(recorded.written(), Written::at(1_700_000_000));
+    assert_eq!(
+        recorded.written().age(Written::at(1_700_003_600)).as_secs(),
+        3600
+    );
+}
+
+/// A clock that moved backwards is not a negative age.
+#[test]
+fn a_record_from_the_future_is_reported_as_no_age_at_all() {
+    let written = Written::at(2_000_000_000);
+    assert_eq!(written.age(Written::at(1_000_000_000)).as_secs(), 0);
 }

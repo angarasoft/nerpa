@@ -245,6 +245,49 @@ enforced_by = ["crates/nerpa-core/src/plan.rs", "crates/nerpa-cli/src/render.rs"
 tests = ["a_plan_survives_a_trip_through_json"]
 
 [[invariant]]
+id = "INV-REACH-001"
+status = "enforced"
+statement = "A machine that did not answer is refused per resource, not per run."
+rationale = """
+Refusing the whole run because one machine is down blocks changes to every other \
+machine, which is how people learn to work around a tool. Everything readable is \
+planned; what could not be read appears saying so, with the machine and the age \
+of the newest knowledge, and nothing is claimed about it. See 0020."""
+enforced_by = ["crates/nerpa-core/src/planner.rs", "crates/nerpa-core/src/run.rs"]
+tests = [
+  "a_resource_on_a_machine_that_did_not_answer_is_not_planned",
+  "nothing_at_all_is_said_about_what_could_not_be_read",
+  "a_machine_not_answering_lets_the_reading_continue",
+]
+
+[[invariant]]
+id = "INV-REACH-002"
+status = "enforced"
+statement = "Only a machine not answering lets a run continue; every other refusal stops it."
+rationale = """
+Treating a permission error as unreachability would quietly stop managing a \
+resource because of a typo in an access rule — the class of silent wrongness this \
+project exists to avoid. The provider has to tell them apart, and the type makes \
+it say which."""
+enforced_by = ["crates/nerpa-core/src/provider.rs", "crates/nerpa-core/src/run.rs"]
+tests = ["any_other_refusal_still_stops_the_run"]
+
+[[invariant]]
+id = "INV-REACH-003"
+status = "enforced"
+statement = "A plan that could not look at everything is not complete, and says so."
+rationale = """
+Nobody can approve a change to infrastructure they were unable to see. Such a \
+plan carries an age, an age moves every second, and a hash over it never settles \
+— so it cannot be signed. Stated by name rather than left as an unexplained hash \
+mismatch, because that is a mystery at three in the morning."""
+enforced_by = ["crates/nerpa-core/src/plan.rs", "crates/nerpa-cli/src/render.rs"]
+tests = [
+  "what_could_not_be_looked_at_is_reported_with_its_age_and_never_as_work",
+  "the_age_of_what_is_known_comes_from_state",
+]
+
+[[invariant]]
 id = "INV-DRIFT-001"
 status = "planned"
 statement = "A resource marked for merging is never overwritten without a person."

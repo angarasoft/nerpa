@@ -13,7 +13,7 @@
 //! trip exactly — the property `INV-ADDR-003` exists for.
 //!
 //! ```text
-//!   { "version": 1,
+//!   { "version": 2,
 //!     "resources": {
 //!       "os:file.motd@web-01": {
 //!         "attributes": { "path": "/etc/motd", "content": "hello\n" },
@@ -35,13 +35,13 @@ use serde::{Deserialize, Serialize};
 
 use crate::address::Address;
 use crate::provider::Attributes;
-use crate::state::{Record, State};
+use crate::state::{Record, State, Written};
 
 /// The format version written into every state file.
 ///
 /// Read back and refused if it is not understood. A state file from a later
 /// version is not something to guess at.
-pub const FORMAT_VERSION: u32 = 1;
+pub const FORMAT_VERSION: u32 = 2;
 
 /// Why state could not be read or written.
 #[derive(Debug, thiserror::Error)]
@@ -81,6 +81,10 @@ struct Document {
 struct StoredRecord {
     attributes: Attributes,
     depends_on: Vec<String>,
+    /// Seconds since the epoch, and the only reason a clock is read at all: how
+    /// old what we know about a machine is, when that machine will not answer.
+    /// See decision 0020.
+    written: u64,
 }
 
 /// Holds the lock for as long as it exists.
@@ -181,7 +185,10 @@ pub fn load(path: &Path) -> Result<State, StoreError> {
                 })
             })
             .collect::<Result<_, _>>()?;
-        state.record(address, Record::new(record.attributes, depends_on));
+        state.record(
+            address,
+            Record::written_at(record.attributes, depends_on, Written::at(record.written)),
+        );
     }
     Ok(state)
 }
@@ -209,6 +216,7 @@ pub fn save(path: &Path, state: &State) -> Result<(), StoreError> {
                             .iter()
                             .map(ToString::to_string)
                             .collect(),
+                        written: record.written().seconds(),
                     },
                 ))
             })

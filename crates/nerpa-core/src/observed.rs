@@ -10,15 +10,16 @@
 //! because guessing it is empty would propose creating things that are already
 //! there.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
-use crate::address::Address;
+use crate::address::{Address, Target};
 use crate::value::Value;
 
 /// Observed state, gathered before planning.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Observed {
     resources: BTreeMap<Address, BTreeMap<String, Value>>,
+    unreachable: BTreeSet<Target>,
 }
 
 impl Observed {
@@ -66,5 +67,26 @@ impl Observed {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.resources.is_empty()
+    }
+
+    /// Records that a machine did not answer.
+    ///
+    /// Distinct from finding nothing on it. Nothing found means the resources
+    /// are not there; not answering means we do not know, and the difference
+    /// decides whether a plan may say anything about them at all.
+    pub fn unreachable(&mut self, node: Target) {
+        self.unreachable.insert(node);
+    }
+
+    /// Whether this machine answered.
+    #[must_use]
+    pub fn reached(&self, node: &Target) -> bool {
+        !self.unreachable.contains(node)
+    }
+
+    /// Every machine that did not answer, in a stable order.
+    #[must_use]
+    pub fn unreachable_nodes(&self) -> &BTreeSet<Target> {
+        &self.unreachable
     }
 }

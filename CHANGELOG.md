@@ -96,6 +96,14 @@ without ceremony until the first stage is complete.
   detail, the cause of a replacement named where it happens.
 - `nerpa plan --json` prints the same object the text is rendered from.
 
+- A machine that does not answer is refused per resource rather than per run.
+  What could not be read appears in the plan saying so, with the machine and the
+  age of the newest knowledge of it, and nothing is claimed about it.
+- `ProviderError::Unreachable`, the only failure a run survives. Everything else
+  still stops it, because everything else means something is wrong rather than
+  merely out of reach.
+- State records when each entry was written, and the format goes to version 2.
+
 ### Changed
 
 - Renamed from `sarma` to `nerpa`, and the Gentoo package manager that held the

@@ -31,16 +31,82 @@ use crate::provider::Attributes;
 pub struct Record {
     attributes: Attributes,
     depends_on: BTreeSet<Address>,
+    written: Written,
+}
+
+/// When a record was written, in seconds since the epoch.
+///
+/// The only value in the model that comes from outside it, and it is fenced in on
+/// purpose. It exists to answer one question — how old is what we know about a
+/// machine that is not answering — and it must never take part in a comparison
+/// during planning, or resources would start to differ from one another because a
+/// minute passed. See decision 0020.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Written(u64);
+
+impl Written {
+    /// Reads the clock.
+    #[must_use]
+    pub fn now() -> Self {
+        Self(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |since| since.as_secs()),
+        )
+    }
+
+    /// A moment given as seconds since the epoch.
+    #[must_use]
+    pub fn at(seconds: u64) -> Self {
+        Self(seconds)
+    }
+
+    /// Seconds since the epoch.
+    #[must_use]
+    pub fn seconds(self) -> u64 {
+        self.0
+    }
+
+    /// How long ago this was, measured from `now`.
+    ///
+    /// Saturating: a record written in the future means a clock moved backwards,
+    /// and reporting a negative age would be less useful than reporting none.
+    #[must_use]
+    pub fn age(self, now: Self) -> std::time::Duration {
+        std::time::Duration::from_secs(now.0.saturating_sub(self.0))
+    }
 }
 
 impl Record {
-    /// Records a resource and what it depended on at the time.
+    /// Records a resource and what it depended on, as of now.
     #[must_use]
     pub fn new(attributes: Attributes, depends_on: BTreeSet<Address>) -> Self {
         Self {
             attributes,
             depends_on,
+            written: Written::now(),
         }
+    }
+
+    /// Records a resource as of a stated moment, for reading state back from
+    /// disk and for tests that need a fixed clock.
+    #[must_use]
+    pub fn written_at(
+        attributes: Attributes,
+        depends_on: BTreeSet<Address>,
+        written: Written,
+    ) -> Self {
+        Self {
+            attributes,
+            depends_on,
+            written,
+        }
+    }
+
+    /// When this was written.
+    #[must_use]
+    pub fn written(&self) -> Written {
+        self.written
     }
 
     /// What the provider reported after the last change.
