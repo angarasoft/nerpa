@@ -835,3 +835,27 @@ adversarial = [
   "a_template_that_would_not_stop_is_stopped",
   "a_template_cannot_be_named_outside_the_configuration",
 ]
+
+[[invariant]]
+id = "INV-PREMISE-001"
+status = "enforced"
+statement = "A batch does nothing at all when what the plan was computed from has moved."
+rationale = """
+Reading everything once, planning once and applying once is what makes central \
+provider logic affordable (`0032`), and it opens a window nobody else's tool has \
+to open this wide: between the looking and the doing, ours is the whole run where \
+Ansible's is one task.
+
+So the batch carries the premise — what the plan was computed from, and what each \
+of those hashed to — and the executor looks again before it does anything. All of \
+it, before any of it: a batch acting on half a stale reading is worse than one \
+that did not act. The digest is computed identically on both ends, from an \
+encoding written out in the protocol rather than borrowed from CBOR.
+
+A premise that no longer holds is answered with `Moved`, not `Failed`. "Look \
+again and plan again" is different advice to "something went wrong", and a person \
+woken at three in the morning should be told which."""
+bypass = "An operation whose effect was not derived from anything in the premise — a provider that emits a process without recording what it read to decide on it. The check is only as wide as what the plan admits it looked at, and nothing forces a provider to admit everything."
+enforced_by = ["crates/nerpa-executor/src/lib.rs"]
+tests = ["what_it_did_is_read_back_rather_than_echoed"]
+adversarial = ["a_batch_whose_premise_moved_does_nothing_and_says_which"]

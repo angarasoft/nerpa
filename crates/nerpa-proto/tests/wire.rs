@@ -7,7 +7,6 @@
 // Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
-use std::collections::BTreeMap;
 use std::io::Cursor;
 
 use nerpa_proto::{
@@ -79,16 +78,6 @@ fn every_operation_survives_the_trip() {
 
 #[test]
 fn every_answer_survives_the_trip() {
-    let mut entries = BTreeMap::new();
-    entries.insert(
-        "/etc/motd".to_owned(),
-        Entry::File {
-            content: "hello\n".into(),
-            mode: 0o644,
-        },
-    );
-    entries.insert("/etc".to_owned(), Entry::Directory { mode: 0o755 });
-
     for answer in [
         Answer::Found {
             seen: vec![
@@ -103,7 +92,12 @@ fn every_answer_survives_the_trip() {
                 },
             ],
         },
-        Answer::Done { entries },
+        Answer::Done {
+            became: vec![Seen::Entry(Entry::File {
+                content: b"hello\n".to_vec(),
+                mode: 0o644,
+            })],
+        },
         Answer::Moved { at: 2 },
         Answer::Fingerprint {
             digest: "9f86d081".to_owned(),

@@ -4,6 +4,7 @@ members = [
   "crates/nerpa-cli",
   "crates/nerpa-config",
   "crates/nerpa-core",
+  "crates/nerpa-executor",
   "crates/nerpa-proto",
   "crates/nerpa-provider-os",
   "xtask",
@@ -28,6 +29,7 @@ categories = ["command-line-utilities", "config", "development-tools"]
 # step on a release, which the release script does.
 nerpa-config = { path = "crates/nerpa-config", version = "=0.0.1" }
 nerpa-core = { path = "crates/nerpa-core", version = "=0.0.1" }
+nerpa-executor = { path = "crates/nerpa-executor", version = "=0.0.1" }
 nerpa-proto = { path = "crates/nerpa-proto", version = "=0.0.1" }
 nerpa-provider-os = { path = "crates/nerpa-provider-os", version = "=0.0.1" }
 
@@ -64,6 +66,8 @@ ciborium = "0.2"
 # has to be asked for by name.
 serde_bytes = "0.11"
 clap = { version = "4.6", features = ["derive"] }
+# A scratch directory that removes itself, so a failing test leaves no litter.
+tempfile = "3"
 # Keyed hashing, for the digests state keeps of secrets it must not keep. One
 # crate rather than the two an HMAC needs, and the same primitive will serve the
 # plan hash and the hash-chained log when those arrive.

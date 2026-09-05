@@ -1,0 +1,26 @@
+[package]
+name = "nerpa-executor"
+description = "The program that acts on one machine, and the only thing that does"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "nerpa-executor"
+path = "src/main.rs"
+
+[dependencies]
+nerpa-proto = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

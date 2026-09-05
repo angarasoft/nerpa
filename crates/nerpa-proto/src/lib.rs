@@ -28,7 +28,6 @@
 //! confused — or hostile — turns a length into memory exhaustion. Frames are
 //! bounded, and a prefix over the bound is refused before a byte is reserved.
 
-use std::collections::BTreeMap;
 use std::io::{Read, Write};
 
 use serde::{Deserialize, Serialize};
@@ -334,10 +333,14 @@ pub enum Answer {
         /// One for each [`Observation`], and always the same number of them.
         seen: Vec<Seen>,
     },
-    /// Everything asked for was done, and this is what those paths became.
+    /// Everything asked for was done, and this is what each became.
     Done {
-        /// Read back rather than echoed, so that writing nothing is noticed.
-        entries: BTreeMap<String, Entry>,
+        /// One for each [`Operation`], in the order they were given.
+        ///
+        /// Read back rather than echoed, so that writing nothing is noticed —
+        /// and the same shape as [`Answer::Found`], because a process has no
+        /// path to key an answer by any more than an observation of one does.
+        became: Vec<Seen>,
     },
     /// The machine is not what the plan was computed from, so nothing was done.
     ///
