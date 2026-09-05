@@ -608,7 +608,11 @@ third into absence is the worst available answer: the plan proposes creating \
 what already exists, and the apply overwrites it, losing its contents and \
 resetting its mode. A file that may not be opened, one whose bytes are not text, \
 a symlink, a socket: each is something, and none of them is nothing. \
-`ProviderError::Unreachable` already says this about machines, and says why."""
+`ProviderError::Unreachable` already says this about machines, and says why.
+
+Bytes that are not text were briefly refused here and are now simply read, \
+because `Value::Bytes` can hold them. The refusal was the right answer while the \
+model could not describe the file; reading it is the right answer now."""
 bypass = "Any filesystem call whose error is discarded — `.ok()?` on a read, a metadata call, a `read_link` — turns a failure back into absence, and nothing in the type of `read` prevents it. A provider tested only against its own fake would never notice: an in-memory backend has no permissions to deny and no bytes that are not text."
 enforced_by = ["crates/nerpa-provider-os/src/lib.rs"]
 tests = [
@@ -617,7 +621,7 @@ tests = [
 ]
 adversarial = [
   "a_file_that_cannot_be_read_is_refused_rather_than_called_absent",
-  "a_file_that_is_not_utf8_is_refused_rather_than_called_absent",
+  "a_file_that_is_not_text_is_read_as_the_bytes_it_holds",
   "a_symlink_is_reported_as_a_symlink_and_not_followed",
   "a_broken_symlink_is_there_rather_than_absent",
 ]
@@ -643,4 +647,34 @@ tests = [
 adversarial = [
   "deleting_a_directory_does_not_take_what_nerpa_did_not_make",
   "writing_where_a_symlink_is_replaces_the_link_and_leaves_its_target_alone",
+]
+
+[[invariant]]
+id = "INV-VALUE-001"
+status = "enforced"
+statement = "A value written into state or a plan reads back as the value that was written."
+rationale = """
+State and the plan are the two places a value survives the process that made it, \
+and both are JSON. JSON has no way to say "these are bytes": an array of numbers \
+is indistinguishable from a list of integers, and a string from text. So binary \
+content is written as base64 under a reserved key — and the one map that would \
+read back as bytes rather than as itself is refused at the point of writing, so \
+no reader is ever left to guess. The same value goes onto the wire as a real CBOR \
+byte string, which is the property CBOR was chosen for and had not been asked to \
+do.
+
+Bytes that are text are text. Without that a file holding `hello` could be either \
+variant depending on which side of the model built it, the two would compare \
+unequal, and no second run would ever be empty."""
+bypass = "A map whose only key is the reserved one, holding text that decodes as base64, written down and read back as bytes. Or a byte sequence that is valid UTF-8 built as `Value::Bytes` directly rather than through `Value::bytes`, which then never equals the text the provider reads back."
+enforced_by = ["crates/nerpa-core/src/value.rs"]
+tests = [
+  "every_other_shape_still_round_trips",
+  "bytes_survive_a_state_file",
+  "bytes_that_are_text_become_text",
+]
+adversarial = [
+  "a_map_shaped_like_bytes_is_refused_rather_than_silently_misread",
+  "a_map_that_only_resembles_the_reserved_shape_is_left_alone",
+  "text_and_bytes_are_not_the_same_value",
 ]

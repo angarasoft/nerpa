@@ -50,6 +50,10 @@ serde_json = "1.0"
 # file's contents are not doubled in transit, and it does not carry JSON's
 # inability to say "these are bytes".
 ciborium = "0.2"
+# What makes `Vec<u8>` a CBOR byte string rather than an array of numbers. Serde
+# has no way to tell them apart on its own, so the property CBOR was chosen for
+# has to be asked for by name.
+serde_bytes = "0.11"
 clap = { version = "4.6", features = ["derive"] }
 # Keyed hashing, for the digests state keeps of secrets it must not keep. One
 # crate rather than the two an HMAC needs, and the same primitive will serve the
@@ -57,6 +61,9 @@ clap = { version = "4.6", features = ["derive"] }
 blake3 = "1.8"
 # Thirty-two random bytes for a state file's digest key, and nothing else.
 getrandom = "0.4"
+# Bytes in a human-readable state file. JSON has no way to say "these are
+# bytes", and an array of numbers cannot be told apart from a list of integers.
+base64 = "0.23"
 
 # Lint levels live here, at the workspace, and they are set now rather than
 # later on purpose. Turning a strict lint on across a thousand lines is an

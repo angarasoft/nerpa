@@ -22,6 +22,7 @@ default = ["strict-contracts"]
 strict-contracts = []
 
 [dependencies]
+base64.workspace = true
 blake3.workspace = true
 getrandom.workspace = true
 serde = { workspace = true }

@@ -151,7 +151,14 @@ pub enum Operation {
         /// Where.
         path: String,
         /// What is in it.
-        content: String,
+        ///
+        /// Bytes, not text. A certificate, a keytab, a file in an encoding that
+        /// is not UTF-8 — each is something somebody manages, and a `String`
+        /// cannot carry any of them. CBOR was chosen over JSON for exactly this
+        /// and had not been asked to do it; `serde_bytes` is what makes it a
+        /// byte string on the wire rather than an array of numbers.
+        #[serde(with = "serde_bytes")]
+        content: Vec<u8>,
         /// Permission bits.
         mode: u32,
     },
@@ -248,8 +255,9 @@ pub enum Entry {
     },
     /// A file.
     File {
-        /// What is in it.
-        content: String,
+        /// What is in it, as bytes. See [`Operation::File`].
+        #[serde(with = "serde_bytes")]
+        content: Vec<u8>,
         /// Permission bits.
         mode: u32,
     },

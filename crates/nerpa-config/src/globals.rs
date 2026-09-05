@@ -12,6 +12,7 @@ use starlark::environment::GlobalsBuilder;
 use starlark::eval::Evaluator;
 use starlark::starlark_module;
 use starlark::values::Value;
+use starlark::values::bytes::StarlarkBytes;
 use starlark::values::dict::DictRef;
 use starlark::values::list::ListRef;
 use starlark::values::none::NoneType;
@@ -74,6 +75,9 @@ fn core_value_of(value: Value<'_>) -> Option<CoreValue> {
             .map(core_value_of)
             .collect::<Option<Vec<_>>>()
             .map(CoreValue::List);
+    }
+    if let Some(bytes) = StarlarkBytes::from_value(value) {
+        return Some(CoreValue::bytes(bytes.as_bytes().to_vec()));
     }
     if let Some(entries) = DictRef::from_value(value) {
         return entries

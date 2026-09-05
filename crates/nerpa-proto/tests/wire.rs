@@ -45,7 +45,7 @@ fn every_operation_survives_the_trip() {
             },
             Operation::File {
                 path: "/etc/app/conf".to_owned(),
-                content: "listen 80;\nserver_name пример;\n".to_owned(),
+                content: "listen 80;\nserver_name пример;\n".into(),
                 mode: 0o640,
             },
             Operation::Remove {
@@ -72,7 +72,7 @@ fn every_answer_survives_the_trip() {
     entries.insert(
         "/etc/motd".to_owned(),
         Entry::File {
-            content: "hello\n".to_owned(),
+            content: "hello\n".into(),
             mode: 0o644,
         },
     );
@@ -234,7 +234,7 @@ fn frames_follow_one_another_on_one_pipe() {
 /// enough for real ones.
 #[test]
 fn a_large_but_reasonable_file_still_fits() {
-    let content = "x".repeat(4 * 1024 * 1024);
+    let content = vec![b'x'; 4 * 1024 * 1024];
     let asked = Ask::Perform {
         operations: vec![Operation::File {
             path: "/var/big".to_owned(),

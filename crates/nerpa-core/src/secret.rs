@@ -294,6 +294,11 @@ fn encode(value: &Value, out: &mut Vec<u8>) {
                 encode(item, out);
             }
         }
+        Value::Bytes(bytes) => {
+            out.push(6);
+            out.extend_from_slice(&length(bytes.len()));
+            out.extend_from_slice(bytes);
+        }
         Value::Map(entries) => {
             out.push(5);
             out.extend_from_slice(&length(entries.len()));

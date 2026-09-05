@@ -132,16 +132,67 @@ fn a_broken_symlink_is_there_rather_than_absent() {
     );
 }
 
+/// A certificate is a file somebody manages. It used to read as absent, then
+/// briefly as a refusal, and now as what it is.
 #[test]
-fn a_file_that_is_not_utf8_is_refused_rather_than_called_absent() {
+fn a_file_that_is_not_text_is_read_as_the_bytes_it_holds() {
     let scratch = Scratch::new("bytes");
     let path = scratch.join("cert.der");
-    fs::write(&path, [0xff, 0xfe, 0x00, 0x01]).unwrap();
+    let der = [0xffu8, 0xfe, 0x00, 0x01];
+    fs::write(&path, der).unwrap();
 
-    let refusal = look(&path).expect_err("bytes are not nothing");
-    assert!(
-        refusal.contains("UTF-8") && refusal.contains("cert.der"),
-        "the refusal should say what it could not represent: {refusal}"
+    let found = look(&path)
+        .expect("bytes can be read")
+        .expect("it is there");
+    assert_eq!(
+        found.get("content"),
+        Some(&Value::Bytes(der.to_vec())),
+        "{found:?}"
+    );
+}
+
+/// And a file that *is* text still reads as text, or every diff of every
+/// configuration file would turn into base64.
+#[test]
+fn a_file_that_is_text_is_still_read_as_text() {
+    let scratch = Scratch::new("text");
+    let path = scratch.join("nginx.conf");
+    fs::write(&path, "listen 80;\n").unwrap();
+
+    let found = look(&path).expect("text can be read").expect("it is there");
+    assert_eq!(
+        found.get("content"),
+        Some(&Value::Text("listen 80;\n".to_owned())),
+        "{found:?}"
+    );
+}
+
+/// The whole loop, on bytes: written, read back, and the second run empty.
+#[test]
+fn a_binary_file_converges() {
+    let scratch = Scratch::new("binary");
+    let path = scratch.join("keytab");
+    let bytes = vec![0x05u8, 0x02, 0x00, 0x00, 0xff, 0xfe, 0x80];
+
+    let mut wanted = at(&path);
+    wanted.insert("content".to_owned(), Value::Bytes(bytes.clone()));
+    let written = Os::new()
+        .apply(
+            &address("os:file.subject@localhost"),
+            ChangeKind::Create,
+            &wanted,
+        )
+        .expect("it writes");
+
+    assert_eq!(
+        fs::read(&path).unwrap(),
+        bytes,
+        "the bytes reached the disk"
+    );
+    assert_eq!(
+        written.get("content"),
+        Some(&Value::Bytes(bytes)),
+        "and came back as themselves, so a second run has nothing to do"
     );
 }
 

@@ -67,7 +67,11 @@ enum Entry {
         mode: u32,
     },
     File {
-        content: String,
+        /// Bytes rather than text: a certificate, a keytab or a file in an
+        /// encoding that is not UTF-8 is a file somebody manages, and a `String`
+        /// cannot hold one. `Value::bytes` puts anything readable back into text
+        /// on the way out, so nothing legible stops being legible.
+        content: Vec<u8>,
         mode: u32,
     },
     /// A pointer to somewhere else. Not a kind this provider manages, and
@@ -166,11 +170,11 @@ fn read_from_disk(path: &Path) -> Result<Option<Entry>, String> {
         ));
     }
 
-    match fs::read_to_string(path) {
+    // Bytes, not text. `Value::bytes` puts anything that is text back into text,
+    // so nothing readable stops being readable, and a certificate stops being
+    // unrepresentable.
+    match fs::read(path) {
         Ok(content) => Ok(Some(Entry::File { content, mode })),
-        Err(error) if error.kind() == std::io::ErrorKind::InvalidData => Err(format!(
-            "{shown} is not valid UTF-8, and an attribute cannot hold bytes yet"
-        )),
         Err(error) => Err(format!("{shown}: {error}")),
     }
 }
@@ -209,6 +213,25 @@ fn text(attributes: &Attributes, name: &str) -> Option<String> {
     }
 }
 
+/// What a file is to hold, from text or from bytes.
+///
+/// A declaration writes text almost always and bytes when it has to; both end up
+/// as the same thing on disk, which is what the provider needs.
+fn content_of(attributes: &Attributes, address: &Address) -> Result<Vec<u8>, ProviderError> {
+    match attributes.get("content") {
+        None => Ok(Vec::new()),
+        Some(value) => {
+            value
+                .as_bytes()
+                .map(<[u8]>::to_vec)
+                .ok_or_else(|| ProviderError::Declaration {
+                    address: address.clone(),
+                    problem: format!("content holds {value}, which is neither text nor bytes"),
+                })
+        }
+    }
+}
+
 /// Reads a mode written the way anybody writes one: `"0644"`.
 fn mode(attributes: &Attributes, address: &Address, default: u32) -> Result<u32, ProviderError> {
     let Some(written) = text(attributes, "mode") else {
@@ -239,7 +262,7 @@ fn as_attributes(path: &Path, entry: &Entry) -> Attributes {
             attributes.insert("mode".to_owned(), Value::Text(format!("{mode:04o}")));
         }
         Entry::File { content, mode } => {
-            attributes.insert("content".to_owned(), Value::Text(content.clone()));
+            attributes.insert("content".to_owned(), Value::bytes(content.clone()));
             attributes.insert("mode".to_owned(), Value::Text(format!("{mode:04o}")));
         }
         Entry::Symlink { target } => {
@@ -312,7 +335,7 @@ impl Provider for Os {
                 mode: mode(attributes, address, DEFAULT_DIRECTORY_MODE)?,
             },
             "file" => Entry::File {
-                content: text(attributes, "content").unwrap_or_default(),
+                content: content_of(attributes, address)?,
                 mode: mode(attributes, address, DEFAULT_FILE_MODE)?,
             },
             _ => {
