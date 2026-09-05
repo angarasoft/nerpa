@@ -1,0 +1,27 @@
+[package]
+name = "nerpa-cli"
+description = "The nerpa command"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[[bin]]
+name = "nerpa"
+path = "src/main.rs"
+
+[dependencies]
+nerpa-config = { workspace = true }
+nerpa-core = { workspace = true }
+nerpa-provider-os = { workspace = true }
+clap = { workspace = true }
+serde_json = { workspace = true }
+
+[lints]
+workspace = true

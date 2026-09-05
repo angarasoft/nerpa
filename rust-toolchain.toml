@@ -1,4 +1,4 @@
-# Pinned, not floating. Sarma's whole approval story rests on a plan hash being
+# Pinned, not floating. Nerpa's whole approval story rests on a plan hash being
 # reproducible, and a compiler that changes under the project is one more input
 # that can move without anyone deciding to move it. Bump this deliberately.
 [toolchain]

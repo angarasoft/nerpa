@@ -46,7 +46,7 @@ gate:
 mutants:
   stage: test
   tags:
-    - sarma-builder
+    - nerpa-builder
   rules:
     - if: $CI_PIPELINE_SOURCE == "schedule"
   before_script:

@@ -1,0 +1,20 @@
+[package]
+name = "nerpa-provider-os"
+description = "Files and directories on the machine Nerpa is running on"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+nerpa-core = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

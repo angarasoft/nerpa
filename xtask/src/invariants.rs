@@ -1,6 +1,6 @@
 //! The invariant registry, checked in both directions.
 //!
-//! `docs/invariants.toml` names the guarantees Sarma must hold and, for the ones
+//! `docs/invariants.toml` names the guarantees Nerpa must hold and, for the ones
 //! already built, the code that enforces them and the tests that prove it. This
 //! is what stops that from becoming a document nobody maintains: a renamed test,
 //! a deleted anchor or an invented identifier fails the gate.

@@ -23,8 +23,8 @@ belong.
 **Risk retired:** that the ban on branching over an unresolved value is
 expressible at all, and that violating it produces an error naming the line.
 
-**Exit:** met. `sarma apply` converges a local example from an empty machine, a
-second run prints "nothing to do", `sarma plan --json` round-trips through the
+**Exit:** met. `nerpa apply` converges a local example from an empty machine, a
+second run prints "nothing to do", `nerpa plan --json` round-trips through the
 typed schema, and branching on a handle fails evaluation naming the line.
 `cargo xtask ci` green, no cloud involved.
 
@@ -50,7 +50,7 @@ out of state rather than copying them.
 importing beats recreating.
 
 **Exit:** one real environment moves across without recreating a single resource;
-`sarma plan` immediately after import is empty. Import reports every secret it
+`nerpa plan` immediately after import is empty. Import reports every secret it
 found in clear text in the old state. Recorded-exchange tests cover the provider.
 
 ## Stage 3 — who is allowed to do what

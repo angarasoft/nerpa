@@ -56,7 +56,7 @@ without ceremony until the first stage is complete.
 - Edges derived from references, so ordering no longer depends on remembering to
   declare it.
 
-- `sarma-config`: a Starlark host. `resource()` declares something that should
+- `nerpa-config`: a Starlark host. `resource()` declares something that should
   exist and returns a handle; reading an attribute of it yields a value that will
   not exist until apply; `node()` says where a machine comes from.
 - Three mechanisms holding one guarantee, because the toolchain allows only some
@@ -74,8 +74,8 @@ without ceremony until the first stage is complete.
 - References resolve against what already exists, which is what makes a second
   run empty.
 
-- The provider boundary, and `sarma-provider-os`: files and directories on the
-  machine Sarma runs on. Every provider must ship a fake, because the trait says
+- The provider boundary, and `nerpa-provider-os`: files and directories on the
+  machine Nerpa runs on. Every provider must ship a fake, because the trait says
   so and a provider without one does not compile.
 - `observe` and `apply`: reading the world once before planning, then walking the
   plan in the order it already fixed, filling in values an earlier stage produced.
@@ -91,12 +91,16 @@ without ceremony until the first stage is complete.
 
 - State on disk: JSON a person can read, written whole or not at all, behind a
   lock so two runs cannot each write what the other did not know about.
-- The `sarma` command: `plan` and `apply`, with plan output shaped after
+- The `nerpa` command: `plan` and `apply`, with plan output shaped after
   `emerge -pv` — fixed action column, deltas rather than values, summary before
   detail, the cause of a replacement named where it happens.
-- `sarma plan --json` prints the same object the text is rendered from.
+- `nerpa plan --json` prints the same object the text is rendered from.
 
 ### Changed
+
+- Renamed from `sarma` to `nerpa`, and the Gentoo package manager that held the
+  name to `barguzin`. Speed was never the thing being sold; reach across domains
+  is, and one of those names says so.
 
 - Workspace lints set to their strictest: `unsafe` forbidden, `missing_docs`
   denied, clippy `pedantic` and `cargo` denied, and targeted bans on `unwrap`,

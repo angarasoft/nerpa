@@ -1,15 +1,15 @@
-# sarma
+# nerpa
 
 One binary that holds cloud resources and the contents of the machines they run
 on in a single graph.
 
-`sarma` plans infrastructure and configuration together, in one pass, and
+`nerpa` plans infrastructure and configuration together, in one pass, and
 applies the result over a transport that carries an identity rather than a
 static key. It is built for a world where the operator is often not a person:
 the plan is a typed document before it is a page of text, and a change can be
 made to require a signature from somebody other than whoever proposed it.
 
-> **Status: stage 0 complete, and useful for nothing yet.** `sarma apply`
+> **Status: stage 0 complete, and useful for nothing yet.** `nerpa apply`
 > converges files and directories on the machine it runs on, and a second run has
 > nothing to do. No transport, no cloud, no packages — see the
 > [roadmap](ROADMAP.md).
@@ -24,7 +24,7 @@ resource("os:file.app@localhost", {
     "mode": "0640",
 })
 
-$ sarma plan
+$ nerpa plan
   2 changes: 2 to create
   touches 1 node: localhost
 
@@ -36,23 +36,23 @@ stage 1 · target: localhost
                ~ mode           — → "0640"
                ~ path           — → "/tmp/demo/etc/app.conf"
 
-$ sarma apply
+$ nerpa apply
 applied 2 changes
 
-$ sarma plan
+$ nerpa plan
 nothing to do: the world already matches the configuration
 ```
 
 ## What it is not
 
-**sarma is not a Terraform provider host, and is not trying to become one.**
+**nerpa is not a Terraform provider host, and is not trying to become one.**
 
 Terraform's providers are Go binaries with full process rights: any network, the
 filesystem, `exec`. They receive credentials as values, from a registry you do
 not control. Accepting them as a runtime would mean accepting all of that, which
 is the opposite of what this tool claims to be. Their *schemas*, on the other
 hand, are JSON — a complete machine-readable description of every resource type
-that somebody else spent years getting right. sarma takes the schemas and leaves
+that somebody else spent years getting right. nerpa takes the schemas and leaves
 the binaries.
 
 Terraform therefore appears on the input side only: `.tf` converts, `tfstate`
@@ -69,7 +69,7 @@ nobody defends, two state mechanisms, two languages, and a plan that stops being
 true at the boundary. Both halves also carry a decade of accumulated answers to
 questions that no longer need asking.
 
-sarma is an attempt at the same job with those answers removed rather than
+nerpa is an attempt at the same job with those answers removed rather than
 improved on. There is no `count`, so an index cannot shift and propose
 destroying a live resource. There are no workspaces, no separate module
 language, no initialisation step, and no twenty-two levels of variable

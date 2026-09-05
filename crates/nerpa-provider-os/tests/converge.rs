@@ -1,0 +1,427 @@
+//! The whole loop, on a real filesystem: read, plan, apply, plan again.
+
+// Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
+#![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
+
+use std::fs;
+use std::path::PathBuf;
+
+use nerpa_core::address::address;
+use nerpa_core::planner::plan;
+use nerpa_core::provider::{Provider, Providers};
+use nerpa_core::run::{apply, observe};
+use nerpa_core::state::State;
+use nerpa_core::{ChangeKind, Graph, Reference, Resource, Target, Value};
+use nerpa_provider_os::Os;
+
+/// A directory that removes itself, so a failing test cannot leave litter behind.
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new(name: &str) -> Self {
+        let path = std::env::temp_dir().join(format!("nerpa-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir_all(&path).expect("a scratch directory");
+        Self(path)
+    }
+
+    fn join(&self, name: &str) -> String {
+        self.0.join(name).display().to_string()
+    }
+}
+
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+fn providers() -> Providers {
+    Providers::new().with(Box::new(Os::new()))
+}
+
+fn graph_of(resources: Vec<Resource>) -> Graph {
+    let mut graph = Graph::new();
+    for resource in resources {
+        if let Some(target) = resource.address().target() {
+            graph.preexisting(target.clone());
+        }
+        graph.insert(resource).expect("distinct addresses");
+    }
+    graph
+}
+
+#[test]
+fn a_file_is_written_and_the_second_run_has_nothing_to_do() {
+    let scratch = Scratch::new("write");
+    let path = scratch.join("motd");
+    let providers = providers();
+    let mut state = State::new();
+
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.motd@localhost"))
+            .with("path", path.clone())
+            .with("content", "hello\n")
+            .with("mode", "0640"),
+    ]);
+
+    let before = observe(&graph, &providers, &state).expect("readable");
+    assert!(before.is_empty(), "nothing exists yet");
+
+    let first = plan(&graph, &before, &state, &providers.schema()).expect("plannable");
+    assert_eq!(first.blast_radius().creates(), 1);
+
+    let applied = apply(&first, &providers, &before, &mut state).expect("applies");
+    assert_eq!(applied.changed(), 1);
+    assert_eq!(fs::read_to_string(&path).expect("written"), "hello\n");
+
+    // The property the whole tool exists to have.
+    let after = observe(&graph, &providers, &state).expect("readable");
+    let second = plan(&graph, &after, &state, &providers.schema()).expect("plannable");
+    assert!(
+        second.is_empty(),
+        "the second run must change nothing: {second:?}"
+    );
+}
+
+#[test]
+fn a_file_edited_by_hand_is_brought_back() {
+    let scratch = Scratch::new("drift");
+    let path = scratch.join("nginx.conf");
+    let providers = providers();
+    let mut state = State::new();
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.nginx.conf@localhost"))
+            .with("path", path.clone())
+            .with("content", "listen 80;\n"),
+    ]);
+
+    let observed = observe(&graph, &providers, &state).expect("readable");
+    apply(
+        &plan(&graph, &observed, &state, &providers.schema()).expect("plannable"),
+        &providers,
+        &observed,
+        &mut state,
+    )
+    .expect("applies");
+
+    fs::write(&path, "listen 8080;\n").expect("somebody edits it during an incident");
+
+    let drifted = observe(&graph, &providers, &state).expect("readable");
+    let repair = plan(&graph, &drifted, &state, &providers.schema()).expect("plannable");
+    assert_eq!(repair.blast_radius().updates(), 1);
+    assert_eq!(
+        repair.changes().next().expect("one change").kind(),
+        ChangeKind::Update
+    );
+
+    apply(&repair, &providers, &drifted, &mut state).expect("applies");
+    assert_eq!(fs::read_to_string(&path).expect("written"), "listen 80;\n");
+}
+
+#[test]
+fn a_directory_comes_before_the_file_in_it() {
+    let scratch = Scratch::new("order");
+    let directory = scratch.join("etc");
+    let providers = providers();
+    let mut state = State::new();
+
+    let graph = graph_of(vec![
+        Resource::new(address("os:directory.etc@localhost")).with("path", directory.clone()),
+        Resource::new(address("os:file.conf@localhost"))
+            .with("path", format!("{directory}/app.conf"))
+            .with("content", "on\n")
+            .after(address("os:directory.etc@localhost")),
+    ]);
+
+    let observed = observe(&graph, &providers, &state).expect("readable");
+    let plan = plan(&graph, &observed, &state, &providers.schema()).expect("plannable");
+    assert_eq!(plan.stages().len(), 2, "the file waits for the directory");
+
+    let applied = apply(&plan, &providers, &observed, &mut state).expect("applies");
+    assert_eq!(applied.changed(), 2, "the directory and the file in it");
+    assert!(fs::metadata(&directory).expect("made").is_dir());
+    assert_eq!(
+        fs::read_to_string(format!("{directory}/app.conf")).expect("written"),
+        "on\n"
+    );
+}
+
+/// A path is where the resource is. Changing it is a replacement, and only
+/// state can see that: the new declaration points somewhere empty, so without a
+/// memory of where the file was, this reads as making a second one and
+/// abandoning the first. It used to.
+#[test]
+fn moving_a_file_replaces_it_and_takes_the_old_one_with_it() {
+    let scratch = Scratch::new("move");
+    let providers = providers();
+    let mut state = State::new();
+    let old = scratch.join("motd");
+    let new = scratch.join("motd.new");
+
+    let before = graph_of(vec![
+        Resource::new(address("os:file.motd@localhost"))
+            .with("path", old.clone())
+            .with("content", "hello\n"),
+    ]);
+    let observed = observe(&before, &providers, &state).expect("readable");
+    apply(
+        &plan(&before, &observed, &state, &providers.schema()).expect("plannable"),
+        &providers,
+        &observed,
+        &mut state,
+    )
+    .expect("applies");
+    assert!(fs::metadata(&old).is_ok(), "the first file was made");
+
+    let moved = graph_of(vec![
+        Resource::new(address("os:file.motd@localhost"))
+            .with("path", new.clone())
+            .with("content", "hello\n"),
+    ]);
+    let observed = observe(&moved, &providers, &state).expect("readable");
+    let plan = plan(&moved, &observed, &state, &providers.schema()).expect("plannable");
+
+    let change = plan.changes().next().expect("one change");
+    assert_eq!(change.kind(), ChangeKind::Replace);
+    assert_eq!(change.cause().expect("a cause").name(), "path");
+    assert!(plan.blast_radius().has_irreversible());
+
+    apply(&plan, &providers, &observed, &mut state).expect("applies");
+    assert!(fs::metadata(&new).is_ok(), "the new file is there");
+    assert!(fs::metadata(&old).is_err(), "and the old one went with it");
+}
+
+/// A resource that leaves the configuration leaves the world. Nothing in the
+/// world says so — only state remembers that Nerpa made it.
+#[test]
+fn a_resource_removed_from_the_configuration_is_removed_from_the_machine() {
+    let scratch = Scratch::new("delete");
+    let providers = providers();
+    let mut state = State::new();
+    let path = scratch.join("temporary");
+
+    let declared = graph_of(vec![
+        Resource::new(address("os:file.temporary@localhost"))
+            .with("path", path.clone())
+            .with("content", "for now\n"),
+    ]);
+    let observed = observe(&declared, &providers, &state).expect("readable");
+    apply(
+        &plan(&declared, &observed, &state, &providers.schema()).expect("plannable"),
+        &providers,
+        &observed,
+        &mut state,
+    )
+    .expect("applies");
+    assert!(fs::metadata(&path).is_ok());
+    assert_eq!(state.len(), 1);
+
+    // The declaration is gone.
+    let empty = Graph::new();
+    let observed = observe(&empty, &providers, &state).expect("readable");
+    let plan = plan(&empty, &observed, &state, &providers.schema()).expect("plannable");
+
+    assert_eq!(plan.blast_radius().deletes(), 1);
+    assert!(
+        plan.blast_radius().has_irreversible(),
+        "removal cannot be undone"
+    );
+    assert_eq!(
+        plan.changes().next().expect("one change").kind(),
+        ChangeKind::Delete
+    );
+
+    apply(&plan, &providers, &observed, &mut state).expect("applies");
+    assert!(fs::metadata(&path).is_err(), "the file is gone");
+    assert!(state.is_empty(), "and so is the memory of it");
+}
+
+/// Removal order comes from what was recorded, because the configuration that
+/// described the dependency is exactly what was deleted.
+#[test]
+fn what_depended_on_a_thing_is_removed_before_the_thing() {
+    let scratch = Scratch::new("order-delete");
+    let providers = providers();
+    let mut state = State::new();
+    let directory = scratch.join("etc");
+
+    let declared = graph_of(vec![
+        Resource::new(address("os:directory.etc@localhost")).with("path", directory.clone()),
+        Resource::new(address("os:file.conf@localhost"))
+            .with("path", format!("{directory}/app.conf"))
+            .with(
+                "content",
+                Reference::to(address("os:directory.etc@localhost"), "path"),
+            ),
+    ]);
+    let observed = observe(&declared, &providers, &state).expect("readable");
+    apply(
+        &plan(&declared, &observed, &state, &providers.schema()).expect("plannable"),
+        &providers,
+        &observed,
+        &mut state,
+    )
+    .expect("applies");
+
+    let empty = Graph::new();
+    let observed = observe(&empty, &providers, &state).expect("readable");
+    let plan = plan(&empty, &observed, &state, &providers.schema()).expect("plannable");
+
+    assert_eq!(plan.blast_radius().deletes(), 2);
+    assert_eq!(
+        plan.stages().len(),
+        2,
+        "the file cannot go with the directory"
+    );
+    assert_eq!(
+        plan.stages()[0].changes()[0].address(),
+        &address("os:file.conf@localhost"),
+        "whatever read from the directory goes first"
+    );
+
+    apply(&plan, &providers, &observed, &mut state).expect("applies");
+    assert!(fs::metadata(&directory).is_err());
+    assert!(state.is_empty());
+}
+
+/// A value that does not exist at plan time is filled in from what the earlier
+/// stage produced, and only then written.
+#[test]
+fn an_unresolved_value_is_settled_from_the_stage_before_it() {
+    let scratch = Scratch::new("resolve");
+    let providers = providers();
+    let mut state = State::new();
+    let directory = scratch.join("data");
+
+    let graph = graph_of(vec![
+        Resource::new(address("os:directory.data@localhost")).with("path", directory.clone()),
+        Resource::new(address("os:file.marker@localhost"))
+            .with("path", format!("{directory}/where"))
+            .with(
+                "content",
+                Reference::to(address("os:directory.data@localhost"), "path"),
+            ),
+    ]);
+
+    let observed = observe(&graph, &providers, &state).expect("readable");
+    let plan = plan(&graph, &observed, &state, &providers.schema()).expect("plannable");
+    assert_eq!(
+        plan.blast_radius().unresolved(),
+        1,
+        "the content is not known yet"
+    );
+
+    apply(&plan, &providers, &observed, &mut state).expect("applies");
+    assert_eq!(
+        fs::read_to_string(format!("{directory}/where")).expect("written"),
+        directory,
+        "the directory's own path was written into the file"
+    );
+}
+
+#[test]
+fn the_fake_touches_nothing() {
+    let providers = Providers::new().with(Box::new(Os::fake()));
+    let mut state = State::new();
+    let path = "/etc/definitely-not-writing-here";
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.dangerous@localhost"))
+            .with("path", path)
+            .with("content", "no\n"),
+    ]);
+
+    let observed = observe(&graph, &providers, &state).expect("readable");
+    let plan = plan(&graph, &observed, &state, &providers.schema()).expect("plannable");
+    let applied = apply(&plan, &providers, &observed, &mut state).expect("applies");
+
+    assert_eq!(applied.changed(), 1);
+    assert!(
+        !std::path::Path::new(path).exists(),
+        "the fake wrote to memory, not to /etc"
+    );
+    assert_eq!(
+        applied
+            .observed()
+            .attribute(&address("os:file.dangerous@localhost"), "content"),
+        Some(&Value::Text("no\n".to_owned()))
+    );
+}
+
+#[test]
+fn a_declaration_without_a_path_is_refused_rather_than_guessed_at() {
+    let providers = providers();
+    let mut state = State::new();
+    let graph = graph_of(vec![Resource::new(address("os:file.nowhere@localhost"))]);
+
+    let observed = observe(&graph, &providers, &state).expect("readable");
+    let plan = plan(&graph, &observed, &state, &providers.schema()).expect("plannable");
+
+    let refusal = apply(&plan, &providers, &observed, &mut state).expect_err("a file needs a path");
+    assert!(refusal.to_string().contains("needs a `path`"), "{refusal}");
+}
+
+#[test]
+fn a_kind_this_provider_does_not_own_is_refused() {
+    let providers = providers();
+    let state = State::new();
+    let graph = graph_of(vec![
+        Resource::new(address("os:package.nginx@localhost")).with("state", "present"),
+    ]);
+
+    let refusal =
+        observe(&graph, &providers, &state).expect_err("packages arrive with the executor");
+    assert!(
+        refusal.to_string().contains("does not know how to handle"),
+        "{refusal}"
+    );
+    let _ = Target::new("localhost").expect("a valid target");
+}
+
+#[test]
+fn the_registry_merges_what_each_provider_refuses_to_change() {
+    let providers = providers();
+    let schema = providers.schema();
+
+    assert!(schema.forces_replacement(&address("os:file.motd@localhost"), "path"));
+    assert!(schema.forces_replacement(&address("os:directory.etc@localhost"), "path"));
+    assert!(!schema.forces_replacement(&address("os:file.motd@localhost"), "content"));
+    assert_eq!(providers.len(), 1);
+    assert!(!providers.is_empty());
+    assert!(Providers::new().is_empty());
+    assert_eq!(
+        Providers::new().len(),
+        0,
+        "a registry that knows nobody knows nobody"
+    );
+}
+
+/// A file that is already on disk and that state has never heard of. Nerpa has
+/// to find it from the declaration alone, or it would propose making one that is
+/// already there and overwrite whatever is in it.
+#[test]
+fn a_file_that_was_already_there_is_adopted_rather_than_remade() {
+    let scratch = Scratch::new("adopt");
+    let providers = providers();
+    let state = State::new();
+    let path = scratch.join("existing.conf");
+    fs::write(&path, "already here\n").expect("somebody put it there first");
+
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.existing@localhost"))
+            .with("path", path.clone())
+            .with("content", "already here\n"),
+    ]);
+
+    let observed = observe(&graph, &providers, &state).expect("readable");
+    assert!(
+        observed.contains(&address("os:file.existing@localhost")),
+        "it was found"
+    );
+
+    let plan = plan(&graph, &observed, &state, &providers.schema()).expect("plannable");
+    assert!(
+        plan.is_empty(),
+        "nothing to do about a file that already matches: {plan:?}"
+    );
+}

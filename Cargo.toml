@@ -1,10 +1,10 @@
 [workspace]
 resolver = "3"
 members = [
-  "crates/sarma-cli",
-  "crates/sarma-config",
-  "crates/sarma-core",
-  "crates/sarma-provider-os",
+  "crates/nerpa-cli",
+  "crates/nerpa-config",
+  "crates/nerpa-core",
+  "crates/nerpa-provider-os",
   "xtask",
 ]
 
@@ -14,9 +14,9 @@ edition = "2024"
 rust-version = "1.98"
 license = "Apache-2.0"
 authors = ["Anishchuk Sergei <anishukserg@gmail.com>"]
-repository = "https://github.com/anishukserg/sarma"
-homepage = "https://github.com/anishukserg/sarma"
-documentation = "https://docs.rs/sarma-core"
+repository = "https://github.com/anishukserg/nerpa"
+homepage = "https://github.com/anishukserg/nerpa"
+documentation = "https://docs.rs/nerpa-core"
 readme = "README.md"
 keywords = ["infrastructure", "configuration", "iac", "provisioning"]
 categories = ["command-line-utilities", "config", "development-tools"]
@@ -25,9 +25,9 @@ categories = ["command-line-utilities", "config", "development-tools"]
 # The version is here as well as in the package because a path dependency without
 # one is a wildcard, and a wildcard cannot be published. Two places to keep in
 # step on a release, which the release script does.
-sarma-config = { path = "crates/sarma-config", version = "=0.0.1" }
-sarma-core = { path = "crates/sarma-core", version = "=0.0.1" }
-sarma-provider-os = { path = "crates/sarma-provider-os", version = "=0.0.1" }
+nerpa-config = { path = "crates/nerpa-config", version = "=0.0.1" }
+nerpa-core = { path = "crates/nerpa-core", version = "=0.0.1" }
+nerpa-provider-os = { path = "crates/nerpa-provider-os", version = "=0.0.1" }
 
 thiserror = "2.0"
 # The Starlark implementation from Meta, the one Buck2 runs on. Chosen in 0005;
@@ -122,7 +122,7 @@ lto = true
 codegen-units = 1
 strip = true
 
-# Sarma changes infrastructure. A panic must unwind so that guards holding a
+# Nerpa changes infrastructure. A panic must unwind so that guards holding a
 # state lock or a half-open transport get to run their destructors; aborting
 # would leave a lock file behind on a machine nobody is watching.
 # Do not set panic = "abort".

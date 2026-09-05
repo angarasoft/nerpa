@@ -1,6 +1,6 @@
 [package]
 name = "xtask"
-description = "Repository checks and release chores for sarma"
+description = "Repository checks and release chores for nerpa"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

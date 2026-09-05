@@ -1,6 +1,6 @@
 # The invariant registry.
 #
-# An invariant is a guarantee Sarma must hold under every circumstance, and
+# An invariant is a guarantee Nerpa must hold under every circumstance, and
 # whose violation means a wrong change to somebody's infrastructure. Writing
 # them down here rather than only in prose makes them traceable: each one names
 # the code that enforces it and the tests that prove it, and `tests/invariants.rs`
@@ -23,7 +23,7 @@ An ordinal position in a list is not an identity. Removing an entry from the \
 middle renumbers everything after it, and a planner that believes those numbers \
 proposes destroying live resources that merely moved. There is no field and no \
 constructor that could hold one."""
-enforced_by = ["crates/sarma-core/src/address.rs"]
+enforced_by = ["crates/nerpa-core/src/address.rs"]
 tests = ["slots_let_two_versions_coexist", "addresses_are_built_as_well_as_parsed"]
 
 [[invariant]]
@@ -34,7 +34,7 @@ rationale = """
 Addresses are interpolated into SSH command lines and provider invocations. A \
 name that reads as an option is a remote code execution waiting for a careless \
 call site, so the type refuses to hold one."""
-enforced_by = ["crates/sarma-core/src/address.rs"]
+enforced_by = ["crates/nerpa-core/src/address.rs"]
 tests = ["nothing_can_be_mistaken_for_a_command_line_option"]
 
 [[invariant]]
@@ -45,7 +45,7 @@ rationale = """
 The plan hash is taken over canonical text. A value that printed differently \
 from the way it parsed would produce two hashes for one plan and invalidate a \
 signature that was given in good faith."""
-enforced_by = ["crates/sarma-core/src/address.rs"]
+enforced_by = ["crates/nerpa-core/src/address.rs"]
 tests = ["every_shape_round_trips"]
 
 [[invariant]]
@@ -56,7 +56,7 @@ rationale = """
 A separate field is a second source of truth, and the two can disagree. The \
 planner would then look for a node the address says is not there, or skip one \
 that is."""
-enforced_by = ["crates/sarma-core/src/domain.rs"]
+enforced_by = ["crates/nerpa-core/src/domain.rs"]
 tests = ["control_resources_have_no_node", "target_resources_name_the_node_they_live_on"]
 
 [[invariant]]
@@ -67,7 +67,7 @@ rationale = """
 A cycle is a configuration error, not a runtime condition, so it must be found \
 before anything is touched. Reporting it the same way every time matters because \
 the report is what somebody debugs at three in the morning."""
-enforced_by = ["crates/sarma-core/src/graph.rs"]
+enforced_by = ["crates/nerpa-core/src/graph.rs"]
 tests = ["a_cycle_is_reported_with_every_resource_in_it", "cycle_reports_do_not_depend_on_insertion_order"]
 
 [[invariant]]
@@ -77,7 +77,7 @@ statement = "Every declared dependency names a resource that exists in the graph
 rationale = """
 A dangling edge means the planner would silently ignore an ordering somebody \
 asked for. Failing closed is the only safe reading."""
-enforced_by = ["crates/sarma-core/src/graph.rs"]
+enforced_by = ["crates/nerpa-core/src/graph.rs"]
 tests = ["a_dependency_on_a_missing_resource_is_refused"]
 
 [[invariant]]
@@ -88,7 +88,7 @@ rationale = """
 Ordering that depends on somebody remembering to declare it is where ordering \
 bugs come from. If a value is read from another resource, the reader waits for \
 it whether or not anyone noticed."""
-enforced_by = ["crates/sarma-core/src/graph.rs", "crates/sarma-core/src/attribute.rs"]
+enforced_by = ["crates/nerpa-core/src/graph.rs", "crates/nerpa-core/src/attribute.rs"]
 tests = [
   "an_attribute_reading_from_another_resource_is_an_ordering",
   "two_references_to_one_resource_are_still_one_ordering",
@@ -103,7 +103,7 @@ A target-domain address names its node as text, and nothing in that text says \
 who creates it. Without the inventory edge the package would be free to run \
 before the machine exists — and a resource whose node nobody declared is refused \
 rather than ordered last, because that would be a guess dressed up as a decision."""
-enforced_by = ["crates/sarma-core/src/graph.rs"]
+enforced_by = ["crates/nerpa-core/src/graph.rs"]
 tests = [
   "everything_on_a_node_waits_for_whatever_creates_it",
   "a_resource_on_a_node_nobody_declared_is_refused",
@@ -122,8 +122,8 @@ equality and containment are refused by a pass over the syntax tree, because \
 Starlark answers them without consulting the value; and truthiness is recorded \
 and the whole run refused, because `to_bool` has no error channel. See 0018."""
 enforced_by = [
-  "crates/sarma-config/src/handle.rs",
-  "crates/sarma-config/src/refuse.rs",
+  "crates/nerpa-config/src/handle.rs",
+  "crates/nerpa-config/src/refuse.rs",
 ]
 tests = [
   "comparing_a_value_that_does_not_exist_yet_is_refused_before_anything_runs",
@@ -140,7 +140,7 @@ rationale = """
 Two planning passes would mean a plan that is only partly known, which cannot be \
 signed as a whole. Stages order the work; they do not order the thinking. The \
 planner walks the graph once and never returns to a stage it has left."""
-enforced_by = ["crates/sarma-core/src/planner.rs"]
+enforced_by = ["crates/nerpa-core/src/planner.rs"]
 tests = [
   "stages_with_nothing_to_do_are_left_out_but_order_is_kept",
   "a_graph_that_cannot_be_ordered_is_not_planned_at_all",
@@ -156,7 +156,7 @@ remembers to assert. It rests on references resolving against what already \
 exists: a value read from another resource is unresolved in the text but known \
 in the world once that resource is there, and without that the reader would \
 differ on every run for ever."""
-enforced_by = ["crates/sarma-core/src/planner.rs"]
+enforced_by = ["crates/nerpa-core/src/planner.rs"]
 tests = [
   "planning_after_applying_produces_an_empty_plan",
   "a_resource_that_already_matches_produces_nothing",
@@ -172,7 +172,7 @@ A plan is what gets signed and what gets handed to something that never saw the 
 program. Carrying only the attributes that differ would make it unusable on its \
 own — an unchanged path is still needed to write the file. Deltas are for \
 reading; the desired state is for doing."""
-enforced_by = ["crates/sarma-core/src/plan.rs", "crates/sarma-core/src/run.rs"]
+enforced_by = ["crates/nerpa-core/src/plan.rs", "crates/nerpa-core/src/run.rs"]
 tests = [
   "a_file_edited_by_hand_is_brought_back",
   "an_unresolved_value_is_settled_from_the_stage_before_it",
@@ -187,7 +187,7 @@ Removal order cannot come from the configuration, because the configuration that
 described the dependency is exactly what was deleted. It comes from the edges \
 recorded when the resource was last applied. The other way round takes a network \
 down before the machine on it."""
-enforced_by = ["crates/sarma-core/src/state.rs"]
+enforced_by = ["crates/nerpa-core/src/state.rs"]
 tests = [
   "what_depended_on_a_thing_is_removed_before_the_thing",
   "a_resource_removed_from_the_configuration_is_removed_from_the_machine",
@@ -199,9 +199,9 @@ status = "enforced"
 statement = "A resource that moved is found where it was, not where it should be."
 rationale = """
 Reading at the new declared location finds nothing and proposes making a second \
-resource, abandoning the first. Only state remembers where Sarma left it, and \
+resource, abandoning the first. Only state remembers where Nerpa left it, and \
 without that a change of location is silently a duplication."""
-enforced_by = ["crates/sarma-core/src/run.rs"]
+enforced_by = ["crates/nerpa-core/src/run.rs"]
 tests = ["moving_a_file_replaces_it_and_takes_the_old_one_with_it"]
 
 [[invariant]]
@@ -225,7 +225,7 @@ no state file: it will be believed. Written beside the target and moved into \
 place, so an interrupted run leaves the previous state rather than half of two. \
 And two runs cannot hold it at once, because each would write what the other did \
 not know about."""
-enforced_by = ["crates/sarma-core/src/store.rs"]
+enforced_by = ["crates/nerpa-core/src/store.rs"]
 tests = [
   "writing_replaces_the_previous_file_only_once_it_is_whole",
   "two_runs_cannot_hold_the_state_at_once",
@@ -241,7 +241,7 @@ Every machine-readable output in this space is an afterthought bolted onto text 
 meant for people, which is why automating them means parsing prose. Here the text \
 is a rendering of the typed plan and `--json` writes the same object, so the two \
 cannot come to disagree about what the plan says."""
-enforced_by = ["crates/sarma-core/src/plan.rs", "crates/sarma-cli/src/render.rs"]
+enforced_by = ["crates/nerpa-core/src/plan.rs", "crates/nerpa-cli/src/render.rs"]
 tests = ["a_plan_survives_a_trip_through_json"]
 
 [[invariant]]
@@ -251,7 +251,7 @@ statement = "A resource marked for merging is never overwritten without a person
 rationale = """
 Portage's CONFIG_PROTECT, and for the same reason: people edit machines during \
 incidents, and the edit is often the only record of what the incident was."""
-enforced_by = ["crates/sarma-core/src/resource.rs"]
+enforced_by = ["crates/nerpa-core/src/resource.rs"]
 tests = ["drift_is_corrected_unless_the_resource_asks_to_be_merged"]
 
 [[invariant]]

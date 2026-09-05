@@ -19,11 +19,11 @@ address scheme that `0002` froze. Or say it out loud.
 
 The graph carries an **inventory**: a mapping from a target name to what provides
 it, either a resource in this graph or a declaration that the node already exists
-outside Sarma's control. Edges from every resource on a node to whatever provides
+outside Nerpa's control. Edges from every resource on a node to whatever provides
 that node are derived from it.
 
 A resource on a node the inventory does not know is **refused**, not ordered last.
-If Sarma cannot say where a machine comes from, it cannot say when to touch it.
+If Nerpa cannot say where a machine comes from, it cannot say when to touch it.
 
 Dependencies implied by unresolved references are derived the same way: an
 attribute reading a value from another resource is an edge, without anyone
@@ -31,7 +31,7 @@ writing `after`.
 
 ## Consequences
 
-The address scheme is untouched. Machines Sarma does not manage are expressed in
+The address scheme is untouched. Machines Nerpa does not manage are expressed in
 the same construct as ones it does, so a fleet that is half adopted is not a
 special case. And ordering stops depending on somebody remembering to declare it,
 which is where ordering bugs come from.

@@ -920,6 +920,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "nerpa-cli"
+version = "0.0.1"
+dependencies = [
+ "clap",
+ "nerpa-config",
+ "nerpa-core",
+ "nerpa-provider-os",
+ "serde_json",
+]
+
+[[package]]
+name = "nerpa-config"
+version = "0.0.1"
+dependencies = [
+ "allocative",
+ "nerpa-core",
+ "starlark",
+ "starlark_syntax",
+ "thiserror",
+]
+
+[[package]]
+name = "nerpa-core"
+version = "0.0.1"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
+name = "nerpa-provider-os"
+version = "0.0.1"
+dependencies = [
+ "nerpa-core",
+ "thiserror",
+]
+
+[[package]]
 name = "nibble_vec"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1248,45 +1287,6 @@ dependencies = [
  "unicode-width",
  "utf8parse",
  "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "sarma-cli"
-version = "0.0.1"
-dependencies = [
- "clap",
- "sarma-config",
- "sarma-core",
- "sarma-provider-os",
- "serde_json",
-]
-
-[[package]]
-name = "sarma-config"
-version = "0.0.1"
-dependencies = [
- "allocative",
- "sarma-core",
- "starlark",
- "starlark_syntax",
- "thiserror",
-]
-
-[[package]]
-name = "sarma-core"
-version = "0.0.1"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror",
-]
-
-[[package]]
-name = "sarma-provider-os"
-version = "0.0.1"
-dependencies = [
- "sarma-core",
- "thiserror",
 ]
 
 [[package]]
