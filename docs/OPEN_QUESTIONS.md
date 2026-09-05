@@ -18,51 +18,33 @@ a pointer to the record.
 
 ## Open
 
-### OQ-001 — Threads or async, and what that does to the provider trait
+### OQ-005 — How a plan is hashed, and what the hash covers
 
-**Answer by:** before stage 3 begins.
-**Why then:** stage 3 says machines are visited in parallel. `Providers` holds
-`Box<dyn Provider>` with neither `Send` nor `Sync`, and the one provider that
-exists keeps a `RefCell`. Making the trait parallel changes the interface that
-0004 says outside authors will implement. There are no outside providers today,
-so the change is free; after stage 6 it is a breaking change to somebody else's
-crate.
-
-### OQ-002 — How bytes are represented
-
-**Answer by:** before a state file written by this code exists on a machine that
-is not the author's.
-**Why then:** `Value` is `#[non_exhaustive]` and grows cheaply, but the state
-format and the wire protocol are frozen by rule 5 the moment either leaves. A
-certificate, a keytab or a file that is not UTF-8 has nowhere to go today, and
-the manifest already justifies CBOR on the wire by its ability to say "these are
-bytes" — an ability nothing currently uses.
-
-### OQ-003 — Whether a directory owns what is inside it
-
-**Answer by:** before the executor gains anything that removes a path on a real
-machine — stage 1.
-**Why then:** `delete` on a directory currently removes its contents recursively.
-Nothing put them there, and nothing recorded them. Either a directory resource
-owns its subtree and that is stated, or it owns only its own existence and
-removal refuses when it is not empty. Both are defensible; doing neither
-deliberately is not, and the wrong choice is discovered on somebody's machine.
-
-### OQ-004 — Whether state is written once per run or once per change
-
-**Answer by:** before the executor reaches a machine that is not this one —
-stage 1.
-**Why then:** state is written after `apply` returns. Contracts panic by design,
-and a panic unwinds past the only call that would record what was already made.
-Locally this loses a file nobody minds. Across a fleet it loses the record of
-every resource created before the stop, and the next run proposes making them
-again.
+**Answer by:** before the executor sends its first batch — stage 1.
+**Why then:** [0033](decisions/0033-process-is-a-providers-word-not-an-authors.md)
+makes `Operation::Process` general enough to run anything, and what limits that
+authority is the plan the batch came from.
+[0034](decisions/0034-a-plan-carries-its-premise.md) binds a batch to the premise
+it was computed from. Both reason from a plan hash that is named in the
+architecture, in the testing document and in four rustdoc comments, and
+implemented nowhere. Whichever way it is eventually computed, some of that prose
+will turn out to have been about something else. It was `W-003` on the watchlist
+until the executor gave it a deadline.
 
 ## Answered
 
 | Question | Answered by | Date |
 | --- | --- | --- |
-| — | — | — |
+| OQ-001 — threads or async | [0031](decisions/0031-parallelism-is-threads-and-providers-are-sync.md), and `INV-PROVIDER-001` | 2026-09-06 |
+| OQ-002 — how bytes are represented | `Value::Bytes` and `INV-VALUE-001` — base64 under a reserved key in a readable format, a real byte string on the wire | 2026-09-06 |
+| OQ-003 — whether a directory owns what is inside it | It owns its own existence only. `remove_dir`, never `remove_dir_all`; a directory with something in it refuses. `INV-DELETE-001` | 2026-09-06 |
+| OQ-004 — state once per run or once per change | Once per change. `apply` takes somewhere to write to and uses it after every one. `INV-STATE-005` | 2026-09-06 |
+
+Three of those four point at an invariant rather than at a decision record, and
+that is deliberate. [0030](decisions/0030-claim-less-and-attack-what-is-claimed.md)
+asks for fewer records, not more; an answer whose whole reasoning fits in a
+registry entry and a commit message does not need a page of its own. A record is
+for a choice somebody could reasonably have made differently.
 
 ## Adding a question
 
