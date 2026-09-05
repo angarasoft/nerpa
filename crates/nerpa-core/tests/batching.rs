@@ -191,3 +191,39 @@ fn something_only_state_remembers_travels_with_the_rest() {
     let names: Vec<String> = calls[0].iter().map(|r| r.address().to_string()).collect();
     assert_eq!(names, ["os:file.forgotten@web-01", "os:file.motd@web-01"]);
 }
+
+/// A configuration that cannot be ordered is a refusal, not an empty one.
+///
+/// `stages()` returns a `Result`, and `.into_iter().flatten()` on one yields
+/// nothing for an error — so a cycle used to read as a configuration declaring
+/// no resources at all. Everything downstream then looked only at what state
+/// remembered, which is the shape of silent wrongness this project exists to
+/// avoid: the run continues, and it continues about the wrong thing.
+#[test]
+fn a_graph_that_cannot_be_ordered_stops_the_run_rather_than_reading_as_empty() {
+    let mut graph = Graph::new();
+    for (name, after) in [("a", "os:file.b@web-01"), ("b", "os:file.a@web-01")] {
+        let address: Address = format!("os:file.{name}@web-01")
+            .parse()
+            .expect("an address");
+        graph.preexisting(address.target().expect("on a node").clone());
+        graph
+            .insert(
+                Resource::new(address)
+                    .with("path", format!("/tmp/{name}"))
+                    .after(after.parse::<Address>().expect("an address")),
+            )
+            .expect("distinct addresses");
+    }
+
+    let refusal = observe(&graph, &watch(), &State::new())
+        .expect_err("a cycle is not a configuration that declares nothing");
+    assert!(
+        refusal.to_string().contains("os:file.a@web-01"),
+        "the refusal should name what is stuck: {refusal}"
+    );
+    assert!(
+        ASKED.with_borrow(Vec::is_empty),
+        "and nothing should have been read at all"
+    );
+}

@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::address::{Address, Provider as ProviderName, Target};
 use crate::attribute::Attribute;
-use crate::graph::Graph;
+use crate::graph::{Graph, GraphError};
 use crate::observed::Observed;
 use crate::plan::{Change, ChangeKind, Confidence, Plan};
 use crate::provider::{Attributes, ProviderError, Providers, Reading};
@@ -29,11 +29,7 @@ use crate::{ensures, requires};
 /// reading is not a smaller reading: planning against it would propose
 /// creating things that are already there.
 // ENFORCES: INV-REACH-001
-pub fn observe(
-    graph: &Graph,
-    providers: &Providers,
-    state: &State,
-) -> Result<Observed, ProviderError> {
+pub fn observe(graph: &Graph, providers: &Providers, state: &State) -> Result<Observed, RunError> {
     let mut observed = Observed::new();
 
     // ENFORCES: INV-BATCH-001
@@ -42,7 +38,7 @@ pub fn observe(
     // asked and where they have to go; a batch never spans either.
     let mut batches: BTreeMap<(ProviderName, Option<Target>), Vec<Reading>> = BTreeMap::new();
 
-    for address in declared_and_remembered(graph, state) {
+    for address in declared_and_remembered(graph, state)? {
         let locator = match (graph.get(&address), state.get(&address)) {
             // Where it is, not where the declaration now says it should be. A
             // resource whose location changed has to be found where it was left,
@@ -74,7 +70,7 @@ pub fn observe(
             // because everything else means something is wrong rather than
             // merely out of reach. See decision 0020.
             Err(ProviderError::Unreachable { node, .. }) => observed.unreachable(node),
-            Err(other) => return Err(other),
+            Err(other) => return Err(other.into()),
         }
     }
 
@@ -86,18 +82,23 @@ pub fn observe(
 ///
 /// The second half matters as much as the first. A resource the configuration no
 /// longer mentions still has to be read, or its removal would be planned blind.
-fn declared_and_remembered(graph: &Graph, state: &State) -> BTreeSet<Address> {
+fn declared_and_remembered(graph: &Graph, state: &State) -> Result<BTreeSet<Address>, GraphError> {
+    // Propagated, not flattened away. `stages()` returns a `Result`, and
+    // `.into_iter().flatten()` on one yields nothing for an error — so a graph
+    // that could not be ordered used to read as a configuration that declares
+    // nothing, and the run would go on to look at what state remembered and at
+    // nothing else. Fail closed: the graph is the thing being asked about.
+    // ENFORCES: INV-GRAPH-005
     let declared = graph
-        .stages()
+        .stages()?
         .into_iter()
-        .flatten()
         .flat_map(|stage| stage.addresses().to_vec())
         .collect::<BTreeSet<_>>();
 
-    declared
+    Ok(declared
         .into_iter()
         .chain(state.addresses().cloned())
-        .collect()
+        .collect())
 }
 
 /// The declared attributes that are values already.
@@ -258,6 +259,10 @@ pub enum RunError {
     /// A secret a change needed could not be fetched.
     #[error(transparent)]
     Secret(#[from] FetchError),
+    /// The configuration could not be ordered, so there is nothing to look at
+    /// and nothing to do.
+    #[error(transparent)]
+    Graph(#[from] GraphError),
 }
 
 /// Every attribute of a change, with what was unknown at plan time filled in.
