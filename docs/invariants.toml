@@ -470,7 +470,7 @@ project exists to avoid. The provider has to tell them apart, and the type makes
 it say which."""
 enforced_by = ["crates/nerpa-core/src/provider.rs", "crates/nerpa-core/src/run.rs"]
 tests = ["any_other_refusal_still_stops_the_run"]
-bypass = "A permission error read as unreachability, which quietly stops managing a resource over a typo in an access rule."
+bypass = "A permission error read as unreachability, which quietly stops managing a resource over a typo in an access rule. One place does this on purpose and is named here rather than left to be found: the fact-gathering loop in `run.rs` turns every failure into unreachability, because there the subject is the machine rather than a resource on it. That makes a protocol error — an executor answering a look with something else — look like a machine that is down, and marks the whole machine unreachable when its resources had already been read. It was decided, it was not written down, and an independent review found it before anybody here did."
 adversarial = [
   "any_other_refusal_still_stops_the_run",
 ]
@@ -859,7 +859,7 @@ adversarial = [
 
 [[invariant]]
 id = "INV-PREMISE-001"
-status = "enforced"
+status = "claimed"
 statement = "A batch does nothing at all when what the plan was computed from has moved."
 rationale = """
 Reading everything once, planning once and applying once is what makes central \
@@ -876,14 +876,14 @@ encoding written out in the protocol rather than borrowed from CBOR.
 A premise that no longer holds is answered with `Moved`, not `Failed`. "Look \
 again and plan again" is different advice to "something went wrong", and a person \
 woken at three in the morning should be told which."""
-bypass = "An operation whose effect was not derived from anything in the premise — a provider that emits a process without recording what it read to decide on it. The check is only as wide as what the plan admits it looked at, and nothing forces a provider to admit everything."
+bypass = "An operation whose effect was not derived from anything in the premise — a provider that emits a process without recording what it read to decide on it. The check is only as wide as what the plan admits it looked at, and nothing forces a provider to admit everything. Taken today by every run there is: the executor holds this and the planner does not produce a premise, so `os` sends an empty one from `apply` and `delete` alike and the guarantee covers nothing that actually happens. `claimed` rather than `enforced` until a planner fills it."
 enforced_by = ["crates/nerpa-executor/src/lib.rs"]
 tests = ["what_it_did_is_read_back_rather_than_echoed"]
 adversarial = ["a_batch_whose_premise_moved_does_nothing_and_says_which"]
 
 [[invariant]]
 id = "INV-FACT-001"
-status = "enforced"
+status = "claimed"
 statement = "Something read from a machine may decide what an attribute says and never whether a resource exists."
 rationale = """
 A single planning pass is possible because the set of resources is known before \

@@ -2,6 +2,14 @@
 
 - Status: accepted
 - Date: 2026-09-04
+- Corrected: 2026-09-07 — "It is signed, and verification runs in both
+  directions" is written below in the present tense and nothing signs anything.
+  There is no signing primitive in the dependency tree; delivery names the binary
+  by a digest of itself, which tells a machine whether it already has this build
+  and tells it nothing about who made it. An independent review found the claim
+  before anybody here noticed it had never been true. The sentence stands because
+  a record is not edited; what it describes is not built, and `ARCHITECTURE.md`
+  now says so.
 
 ## Context
 

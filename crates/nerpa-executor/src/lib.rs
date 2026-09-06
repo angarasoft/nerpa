@@ -31,7 +31,7 @@
 
 use std::fs;
 use std::io::Write as _;
-use std::os::unix::fs::PermissionsExt as _;
+use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
@@ -192,7 +192,24 @@ fn act(operation: &Operation) -> Result<Seen, String> {
             if fs::symlink_metadata(path).is_ok_and(|found| found.file_type().is_symlink()) {
                 fs::remove_file(path).map_err(|error| format!("{}: {error}", path.display()))?;
             }
-            fs::write(path, content).map_err(|error| format!("{}: {error}", path.display()))?;
+            // Opened with the mode it was declared rather than written and then
+            // narrowed. `fs::write` opens at 0o666 less whatever umask this
+            // process inherited, so a file declared 0600 spent a moment
+            // world-readable — and a file's content is one of the two places
+            // the protocol says a secret goes. `mode` is set on the open, and
+            // set again after, because the open only applies it to a file that
+            // did not already exist.
+            let mut opened = fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(*mode)
+                .open(path)
+                .map_err(|error| format!("{}: {error}", path.display()))?;
+            opened
+                .write_all(content)
+                .map_err(|error| format!("{}: {error}", path.display()))?;
+            drop(opened);
             fs::set_permissions(path, fs::Permissions::from_mode(*mode))
                 .map_err(|error| format!("{}: {error}", path.display()))?;
             at(path)

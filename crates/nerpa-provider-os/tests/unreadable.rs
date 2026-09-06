@@ -322,3 +322,38 @@ fn making_a_directory_where_a_symlink_is_leaves_what_it_pointed_at_alone() {
         "the declared path is a directory of its own now, not a pointer"
     );
 }
+
+/// A file ends up with the mode it was declared.
+///
+/// This is what a test can see. What it cannot see is the reason the code
+/// changed: `fs::write` opened at `0o666` less the umask and the mode was
+/// applied afterwards, so a file declared `0600` spent a moment readable by
+/// everybody — and a file's content is one of the two places the protocol says
+/// a secret goes. The file is opened with its mode now, which closes that by
+/// construction; watching the window itself would need something outside this
+/// process, and nothing here does.
+///
+/// The assertion is still worth making. The test written specifically to chase
+/// a password through this path never looked at the mode at all.
+#[test]
+fn a_file_ends_up_with_the_mode_it_was_declared() {
+    let scratch = Scratch::new("narrow");
+    let path = scratch.join("credentials");
+
+    let mut wanted = at(&path);
+    wanted.insert("content".to_owned(), Value::Text("hunter2\n".to_owned()));
+    wanted.insert("mode".to_owned(), Value::Text("0600".to_owned()));
+    Os::new()
+        .apply(
+            &address("os:file.subject@localhost"),
+            ChangeKind::Create,
+            &wanted,
+            &HERE,
+        )
+        .expect("it writes");
+
+    assert_eq!(
+        fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
+}

@@ -55,7 +55,6 @@ pub(crate) fn plan(plan: &Plan) -> String {
     out
 }
 
-// ENFORCES: INV-REACH-003
 /// What is running on something no longer declared.
 ///
 /// Never among the stages, because it is not work and never will be until
@@ -90,10 +89,14 @@ fn behind(outdated: &[Outdated]) -> String {
     out
 }
 
+// ENFORCES: INV-REACH-003
 /// What could not be looked at, and how old the last look was.
 ///
 /// Printed with the summary rather than among the stages: it is not work, and a
-/// reader scanning the action column must not find it there.
+/// reader scanning the action column must not find it there. This is also where
+/// a plan says it cannot be signed, which is the half of the invariant that
+/// lives here — the anchor used to sit on the function above, which renders
+/// something else entirely.
 fn out_of_reach(unreachable: &[Unreachable]) -> String {
     if unreachable.is_empty() {
         return String::new();

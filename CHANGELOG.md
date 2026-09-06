@@ -256,6 +256,26 @@ without ceremony until the first stage is complete.
   it was where a fleet with a machine switched off hung — every guarantee about
   unreachability lives below it and never got asked. `W-013` closes.
 
+- Two invariants said `enforced` for guarantees nothing holds.
+  `INV-PREMISE-001` is refused by the executor and no planner produces a premise
+  for it to refuse, so every run sends an empty one and nothing is checked
+  between looking and acting. `INV-FACT-001` said `enforced` while its own
+  `bypass` field described the hole — and `INV-PLAN-001`, which is the identical
+  gap for a handle, was honestly `claimed` the whole time. Both are `claimed`
+  now and both are published in `SECURITY.md`, which is where this project says
+  its thin places are.
+
+- The fact-gathering loop turns every failure into unreachability, including a
+  permission error and a protocol violation, which is what `INV-REACH-002`'s
+  bypass forbids in as many words. It was a deliberate choice — the subject
+  there is the machine rather than a resource on it — and it was never written
+  down. The entry names it now, along with what it costs: an executor answering
+  a look with the wrong thing reads as a machine that is down.
+
+- Three `// ENFORCES:` anchors sat on functions that enforce something else.
+  The gate checks that a named file contains the anchor and cannot check that it
+  is in the right place, which is the caveat `RULES.md` already states.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the
@@ -318,6 +338,11 @@ without ceremony until the first stage is complete.
   are not the author, and nobody writes a plugin while wondering whether it has
   become a derivative work.
 
+
+- A file is opened with the mode it was declared rather than written and then
+  narrowed. `fs::write` opens at `0o666` less the umask, so a file declared
+  `0600` spent a moment readable by everybody, and a file's content is one of
+  the two places the protocol says a secret goes.
 
 - A fleet document could run a command on the machine doing the planning. Its
   `ssh` field went to the local `ssh` as a positional argument, and `ssh` reads a

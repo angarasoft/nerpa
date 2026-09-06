@@ -171,8 +171,15 @@ file describes the way — one field in the fleet document, and no code
 
 Built and shown against two machines reached through a bastion, and against the
 same two through Teleport as a bot identity: delivery, read, plan, write, and a
-second run with nothing to do. Not built: the fingerprint, which the executor
-refuses to invent rather than answering with a number nothing stands behind.
+second run with nothing to do.
+
+Not built, and 0010 describes both in the present tense: the fingerprint, which
+the executor refuses to invent rather than answering with a number nothing
+stands behind; and **signing**. Nothing signs the executor and nothing verifies
+it — the digest in its name says whether a machine already has this build, not
+who made it, and a machine takes whatever the transport hands it. For a binary
+that runs privileged that is a gap worth naming rather than leaving to be
+inferred from a section marker.
 
 ## Where provider logic runs — [0032](decisions/0032-provider-logic-stays-on-the-control-machine.md) · built
 

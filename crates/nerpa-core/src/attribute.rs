@@ -182,6 +182,7 @@ impl Attribute {
     /// A secret answers `None` here even though its value exists: it exists
     /// somewhere else, and this is the accessor every part of the engine that
     /// writes things down goes through.
+    // ENFORCES: INV-SECRET-001
     pub fn known(&self) -> Option<&Value> {
         match self {
             Attribute::Known(value) => Some(value),
@@ -190,7 +191,6 @@ impl Attribute {
     }
 
     /// Where the secret behind this attribute is kept, if it is a secret.
-    // ENFORCES: INV-SECRET-001
     pub fn secret(&self) -> Option<&Source> {
         match self {
             Attribute::Secret(source) => Some(source),
