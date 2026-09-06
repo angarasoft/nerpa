@@ -154,6 +154,7 @@ fn speaking(node: &Target, fleet: &Fleet, beside: &Path) -> Result<Box<dyn Reach
         Route::Here => (beside.display().to_string(), Vec::new()),
         Route::Ssh {
             host,
+            config,
             executor,
             escalate,
         } => {
@@ -164,8 +165,14 @@ fn speaking(node: &Target, fleet: &Fleet, beside: &Path) -> Result<Box<dyn Reach
                 named
             } else {
                 let carried = portable(beside)?;
-                nerpa_transport::delivery::deliver(node, &host, &carried, PORTABLE_ARCHITECTURE)
-                    .map_err(|error| error.to_string())?
+                nerpa_transport::delivery::deliver(
+                    node,
+                    &host,
+                    config.as_deref(),
+                    &carried,
+                    PORTABLE_ARCHITECTURE,
+                )
+                .map_err(|error| error.to_string())?
             };
 
             // `BatchMode` because a run that hangs waiting for a prompt nobody
@@ -180,8 +187,12 @@ fn speaking(node: &Target, fleet: &Fleet, beside: &Path) -> Result<Box<dyn Reach
                 "BatchMode=yes".to_owned(),
                 "-o".to_owned(),
                 format!("ConnectTimeout={}", nerpa_transport::ANSWERS_WITHIN),
-                host,
             ];
+            if let Some(named) = config {
+                arguments.push("-F".to_owned());
+                arguments.push(named);
+            }
+            arguments.push(host);
             arguments.extend(escalate);
             arguments.push(executor);
             ("ssh".to_owned(), arguments)

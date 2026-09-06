@@ -46,6 +46,7 @@ fn named(digest: &str) -> String {
 pub fn deliver(
     node: &Target,
     host: &str,
+    config: Option<&str>,
     binary: &Path,
     architecture: &str,
 ) -> Result<String, ProviderError> {
@@ -62,7 +63,7 @@ pub fn deliver(
 
     // Already there is the common case, and it costs one round trip rather than
     // eight hundred kilobytes.
-    let said = run(node, host, &format!("test -x {path}"), &[])?;
+    let said = run(node, host, config, &format!("test -x {path}"), &[])?;
     if said.answered {
         return Ok(path);
     }
@@ -70,7 +71,7 @@ pub fn deliver(
     // Asked over ssh rather than through the wire, because the wire needs the
     // thing that is not there yet. This is the chicken-and-egg the architecture
     // note mentions, and asking directly is the honest way out of it.
-    let said = run(node, host, "uname -m", &[])?;
+    let said = run(node, host, config, "uname -m", &[])?;
     let found = said.text.trim();
     if !said.answered {
         return Err(out_of_reach(format!(
@@ -90,7 +91,7 @@ pub fn deliver(
     let script = format!(
         "mkdir -p .cache/nerpa && cat > {partial} && chmod +x {partial} && mv {partial} {path}"
     );
-    let said = run(node, host, &script, &bytes)?;
+    let said = run(node, host, config, &script, &bytes)?;
     if !said.answered {
         return Err(out_of_reach(format!(
             "the executor could not be put there: {}",
@@ -117,17 +118,28 @@ struct Said {
 /// a shell on the far side, so passing words only creates the illusion of
 /// quoting. Everything in these commands is written here — a fixed shape and a
 /// digest — and nothing in them comes from a configuration.
-fn run(node: &Target, host: &str, command: &str, stdin: &[u8]) -> Result<Said, ProviderError> {
+fn run(
+    node: &Target,
+    host: &str,
+    config: Option<&str>,
+    command: &str,
+    stdin: &[u8],
+) -> Result<Said, ProviderError> {
     let out_of_reach = |problem: String| ProviderError::Unreachable {
         node: node.clone(),
         problem: format!("{host}: {problem}"),
     };
 
-    let mut child = Command::new("ssh")
+    let mut spoken = Command::new("ssh");
+    spoken
         .arg("-o")
         .arg("BatchMode=yes")
         .arg("-o")
-        .arg(format!("ConnectTimeout={}", crate::ANSWERS_WITHIN))
+        .arg(format!("ConnectTimeout={}", crate::ANSWERS_WITHIN));
+    if let Some(named) = config {
+        spoken.arg("-F").arg(named);
+    }
+    let mut child = spoken
         .arg(host)
         .arg(command)
         .stdin(Stdio::piped())

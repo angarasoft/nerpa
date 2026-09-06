@@ -221,6 +221,15 @@ without ceremony until the first stage is complete.
   because a half-copied file that is executable is worse than no file. Measured
   against two machines behind a bastion: 25 s the first time, 10 s the second.
 
+- Teleport reaches machines, and needed no transport to do it. `tbot` writes an
+  OpenSSH configuration holding a `ProxyCommand` and a certificate that renews
+  itself, so a fleet names that file — `ssh_config` — and the `ssh` transport
+  does the rest. Shown against two Rocky 9.7 machines as a bot identity: 64 KiB
+  of random bytes survive the proxy byte-for-byte, a templated file converges on
+  both, and the second run is empty. One field in a document, no code, and one
+  stage-1 item that turns out not to exist —
+  [0037](docs/decisions/0037-teleport-is-a-route-not-a-transport.md).
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

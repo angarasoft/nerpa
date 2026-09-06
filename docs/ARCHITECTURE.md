@@ -163,10 +163,16 @@ than a version negotiation; it is written beside and moved into place, because a
 half-copied file that is executable would pass that test for ever. One
 architecture, and a machine that is not it is told so by name — `W-008`.
 
-Built and shown against two machines reached through a bastion: delivery, read,
-plan, write, and a second run with nothing to do. Not built: `teleport`, and the
-fingerprint, which the executor refuses to invent rather than answering with a
-number nothing stands behind.
+An identity-aware proxy is not a second transport. Teleport's `tbot` writes an
+OpenSSH configuration holding a `ProxyCommand` and a certificate that renews
+itself, so a machine behind it is reached by the `ssh` transport being told what
+file describes the way — one field in the fleet document, and no code
+([0037](decisions/0037-teleport-is-a-route-not-a-transport.md)).
+
+Built and shown against two machines reached through a bastion, and against the
+same two through Teleport as a bot identity: delivery, read, plan, write, and a
+second run with nothing to do. Not built: the fingerprint, which the executor
+refuses to invent rather than answering with a number nothing stands behind.
 
 ## Where provider logic runs — [0032](decisions/0032-provider-logic-stays-on-the-control-machine.md) · built
 

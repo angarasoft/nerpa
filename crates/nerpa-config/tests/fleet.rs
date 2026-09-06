@@ -185,6 +185,11 @@ groups = ["test"]
 ssh = "web-01"
 executor = "/opt/nerpa/nerpa-executor"
 become = "sudo -n"
+
+[nodes.proxied]
+groups = ["test"]
+ssh = "nerpa@web-02.example.internal"
+ssh_config = "/home/somebody/.tbot/nerpa/ssh_config"
 "#,
     )
     .expect("a fleet");
@@ -200,6 +205,7 @@ become = "sudo -n"
         fleet.route(&node("plain")),
         Route::Ssh {
             host: "10.0.61.34".to_owned(),
+            config: None,
             executor: None,
             escalate: Vec::new(),
         },
@@ -209,10 +215,22 @@ become = "sudo -n"
         fleet.route(&node("privileged")),
         Route::Ssh {
             host: "web-01".to_owned(),
+            config: None,
             executor: Some("/opt/nerpa/nerpa-executor".to_owned()),
             escalate: vec!["sudo".to_owned(), "-n".to_owned()],
         },
         "escalation is words, because a shell string is where somebody else's \
          quoting becomes somebody else's command"
+    );
+    assert_eq!(
+        fleet.route(&node("proxied")),
+        Route::Ssh {
+            host: "nerpa@web-02.example.internal".to_owned(),
+            config: Some("/home/somebody/.tbot/nerpa/ssh_config".to_owned()),
+            executor: None,
+            escalate: Vec::new(),
+        },
+        "a machine behind an identity-aware proxy names the generated \
+         configuration and needs nothing else: it is a route, not a transport"
     );
 }

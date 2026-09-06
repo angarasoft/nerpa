@@ -32,7 +32,10 @@ typed schema, and branching on a handle fails evaluation naming the line.
 
 ## Stage 1 — reaching machines, and something worth carrying
 
-The executor, `ssh` and `teleport` transports, batch introspection, fingerprints.
+The executor, the `ssh` transport — through which Teleport turned out to be a
+route rather than a transport of its own
+([0037](docs/decisions/0037-teleport-is-a-route-not-a-transport.md)) — batch
+introspection, fingerprints.
 Packages, services, users and sysctls.
 
 And the three things that make the executor worth having, which used not to be

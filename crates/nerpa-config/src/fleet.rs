@@ -16,6 +16,17 @@
 //! workers = 4
 //! ```
 //!
+//! A machine reached over `ssh` says so, and may say which configuration file
+//! holds the port, the jump host and the key — a generated one is not the file
+//! `ssh` reads on its own:
+//!
+//! ```toml
+//! [nodes.web-01]
+//! ssh = "web-01.example.com"
+//! ssh_config = "/home/somebody/.tbot/nerpa/ssh_config"
+//! become = "sudo -n"
+//! ```
+//!
 //! # Two groups, one key
 //!
 //! An error naming both, not a precedence resolution. Ansible answers "where did
@@ -58,6 +69,15 @@ pub enum Route {
     Ssh {
         /// What to give `ssh` — a host, or an alias its own configuration knows.
         host: String,
+        /// Which `ssh` configuration says how to get there, if not the usual one.
+        ///
+        /// The port, the jump host and the key belong to `ssh` and are not
+        /// repeated here; this says which file holds them. It exists because a
+        /// generated one — Teleport's `tbot` writes an `ssh_config` carrying a
+        /// `ProxyCommand` and a short-lived certificate — is not the file `ssh`
+        /// would read on its own, and pointing at it is the whole of what an
+        /// identity-aware proxy needs from this document.
+        config: Option<String>,
         /// Where the executor is over there, if somebody wrote it down.
         ///
         /// `None` means put one there: a path in the document is a statement
@@ -225,6 +245,16 @@ fn read_route(name: &str, described: &toml::Value) -> Result<Route, String> {
         .ok_or_else(|| format!("{name}: `ssh` has to be a host or an alias"))?
         .to_owned();
 
+    let config = described
+        .get("ssh_config")
+        .map(|given| {
+            given
+                .as_str()
+                .map(ToOwned::to_owned)
+                .ok_or_else(|| format!("{name}: `ssh_config` has to be a path"))
+        })
+        .transpose()?;
+
     let executor = described
         .get("executor")
         .map(|given| {
@@ -246,6 +276,7 @@ fn read_route(name: &str, described: &toml::Value) -> Result<Route, String> {
 
     Ok(Route::Ssh {
         host,
+        config,
         executor,
         escalate,
     })
