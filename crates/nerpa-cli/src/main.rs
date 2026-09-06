@@ -129,20 +129,43 @@ fn reachable(graph: &nerpa_core::Graph, fleet: &Fleet) -> Result<Machines, Strin
         ));
     }
 
-    let mut machines = Machines::new();
-    for node in graph.inventory().nodes() {
-        // ENFORCES: INV-REACH-001
-        // A machine that does not answer is left out of the registry, and the
-        // planner reports it as out of reach. Every connection is opened before
-        // anything is read, so a failure here happens before the planner could
-        // say so on its own — and one machine switched off must not stop a
-        // fleet. See decision 0020.
-        match speaking(node, fleet, &beside) {
-            Ok(reach) => machines = machines.with(node.clone(), reach),
-            Err(problem) => eprintln!("nerpa: {problem}"),
-        }
+    let nodes: Vec<Target> = graph.inventory().nodes().cloned().collect();
+    let (machines, refused) = registry(&nodes, &|node| speaking(node, fleet, &beside));
+    for problem in refused {
+        eprintln!("nerpa: {problem}");
     }
     Ok(machines)
+}
+
+/// How one machine is opened.
+///
+/// A parameter rather than a call, so the step can be failed on purpose. Named
+/// because the shape of it is the point: everything that can go wrong because a
+/// machine is not there goes wrong in here, and everything outside has to carry
+/// on regardless.
+type Opening<'a> = dyn Fn(&Target) -> Result<Box<dyn Reach>, String> + 'a;
+
+// ENFORCES: INV-REACH-001
+/// Opens a connection to each machine, and says which ones would not open.
+///
+/// The opening is a parameter rather than a call, because this is the step that
+/// decides whether one machine being down ends a run — and until it took one, it
+/// was the one step no test could reach. It was also wrong: a fleet with a
+/// machine switched off hung, and every guarantee about unreachability lives
+/// below here and never got asked.
+///
+/// A machine that will not open is left out. The planner then reports it as out
+/// of reach, which is what it already knew how to do — see decision 0020.
+fn registry(nodes: &[Target], open: &Opening<'_>) -> (Machines, Vec<String>) {
+    let mut machines = Machines::new();
+    let mut refused = Vec::new();
+    for node in nodes {
+        match open(node) {
+            Ok(reach) => machines = machines.with(node.clone(), reach),
+            Err(problem) => refused.push(problem),
+        }
+    }
+    (machines, refused)
 }
 
 /// Opens the connection to one machine.
@@ -304,4 +327,76 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     let applied = applied.map_err(|error| error.to_string())?;
     println!("\napplied {} changes", applied.changed());
     Ok(())
+}
+
+// The step that decides whether one machine being down ends a run. Attacked
+// through the opening it takes, which is why it takes one.
+#[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "tests may be blunt: see docs/CODING_STANDARDS.md"
+)]
+mod tests {
+    use super::{Machines, Reach, Target, registry};
+    use nerpa_transport::Here;
+
+    fn node(name: &str) -> Target {
+        Target::new(name).expect("a node name")
+    }
+
+    fn opens(node: &Target) -> Result<Box<dyn Reach>, String> {
+        if node.as_str() == "down" {
+            return Err("down: could not be reached: it is switched off".to_owned());
+        }
+        Ok(Box::new(Here))
+    }
+
+    #[test]
+    fn a_connection_that_fails_before_anything_is_read_does_not_end_the_run() {
+        let nodes = [node("up"), node("down"), node("also-up")];
+        let (machines, _) = registry(&nodes, &opens);
+
+        assert!(
+            machines.reach(Some(&node("up"))).is_ok(),
+            "a machine that opened is in the registry"
+        );
+        assert!(
+            machines.reach(Some(&node("also-up"))).is_ok(),
+            "and so is one that comes after the failure, which is the whole point: \
+             opening happens before anything is read, so a failure here used to end \
+             the run before the planner could report it"
+        );
+        assert!(
+            machines.reach(Some(&node("down"))).is_err(),
+            "a machine that would not open is left out, and asking for it refuses"
+        );
+    }
+
+    #[test]
+    fn the_machine_that_would_not_open_is_named_once_and_says_why() {
+        let nodes = [node("up"), node("down")];
+        let (_, refused) = registry(&nodes, &opens);
+
+        assert_eq!(refused.len(), 1, "one machine refused, one complaint");
+        assert!(
+            refused[0].contains("down") && refused[0].contains("switched off"),
+            "the complaint carries the machine and the far end's own reason, \
+             rather than one invented here: {:?}",
+            refused[0]
+        );
+    }
+
+    #[test]
+    fn a_fleet_where_nothing_opens_is_empty_rather_than_fatal() {
+        let nodes = [node("down")];
+        let (machines, refused) = registry(&nodes, &opens);
+
+        assert_eq!(refused.len(), 1);
+        assert!(
+            machines.reach(Some(&node("down"))).is_err(),
+            "no machine is invented to stand in for one that is not there"
+        );
+        let _: Machines = machines;
+    }
 }

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc caa83cab0d52e268aa0e1b8b1a42a48458bb18ab59b56ccf301e57894963b16b # shrinks to left = List([Boolean(true)]), right = List([Boolean(false)])

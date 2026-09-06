@@ -75,6 +75,10 @@ serde_bytes = "0.11"
 clap = { version = "4.6", features = ["derive"] }
 # A scratch directory that removes itself, so a failing test leaves no litter.
 tempfile = "3"
+# Generated values, for the claims no list of examples can attack: that the
+# canonical encoding is injective, and that a value survives being written down.
+# A digest is only worth what those two are worth.
+proptest = "1.9"
 # Keyed hashing, for the digests state keeps of secrets it must not keep. One
 # crate rather than the two an HMAC needs, and the same primitive will serve the
 # plan hash and the hash-chained log when those arrive.

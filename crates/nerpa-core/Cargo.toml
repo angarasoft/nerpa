@@ -34,5 +34,8 @@ thiserror = { workspace = true }
 workspace = true
 
 [dev-dependencies]
+# The wire round-trip is checked against the encoding the wire uses.
+ciborium = { workspace = true }
+proptest = { workspace = true }
 # The round-trip test writes a plan out and reads it back.
 serde_json = { workspace = true }

@@ -242,6 +242,20 @@ without ceremony until the first stage is complete.
   would otherwise go stale the first time an entry was promoted — telling
   somebody a weakness is known about something now claimed to be proven.
 
+- Generated values attack the two claims a plan number rests on: that the
+  canonical encoding is injective, and that a value read back from the state
+  file is the value that was written. `proptest`, four properties, and an alphabet of
+  four strings, four integers and four keys — chosen small on purpose, because
+  injectivity is broken by two values differing in one place and two arbitrary
+  values never are. Measured: with arbitrary strings the same properties stayed
+  green against an encoder that wrote a boolean's tag and dropped its
+  value.
+
+- The step that opens a connection to each machine takes the opening as a
+  parameter, so a test can fail it. It was the one step no test could reach, and
+  it was where a fleet with a machine switched off hung — every guarantee about
+  unreachability lives below it and never got asked. `W-013` closes.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the
