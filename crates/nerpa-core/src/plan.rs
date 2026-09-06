@@ -27,7 +27,7 @@ use crate::attribute::{Choice, Reference};
 use crate::graph::StageKind;
 use std::fmt;
 
-use crate::secret::{Recorded, Sealed};
+use crate::secret::{Recorded, Sealed, Source};
 use crate::value;
 use crate::value::Value;
 
@@ -659,20 +659,56 @@ fn encode_confidence(confidence: &Confidence, out: &mut Vec<u8>) {
         }
         Confidence::Unknown(reference) => {
             out.push(2);
-            value::text(&reference.to_string(), out);
+            // Two pieces, each with its own length, rather than the printed
+            // form. Printing joins them with a separator either piece may
+            // itself contain — a resource name may hold a dot — so
+            // `os:file.a.b`'s `c` and `os:file.a`'s `b.c` print alike, and a
+            // number over the printed form is a number two different plans
+            // share. See `two_references_that_differ_only_in_where_the_dot_falls_do_not_collide`.
+            value::text(&reference.source().to_string(), out);
+            value::text(reference.attribute(), out);
         }
         Confidence::Secret(sealed) => {
             out.push(3);
-            value::text(&sealed.source().to_string(), out);
+            encode_source(sealed.source(), out);
             out.extend_from_slice(sealed.digest().raw());
         }
         Confidence::Bounded(choice) => {
             out.push(4);
-            value::text(&choice.fact().to_string(), out);
+            value::text(choice.fact().node().as_str(), out);
+            value::text(choice.fact().name(), out);
             out.extend_from_slice(&value::length(choice.options().len()));
             for (said, value) in choice.options() {
                 value::text(said, out);
                 value::encode(value, out);
+            }
+        }
+    }
+}
+
+/// Where a secret comes from, piece by piece.
+///
+/// Not the printed form: that spells a version with `@` and a store path may
+/// contain one, so `vault:a@b` is both "path `a@b`, current version" and "path
+/// `a`, version `b`". Two different places in a store, one string — and if the
+/// two happen to hold the same value, one plan number. Which secret a plan
+/// reads is part of what somebody approves.
+fn encode_source(source: &Source, out: &mut Vec<u8>) {
+    match source {
+        Source::Stored {
+            provider,
+            path,
+            version,
+        } => {
+            out.push(1);
+            value::text(provider, out);
+            value::text(path, out);
+            match version.as_deref() {
+                Some(version) => {
+                    out.push(1);
+                    value::text(version, out);
+                }
+                None => out.push(0),
             }
         }
     }

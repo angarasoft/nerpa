@@ -319,6 +319,16 @@ without ceremony until the first stage is complete.
   become a derivative work.
 
 
+- Two different plans could carry one number. An unresolved reference and a
+  secret's source were hashed as their printed form, and printing joins two
+  pieces with a separator either piece may contain: a resource name may hold a
+  dot, so `os:file.a.b`'s `c` and `os:file.a`'s `b.c` print alike; a store path
+  may hold an `@`, so path `a@b` and path `a` version `b` do too. Each piece now
+  carries its own length, as values already did. Found by an independent review
+  and reproduced as two failing tests before the fix. A plan holding a
+  reference, a secret or a fact-bounded value gets a different number than it
+  did.
+
 ### Fixed
 
 - Documents and a test named somebody's real machines: a Teleport proxy by its

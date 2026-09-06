@@ -12,6 +12,7 @@
 use std::collections::BTreeMap;
 
 use nerpa_core::address::address;
+use nerpa_core::attribute::{Attribute, Reference};
 use nerpa_core::plan::PlanDigest;
 use nerpa_core::planner::plan_at;
 use nerpa_core::provider::{Attributes, Provider, ProviderError, Providers, Reach, Reading};
@@ -171,4 +172,97 @@ fn a_plan_with_nothing_in_it_still_has_one() {
     let nothing = planned(Vec::new(), &Observed::new());
     assert!(nothing.is_empty());
     assert!(nothing.digest().is_ok());
+}
+
+/// Two references naming a different resource and a different attribute must
+/// not share a number. They are encoded as one printed string, and printing
+/// joins two pieces with a separator either piece may itself contain: a resource
+/// name may hold a dot (`a_name_may_contain_dots_because_kind_is_split_off_first`),
+/// so moving the dot one place moves the boundary and prints the same.
+///
+/// In the control domain, which is where cloud resources live and where an
+/// address ends with the name rather than with `@machine`. Both plans hold the
+/// same three resources, so the only thing that differs is which of them the
+/// attribute reads from.
+#[test]
+fn two_references_that_differ_only_in_where_the_dot_falls_do_not_collide() {
+    let plan = |source: &str, attribute: &str| {
+        let mut graph = Graph::new();
+        graph.preexisting(nerpa_core::Target::new("web-01").expect("a node"));
+        for named in ["os:file.a", "os:file.a.b"] {
+            graph
+                .insert(Resource::new(address(named)))
+                .expect("a resource to read from");
+        }
+        graph
+            .insert(Resource::new(address("os:file.motd")).with(
+                "path",
+                Attribute::Unresolved(Reference::to(address(source), attribute)),
+            ))
+            .expect("the resource that reads");
+        let providers = Providers::new().with(Box::new(Empty));
+        plan_at(
+            &graph,
+            &Observed::new(),
+            &State::new(),
+            &providers.schema(),
+            secrets(),
+            Written::at(1_700_000_000),
+        )
+        .expect("plannable")
+        .digest()
+        .expect("hashable")
+    };
+
+    assert_ne!(
+        plan("os:file.a.b", "c"),
+        plan("os:file.a", "b.c"),
+        "a different resource and a different attribute are a different plan"
+    );
+}
+
+/// The same, for a secret. A store path may hold an `@`, which is what the
+/// printed form uses to introduce a version — so two places in a store print
+/// alike, and a plan says which secret it reads.
+///
+/// The two hold the same value, because the value's digest is in the number as
+/// well: what is being attacked is whether the *source* is.
+#[test]
+fn two_secrets_that_differ_only_in_where_the_version_begins_do_not_collide() {
+    let store = Remembered::new()
+        .holding("a@b", Value::Text("same".to_owned()))
+        .holding("a", Value::Text("same".to_owned()));
+    let plan = |path: &str, version: Option<&str>| {
+        let source = nerpa_core::secret::Source::Stored {
+            provider: "vault".to_owned(),
+            path: path.to_owned(),
+            version: version.map(ToOwned::to_owned),
+        };
+        let mut graph = Graph::new();
+        graph.preexisting(nerpa_core::Target::new("web-01").expect("a node"));
+        graph
+            .insert(
+                Resource::new(address("os:file.motd@web-01"))
+                    .with("path", Attribute::Secret(source)),
+            )
+            .expect("the resource");
+        let providers = Providers::new().with(Box::new(Empty));
+        plan_at(
+            &graph,
+            &Observed::new(),
+            &State::new(),
+            &providers.schema(),
+            Secrets::new(&DIGEST_KEY, &store),
+            Written::at(1_700_000_000),
+        )
+        .expect("plannable")
+        .digest()
+        .expect("hashable")
+    };
+
+    assert_ne!(
+        plan("a@b", None),
+        plan("a", Some("b")),
+        "two places in a store are two secrets, whatever they happen to hold"
+    );
 }
