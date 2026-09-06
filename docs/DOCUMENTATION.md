@@ -15,6 +15,8 @@ one place.
 | What must never happen? | `RULES.md` | itself |
 | How do I write a commit? | `docs/COMMITS.md` | `.githooks/commit-msg` |
 | How do I write prose? | `docs/WRITING.md` | partly — the table in it says which parts |
+| How do I report a vulnerability? | `SECURITY.md` | `cargo xtask invariants`, for the part naming the registry |
+| How are people expected to behave? | `CODE_OF_CONDUCT.md` | review |
 | Something I noticed | `docs/WATCHLIST.md` | review |
 | Something nobody has to answer yet | `docs/OPEN_QUESTIONS.md` | review |
 | What may a plan cost? | `docs/budgets.toml` | `cargo xtask budget` |

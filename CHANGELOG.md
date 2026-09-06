@@ -230,6 +230,18 @@ without ceremony until the first stage is complete.
   stage-1 item that turns out not to exist —
   [0037](docs/decisions/0037-teleport-is-a-route-not-a-transport.md).
 
+- What a repository needs before anybody outside can look at it: `SECURITY.md`,
+  `CODE_OF_CONDUCT.md`, and issue forms that ask for the one thing each kind of
+  report needs — the plan output and whether the second run was empty, the
+  identifier of a guarantee that did not hold, or an observation that commits
+  nobody to anything.
+
+- The security policy is checked against the invariant registry, in both
+  directions. It tells a researcher which guarantees are believed rather than
+  demonstrated so that reporting one is not mistaken for news, and that list
+  would otherwise go stale the first time an entry was promoted — telling
+  somebody a weakness is known about something now claimed to be proven.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

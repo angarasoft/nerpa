@@ -1,0 +1,58 @@
+name: A registered guarantee did not hold
+description: Something in docs/invariants.toml is not true.
+labels: ["invariant"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        `docs/invariants.toml` is what everything else here rests on. Each entry
+        states a guarantee, writes down **how it could be bypassed**, and says
+        whether anybody has written a test that carries that bypass out.
+
+
+        **Before filing:** if the entry is marked `claimed`, the way around it is
+        already published in its own `bypass` field and this is not news — file it
+        as a bug instead, or say below that you found a *different* route. An
+        entry marked `enforced` that you can bypass is the valuable case, and if
+        it lets somebody change infrastructure they should not, read SECURITY.md
+        first: that belongs in a private report, not here.
+
+  - type: input
+    id: identifier
+    attributes:
+      label: Which invariant
+      description: "The identifier, for example `INV-PLAN-001`."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: route
+    attributes:
+      label: Which way in
+      options:
+        - "The route its own `bypass` field describes"
+        - "A different route the entry does not mention"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: The attempt, and what it produced
+      description: >-
+        The smallest input that gets past the guarantee, and what came out
+        instead of a refusal. A test that goes red is worth more than a
+        description of one.
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: consequence
+    attributes:
+      label: What it lets somebody do
+      description: >-
+        A guarantee that fails harmlessly and one that lets a live resource be
+        destroyed are the same size in the registry and are not the same problem.
+    validations:
+      required: true

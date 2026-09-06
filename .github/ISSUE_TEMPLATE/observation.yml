@@ -1,0 +1,45 @@
+name: An observation
+description: Something you noticed that is not yet a bug or a decision.
+labels: ["watchlist"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        This project keeps `docs/WATCHLIST.md` for exactly this: a gap, an idea,
+        a thing that will probably bite, written down for the price of one row
+        and committing the project to nothing. It exists because every thought
+        used to arrive as a decision record, and a decision is an obligation that
+        narrows what can be built later.
+
+
+        So this form does not ask what should be done about it. That comes after,
+        and often from somebody else.
+
+  - type: textarea
+    id: observation
+    attributes:
+      label: What you saw
+      description: One or two sentences. The observation, not the fix.
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it might matter
+      description: >-
+        What goes wrong if nobody ever looks at this. "It would be nice" is not
+        an answer; "the second run is empty today only because nothing on that
+        path is read back" is.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: Checked first
+      options:
+        - label: >-
+            It is not already a row in `docs/WATCHLIST.md` or a question in
+            `docs/OPEN_QUESTIONS.md`.
+          required: true

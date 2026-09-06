@@ -1,0 +1,17 @@
+# Blank issues are off on purpose. Every form below asks for the one thing that
+# makes its kind of report actionable, and a blank box gets none of them.
+blank_issues_enabled: false
+
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/anishukserg/nerpa/security/advisories/new
+    about: >-
+      Private, not a public issue. What counts as one, and what is already known
+      and does not, is in SECURITY.md.
+
+  - name: A question, or an idea you want to argue about first
+    url: https://github.com/anishukserg/nerpa/discussions
+    about: >-
+      Discussions rather than issues. An idea that survives the argument becomes
+      an observation in docs/WATCHLIST.md, which commits the project to nothing
+      until somebody decides it should.

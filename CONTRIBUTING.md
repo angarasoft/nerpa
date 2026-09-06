@@ -1,7 +1,12 @@
 # Contributing
 
 Read [RULES.md](RULES.md) first. It is eight prohibitions and one page, and each
-of them breaks something a later commit cannot repair.
+of them breaks something a later commit cannot repair. Then
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md), which is short and has one paragraph
+worth reading twice — review here is blunt about work and never about people.
+
+**Found a vulnerability?** Not an issue and not a pull request:
+[SECURITY.md](SECURITY.md) has a private channel and says what counts as one.
 
 ## Before anything else
 

@@ -1,0 +1,71 @@
+name: Something behaved wrongly
+description: The tool did something other than what its plan said it would.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: >-
+        The property this tool exists to have is that the world ends up matching
+        the plan and nothing else happens. The questions below are the ones that
+        turn "it broke" into something that can be reproduced.
+
+  - type: textarea
+    id: configuration
+    attributes:
+      label: The configuration
+      description: >-
+        The smallest `.star` that shows it. Cut everything the failure does not
+        need — a hundred-line configuration usually reduces to four.
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: plan
+    attributes:
+      label: What `nerpa plan` printed
+      description: The whole plan, not a summary of it.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: happened
+    attributes:
+      label: What actually happened
+      description: >-
+        What the machine looks like now, and how that differs from what the plan
+        said. If the run stopped, the error in full.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: second-run
+    attributes:
+      label: Was the second run empty?
+      description: >-
+        Run `nerpa plan` again after the apply. A second run that proposes work
+        is a convergence failure, which is a different and more serious bug than
+        a wrong first run — say so here even if it is not what you came about.
+      options:
+        - "Yes — the second plan said there was nothing to do"
+        - "No — the second plan still proposed work"
+        - "The run never got as far as an apply"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: "`nerpa --version`, or the commit you built."
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: "Distribution and kernel. Unix only — `uname -a` is plenty."
+    validations:
+      required: true

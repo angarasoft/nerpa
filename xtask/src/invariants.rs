@@ -232,6 +232,49 @@ fn audit(registry: &str, sources: &[Source]) -> Result<Vec<String>, String> {
     Ok(complaints)
 }
 
+/// Every invariant `SECURITY.md` names is one that is still `claimed`.
+///
+/// The policy tells a researcher which guarantees are believed rather than
+/// demonstrated, so that reporting one is not mistaken for news. That list is
+/// prose beside a registry, which is the shape drift takes: promote an entry and
+/// the policy goes on saying a known weakness is known, about something the
+/// project has started claiming is proven. Checked both ways, like an anchor.
+fn security_policy(policy: &str, entries: &[toml::Table]) -> Vec<String> {
+    let mut complaints = Vec::new();
+
+    let claimed: BTreeSet<String> = entries
+        .iter()
+        .filter(|entry| entry.get("status").and_then(Value::as_str) == Some("claimed"))
+        .filter_map(|entry| entry.get("id").and_then(Value::as_str).map(str::to_owned))
+        .collect();
+
+    let mut named: BTreeSet<String> = BTreeSet::new();
+    let mut rest = policy;
+    while let Some(at) = rest.find("INV-") {
+        let tail = rest.get(at..).unwrap_or_default();
+        let id: String = tail
+            .chars()
+            .take_while(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || *ch == '-')
+            .collect();
+        named.insert(id);
+        rest = tail.get(4..).unwrap_or_default();
+    }
+
+    for id in named.difference(&claimed) {
+        complaints.push(format!(
+            "SECURITY.md names {id} among what is already known, and it is not claimed"
+        ));
+    }
+    for id in claimed.difference(&named) {
+        complaints.push(format!(
+            "{id} is claimed and SECURITY.md does not say so — a researcher would \
+             report it as news"
+        ));
+    }
+
+    complaints
+}
+
 /// Checks the registry against the code, in both directions.
 pub(crate) fn check() -> Result<(), String> {
     let root = shell::root();
@@ -250,6 +293,15 @@ pub(crate) fn check() -> Result<(), String> {
     }
 
     let entries = parse(&registry)?;
+
+    let policy_path = root.join("SECURITY.md");
+    let policy =
+        fs::read_to_string(&policy_path).map_err(|error| format!("SECURITY.md: {error}"))?;
+    let complaints = security_policy(&policy, &entries);
+    if !complaints.is_empty() {
+        return Err(complaints.join("\n"));
+    }
+
     let count = |wanted: &str| {
         entries
             .iter()
@@ -502,5 +554,43 @@ adversarial = ["the_way_around_it_is_refused"]
     #[test]
     fn a_registry_that_is_not_toml_is_an_error_not_a_complaint() {
         assert!(audit("this is not toml", &sources()).is_err());
+    }
+
+    #[test]
+    fn a_policy_that_matches_the_registry_is_quiet() {
+        let entries = super::parse(SOUND).unwrap();
+        assert_eq!(
+            super::security_policy("nothing named here", &entries),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn a_claimed_invariant_the_policy_forgot_is_reported() {
+        let registry = SOUND.replace(r#"status = "enforced""#, r#"status = "claimed""#);
+        let entries = super::parse(&registry).unwrap();
+        let complaints = super::security_policy("a policy naming nobody", &entries);
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(complaints[0].contains("would"), "{complaints:?}");
+    }
+
+    #[test]
+    fn a_policy_naming_something_no_longer_claimed_is_reported() {
+        // The drift this exists for: an entry is promoted and the policy goes on
+        // calling it a known weakness.
+        let entries = super::parse(SOUND).unwrap();
+        let complaints = super::security_policy("known: INV-TEST-001 is thin", &entries);
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(complaints[0].contains("not claimed"), "{complaints:?}");
+    }
+
+    #[test]
+    fn an_identifier_is_read_no_further_than_its_own_characters() {
+        let registry = SOUND.replace(r#"status = "enforced""#, r#"status = "claimed""#);
+        let entries = super::parse(&registry).unwrap();
+        assert_eq!(
+            super::security_policy("`INV-TEST-001` — and prose after it.", &entries),
+            Vec::<String>::new()
+        );
     }
 }

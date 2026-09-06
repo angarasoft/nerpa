@@ -21,6 +21,9 @@ within a week.
 | Rules whose breach breaks the repository | `RULES.md` |
 | How a commit is written | `docs/COMMITS.md` |
 | How prose is written | `docs/WRITING.md` |
+| How to report a vulnerability, and what counts as one | `SECURITY.md` |
+| How people are expected to behave | `CODE_OF_CONDUCT.md` |
+| What a report from outside must contain | `.github/ISSUE_TEMPLATE/` |
 | The book, and how it is assembled | `docs/book/` — chapters are generated, never checked in |
 | How to work in the test suite | `docs/TESTING.md` |
 | What the gate enforces, and what review does | `docs/CODING_STANDARDS.md` |
@@ -54,6 +57,7 @@ the writing.
 | A public interface changes | `CHANGELOG.md` | — |
 | A commit is written | nothing else — the subject carries its own shape | `.githooks/commit-msg` |
 | A module becomes a chapter, or stops being one | its `//! Expands: NNNN`, and a section in `ARCHITECTURE.md` | `cargo xtask book` |
+| An invariant is promoted or demoted | `SECURITY.md`, if it names it among what is already known | `cargo xtask invariants` |
 | An observation is escalated to a decision | `docs/WATCHLIST.md`, and the record that took it | — |
 
 The dashes are not omissions. They mark obligations that today rest on whoever
