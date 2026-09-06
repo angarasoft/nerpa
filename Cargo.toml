@@ -20,8 +20,8 @@ authors = ["Anishchuk Sergei <anishukserg@gmail.com>"]
 # The public home, under the project's own organisation rather than a personal
 # account: a crate outlives whoever published it, and a link through one person's
 # username is a link that breaks the day the project stops being one person's.
-# The gate still runs on GitLab, which is a fact about this repository's plumbing
-# and not about where anybody should be sent to read it.
+# It is also where the gate runs. GitLab holds a copy against the day GitHub is
+# not there, and nothing else.
 repository = "https://github.com/nerpa-run/nerpa"
 homepage = "https://github.com/nerpa-run/nerpa"
 documentation = "https://docs.rs/nerpa-core"

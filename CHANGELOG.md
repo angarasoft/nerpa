@@ -276,6 +276,13 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- One gate rather than two. The gate is `cargo xtask ci`; a CI file is a wrapper
+  around it, and there were two wrappers describing each other as the mirror. It
+  runs on GitHub Actions, which is where the repository lives; GitLab holds a
+  copy against the day GitHub is not there, and nothing else. `.gitlab-ci.yml` is
+  gone rather than kept in step — including the mutation job that was waiting for
+  a runner nobody is going to install now.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

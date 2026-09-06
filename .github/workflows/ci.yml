@@ -8,9 +8,13 @@ on:
     # Mutation testing is minutes, not seconds, so it runs nightly rather than on
     # every push. A gate people learn to skip is worse than no gate.
     #
-    # This is the mirror, and Actions is free without limit on public
-    # repositories — which is why the nightly run lives here rather than on
-    # GitLab, where the same job would eat a free tier's whole month.
+    # Free without limit on public repositories, which is what this one is meant
+    # to become. While it is private the allowance is two thousand minutes a
+    # month and a nightly mutation run is a real fraction of it — a hosted runner
+    # has a few cores where the machine this was measured on has twelve, so nine
+    # minutes there is closer to forty here. If that starts to bite, turn the
+    # schedule off rather than the gate: the per-push job is the one that keeps
+    # anybody honest.
     - cron: "0 3 * * *"
 
 env:
@@ -30,7 +34,10 @@ jobs:
 
       # One entry point, and the same one a developer runs before pushing. A CI
       # file that grows its own list of steps ends up checking something subtly
-      # different from what anybody can reproduce locally.
+      # different from what anybody can reproduce locally — which is also why
+      # there is one of these files rather than two. GitLab holds a copy of the
+      # repository and nothing else; a second gate on a mirror nobody reviews in
+      # is a second thing to keep in step, and it would drift.
       - name: Gate
         run: cargo xtask ci
 
