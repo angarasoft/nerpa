@@ -105,6 +105,13 @@ fn perform(premise: &[Premise], operations: &[Operation]) -> Answer {
 fn observe(observation: &Observation) -> Result<Seen, String> {
     match observation {
         Observation::Path { path } => at(Path::new(path)),
+        // Followed on purpose. The caller asked what the path holds, not what
+        // object is at it, and a link is how a file is usually there.
+        Observation::Contents { path } => match fs::read(path) {
+            Ok(content) => Ok(Seen::Entry(Entry::File { content, mode: 0 })),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Seen::Nothing),
+            Err(error) => Err(format!("{path}: {error}")),
+        },
         Observation::Output { program, arguments } => {
             let (status, out, complaint) = run(program, arguments, &[])?;
             Ok(Seen::Said {

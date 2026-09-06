@@ -663,3 +663,105 @@ if "prod" in environment:
     );
     assert_eq!(graph.len(), 2, "nothing here is deferred or secret");
 }
+
+/// A path that differs by distribution is a *value*, and every branch is written
+/// down — so the graph is the same whichever way it goes. That is the whole of
+/// what decision 0029 allows a fact to do.
+#[test]
+fn a_value_may_be_chosen_by_what_a_machine_turns_out_to_be() {
+    let graph = graph_of(
+        r#"
+web = node("web-01")
+resource("os:file.conf@web-01", {
+    "path": select(web.os_family, {
+        "debian": "/etc/nginx/sites-enabled/default",
+        "gentoo": "/etc/nginx/nginx.conf",
+    }),
+})
+"#,
+    );
+
+    let choice = graph
+        .get(&address("os:file.conf@web-01"))
+        .and_then(|resource| resource.attribute("path"))
+        .and_then(Attribute::chosen)
+        .expect("a choice");
+
+    assert_eq!(choice.fact().name(), "os_family");
+    assert_eq!(choice.fact().node().as_str(), "web-01");
+    assert_eq!(choice.options().len(), 2);
+    assert!(choice.given("gentoo").is_some());
+    assert!(choice.given("alpine").is_none());
+}
+
+/// A fact may decide what an attribute says and never whether a resource exists.
+/// Every route to the second is refused, and this is the one the language would
+/// otherwise make easiest.
+#[test]
+fn a_fact_cannot_decide_whether_a_resource_exists() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+web = node("web-01")
+if web.os_family == "debian":
+    resource("os:file.a@web-01", {})
+"#,
+        Box::new(Held::new()),
+    )
+    .expect_err("a fact is not a condition");
+    assert!(
+        matches!(refusal, ConfigError::ComparedUnresolved(_)),
+        "{refusal}"
+    );
+}
+
+#[test]
+fn a_fact_refuses_to_be_a_condition_on_its_own() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+web = node("web-01")
+
+def held():
+    return web.os_family
+
+if held():
+    resource("os:file.a@web-01", {})
+"#,
+        Box::new(Held::new()),
+    )
+    .expect_err("a fact is not a condition");
+    assert!(
+        matches!(refusal, ConfigError::BranchedOnUnresolved(_)),
+        "{refusal}"
+    );
+}
+
+#[test]
+fn select_needs_a_fact_and_something_to_choose_between() {
+    for (source, expected) in [
+        (
+            r#"resource("os:file.a@web-01", {"path": select("debian", {"a": "b"})})"#,
+            "select() chooses by something read from a machine",
+        ),
+        (
+            r#"
+web = node("web-01")
+resource("os:file.a@web-01", {"path": select(web.os_family, {})})
+"#,
+            "nothing to choose between",
+        ),
+        (
+            r#"
+web = node("web-01")
+resource("os:file.a@web-01", {"path": select(web.os_family, "debian")})
+"#,
+            "needs a dictionary",
+        ),
+    ] {
+        let refusal = evaluate("main.star", source, Box::new(Held::new()))
+            .expect_err("this is not a choice")
+            .to_string();
+        assert!(refusal.contains(expected), "{refusal}");
+    }
+}

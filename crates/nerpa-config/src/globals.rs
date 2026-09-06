@@ -6,6 +6,7 @@
 //! lists, dictionaries, comprehensions, functions — and a module is just a
 //! function, so there is no module system to invent.
 
+use nerpa_core::attribute::Choice;
 use nerpa_core::secret::Source;
 use nerpa_core::{Address, Attribute, Resource, Target, Value as CoreValue};
 use starlark::environment::GlobalsBuilder;
@@ -18,7 +19,7 @@ use starlark::values::list::ListRef;
 use starlark::values::none::NoneType;
 
 use crate::Declarations;
-use crate::handle::{Handle, ResourceRef, SecretRef};
+use crate::handle::{ChoiceRef, FactRef, Handle, NodeRef, ResourceRef, SecretRef};
 
 /// Anything a declaration can get wrong that the resource model refuses.
 #[derive(Debug, thiserror::Error)]
@@ -39,6 +40,15 @@ enum Rejected {
     NamelessSecret(&'static str),
     #[error("template() takes a name and a dictionary of values, and was given {0}")]
     NotValues(String),
+    #[error(
+        "select() chooses by something read from a machine — `select(web.os_family, {{...}})` — \
+         and was given {0}"
+    )]
+    NotAFact(String),
+    #[error("select() needs a dictionary of what it could be, and was given {0}")]
+    NotOptions(String),
+    #[error("select() was given nothing to choose between")]
+    NoOptions,
     #[error("{0}")]
     Template(String),
 }
@@ -59,6 +69,9 @@ fn attribute_of(value: Value<'_>) -> Option<Attribute> {
     }
     if let Some(secret) = SecretRef::from_value(value) {
         return Some(Attribute::Secret(secret.source().clone()));
+    }
+    if let Some(choice) = ChoiceRef::from_value(value) {
+        return Some(Attribute::Chosen(choice.choice().clone()));
     }
     core_value_of(value).map(Attribute::Known)
 }
@@ -203,6 +216,55 @@ pub(crate) fn nerpa(builder: &mut GlobalsBuilder) {
             .map_err(|problem| starlark::Error::new_value(Rejected::Template(problem)))
     }
 
+    /// Chooses a value by something a machine will turn out to be.
+    ///
+    /// Every branch is written here, so the graph is known whichever way it
+    /// goes: one resource, one edge, one place in the order. Only the value is
+    /// open, and only within this set — which the plan can print, and a person
+    /// can approve. A machine that says something no branch accounts for is
+    /// refused, not defaulted.
+    ///
+    /// This is the whole mechanism decision 0029 allows. A fact may decide what
+    /// an attribute says and never whether a resource exists, which is why there
+    /// is no `if` that a fact can reach.
+    fn select<'v>(
+        #[starlark(require = pos)] by: Value<'v>,
+        #[starlark(require = pos)] options: Value<'v>,
+    ) -> starlark::Result<ChoiceRef> {
+        let Some(fact) = FactRef::from_value(by) else {
+            return Err(starlark::Error::new_value(Rejected::NotAFact(
+                by.get_type().to_owned(),
+            )));
+        };
+        let Some(entries) = DictRef::from_value(options) else {
+            return Err(starlark::Error::new_value(Rejected::NotOptions(
+                options.get_type().to_owned(),
+            )));
+        };
+
+        let mut among = std::collections::BTreeMap::new();
+        for (said, item) in entries.iter() {
+            let Some(said) = said.unpack_str() else {
+                return Err(starlark::Error::new_value(Rejected::NotOptions(
+                    "a dictionary keyed by something other than text".to_owned(),
+                )));
+            };
+            let Some(value) = core_value_of(item) else {
+                return Err(starlark::Error::new_value(Rejected::Attribute {
+                    address: fact.fact().to_string(),
+                    name: said.to_owned(),
+                    found: item.get_type().to_owned(),
+                }));
+            };
+            among.insert(said.to_owned(), value);
+        }
+
+        if among.is_empty() {
+            return Err(starlark::Error::new_value(Rejected::NoOptions));
+        }
+        Ok(ChoiceRef::new(Choice::among(fact.fact().clone(), among)))
+    }
+
     /// Declares a node, and what brings it into existence.
     ///
     /// Without `provided_by` the machine is taken to exist already, and nothing
@@ -211,14 +273,14 @@ pub(crate) fn nerpa(builder: &mut GlobalsBuilder) {
         #[starlark(require = pos)] name: &str,
         #[starlark(require = named, default = NoneType)] provided_by: Value<'v>,
         eval: &mut Evaluator<'v, '_, '_>,
-    ) -> starlark::Result<NoneType> {
+    ) -> starlark::Result<NodeRef> {
         let store = declarations(eval)?;
         let target = Target::new(name)
             .map_err(|error| starlark::Error::new_value(Rejected::Address(error)))?;
 
         if provided_by.is_none() {
-            store.add_node(target, None);
-            return Ok(NoneType);
+            store.add_node(target.clone(), None);
+            return Ok(NodeRef::new(target));
         }
 
         let Some(resource) = ResourceRef::from_value(provided_by) else {
@@ -226,7 +288,7 @@ pub(crate) fn nerpa(builder: &mut GlobalsBuilder) {
                 provided_by.get_type().to_owned(),
             )));
         };
-        store.add_node(target, Some(resource.address().clone()));
-        Ok(NoneType)
+        store.add_node(target.clone(), Some(resource.address().clone()));
+        Ok(NodeRef::new(target))
     }
 }

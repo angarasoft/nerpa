@@ -21,8 +21,9 @@ use std::cell::RefCell;
 use std::fmt;
 
 use allocative::Allocative;
+use nerpa_core::attribute::{Choice, Fact};
 use nerpa_core::secret::Source;
-use nerpa_core::{Address, Reference};
+use nerpa_core::{Address, Reference, Target};
 use starlark::any::ProvidesStaticType;
 use starlark::starlark_simple_value;
 use starlark::values::{Heap, NoSerialize, StarlarkValue, Value, starlark_value};
@@ -201,6 +202,153 @@ impl<'v> StarlarkValue<'v> for SecretRef {
     }
 
     // ENFORCES: INV-SECRET-004
+    fn to_bool(&self) -> bool {
+        BRANCHED_ON.with_borrow_mut(|taken| taken.push(self.to_string()));
+        true
+    }
+}
+
+/// A machine, as the configuration refers to it.
+#[derive(Debug, Clone, ProvidesStaticType, NoSerialize, Allocative)]
+pub(crate) struct NodeRef {
+    #[allocative(skip)]
+    node: Target,
+}
+
+impl NodeRef {
+    pub(crate) fn new(node: Target) -> Self {
+        Self { node }
+    }
+}
+
+impl fmt::Display for NodeRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.node)
+    }
+}
+
+starlark_simple_value!(NodeRef);
+
+#[starlark_value(type = "node")]
+impl<'v> StarlarkValue<'v> for NodeRef {
+    /// `web.os_family` is a fact of that machine.
+    ///
+    /// The same spelling as reading an attribute of a resource, and the same
+    /// opacity: both are things this configuration cannot know while it is being
+    /// read. Which one it is shows in what it refuses and in what the plan says.
+    fn get_attr(&self, attribute: &str, heap: Heap<'v>) -> Option<Value<'v>> {
+        Some(heap.alloc(FactRef::new(Fact::of(self.node.clone(), attribute))))
+    }
+
+    fn has_attr(&self, _attribute: &str, _heap: Heap<'v>) -> bool {
+        // Which facts a machine has is decided by the machine, and none of that
+        // is known here.
+        true
+    }
+}
+
+/// Something a machine will turn out to be.
+///
+/// It may be given to `select` and to nothing else. Compared, ordered, indexed
+/// or used as a condition it refuses, for the reason decision 0029 gives: a fact
+/// may decide what an attribute says and never whether a resource exists.
+#[derive(Debug, Clone, ProvidesStaticType, NoSerialize, Allocative)]
+pub(crate) struct FactRef {
+    #[allocative(skip)]
+    fact: Fact,
+}
+
+impl FactRef {
+    pub(crate) fn new(fact: Fact) -> Self {
+        Self { fact }
+    }
+
+    pub(crate) fn fact(&self) -> &Fact {
+        &self.fact
+    }
+}
+
+impl fmt::Display for FactRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<{}, read from the machine>", self.fact)
+    }
+}
+
+starlark_simple_value!(FactRef);
+
+#[starlark_value(type = "fact")]
+impl<'v> StarlarkValue<'v> for FactRef {
+    fn equals(&self, _other: Value<'v>) -> starlark::Result<bool> {
+        refuse(self.to_string(), "==")
+    }
+
+    fn compare(&self, _other: Value<'v>) -> starlark::Result<std::cmp::Ordering> {
+        refuse(self.to_string(), "an ordering comparison")
+    }
+
+    fn at(&self, _index: Value<'v>, _heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        refuse(self.to_string(), "indexing")
+    }
+
+    fn iterate_collect(&self, _heap: Heap<'v>) -> starlark::Result<Vec<Value<'v>>> {
+        refuse(self.to_string(), "iteration")
+    }
+
+    // ENFORCES: INV-FACT-001
+    fn to_bool(&self) -> bool {
+        BRANCHED_ON.with_borrow_mut(|taken| taken.push(self.to_string()));
+        true
+    }
+}
+
+/// A value chosen by a fact, as the configuration holds it.
+///
+/// It refuses everything a fact refuses, for the same reason: what it will be is
+/// not known here, and the only thing that may be done with it is to give it to
+/// a resource.
+#[derive(Debug, Clone, ProvidesStaticType, NoSerialize, Allocative)]
+pub(crate) struct ChoiceRef {
+    #[allocative(skip)]
+    choice: Choice,
+}
+
+impl ChoiceRef {
+    pub(crate) fn new(choice: Choice) -> Self {
+        Self { choice }
+    }
+
+    pub(crate) fn choice(&self) -> &Choice {
+        &self.choice
+    }
+}
+
+impl fmt::Display for ChoiceRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "<{}>", self.choice)
+    }
+}
+
+starlark_simple_value!(ChoiceRef);
+
+#[starlark_value(type = "choice")]
+impl<'v> StarlarkValue<'v> for ChoiceRef {
+    fn equals(&self, _other: Value<'v>) -> starlark::Result<bool> {
+        refuse(self.to_string(), "==")
+    }
+
+    fn compare(&self, _other: Value<'v>) -> starlark::Result<std::cmp::Ordering> {
+        refuse(self.to_string(), "an ordering comparison")
+    }
+
+    fn at(&self, _index: Value<'v>, _heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        refuse(self.to_string(), "indexing")
+    }
+
+    fn iterate_collect(&self, _heap: Heap<'v>) -> starlark::Result<Vec<Value<'v>>> {
+        refuse(self.to_string(), "iteration")
+    }
+
+    // ENFORCES: INV-FACT-001
     fn to_bool(&self) -> bool {
         BRANCHED_ON.with_borrow_mut(|taken| taken.push(self.to_string()));
         true

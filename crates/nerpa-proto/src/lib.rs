@@ -165,6 +165,18 @@ pub enum Observation {
         /// Where to look.
         path: String,
     },
+    /// What this path holds, following a link to get there.
+    ///
+    /// A different question to [`Observation::Path`], which asks *what is at*
+    /// this path. Reporting a link rather than following it is right when the
+    /// path is being managed — a record of one object's mode with another's
+    /// contents describes nothing that exists. It is wrong when the path is
+    /// being read: `/etc/os-release` is a link on most machines, and what the
+    /// asker wants is what it says.
+    Contents {
+        /// Where to read.
+        path: String,
+    },
     /// What this program says when it is run.
     Output {
         /// The program, found on the far end's `PATH` or named absolutely.

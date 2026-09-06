@@ -92,19 +92,31 @@ impl Provider for Selective {
 
 use nerpa_core::Address;
 
-/// A far end nobody asks. These providers decide their answers themselves; the
-/// seam is there because the trait has one, not because this uses it.
+/// A machine that answers and knows nothing about itself.
+///
+/// The providers in these tests decide their own answers, so the seam is here
+/// because the trait has one. It answers rather than refuses because a far end
+/// that refuses is a machine out of reach, and these machines are present — they
+/// just have nothing to say about what they are.
 #[derive(Debug)]
-struct Deaf;
+struct Blank;
 
-impl Reach for Deaf {
-    fn ask(&self, _ask: &nerpa_proto::Ask) -> Result<nerpa_proto::Answer, ProviderError> {
-        Err(ProviderError::NotOnAMachine)
+impl Reach for Blank {
+    fn ask(&self, ask: &nerpa_proto::Ask) -> Result<nerpa_proto::Answer, ProviderError> {
+        match ask {
+            nerpa_proto::Ask::Look { observations } => Ok(nerpa_proto::Answer::Found {
+                seen: observations
+                    .iter()
+                    .map(|_| nerpa_proto::Seen::Nothing)
+                    .collect(),
+            }),
+            _ => Err(ProviderError::NotOnAMachine),
+        }
     }
 }
 
 fn machines() -> Machines {
-    Machines::new().everywhere(Box::new(Deaf))
+    Machines::new().everywhere(Box::new(Blank))
 }
 
 fn graph_of(attributes: &[(&str, &str)]) -> Graph {

@@ -96,7 +96,7 @@ the configuration that described the dependency is exactly what was deleted. And
 a resource is looked for where state left it, not where the declaration now
 points — otherwise moving one reads as making a second and abandoning the first.
 
-## Facts as values — [0029](decisions/0029-a-fact-is-a-value-not-a-branch.md) · planned
+## Facts as values — [0029](decisions/0029-a-fact-is-a-value-not-a-branch.md) · built
 
 A fact may decide what an attribute says and never whether a resource exists.
 `node.fact(...)` is an unresolved value in that node's `target` domain, refused

@@ -7,6 +7,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use nerpa_core::address::address;
+use nerpa_core::attribute::{Choice, Fact};
 use nerpa_core::planner::plan;
 use nerpa_core::provider::Machines;
 use nerpa_core::provider::{Attributes, Provider, Providers};
@@ -64,6 +65,11 @@ impl Drop for Scratch {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.0);
     }
+}
+
+/// A node by name, for a choice that has to say whose fact it reads.
+fn node(name: &str) -> Target {
+    Target::new(name).expect("a node name")
 }
 
 fn providers() -> Providers {
@@ -650,4 +656,91 @@ fn one_provider_serves_two_threads_at_once() {
             "every thread's file survived the others"
         );
     }
+}
+
+/// The whole loop with a value that depends on what the machine turned out to
+/// be. Facts are gathered in the same run, from the same executor, and the
+/// choice is settled before anything is written.
+#[test]
+fn a_value_chosen_by_a_fact_settles_from_the_machine() {
+    let scratch = Scratch::new("facts");
+    let wide = scratch.join("wide.conf");
+    let arm = scratch.join("arm.conf");
+
+    let mut chosen = std::collections::BTreeMap::new();
+    chosen.insert("x86_64".to_owned(), Value::Text(wide.clone()));
+    chosen.insert("aarch64".to_owned(), Value::Text(arm.clone()));
+
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.conf@localhost"))
+            .with(
+                "path",
+                Choice::among(Fact::of(node("localhost"), "arch"), chosen),
+            )
+            .with("content", "managed\n"),
+    ]);
+
+    let providers = providers();
+    let mut state = State::new();
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
+
+    // The machine answered, so the choice is settled and the plan writes one
+    // path rather than offering two.
+    let intended =
+        plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    apply(
+        &intended,
+        &providers,
+        &machines(),
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
+
+    let here = std::env::consts::ARCH;
+    let expected = if here == "aarch64" { &arm } else { &wide };
+    assert_eq!(
+        fs::read_to_string(expected).expect("written"),
+        "managed\n",
+        "the branch this machine's architecture picks"
+    );
+
+    let again = observe(&graph, &providers, &machines(), &state).expect("readable");
+    assert!(
+        plan(&graph, &again, &state, &providers.schema(), secrets())
+            .expect("plannable")
+            .is_empty(),
+        "and the second run has nothing to do"
+    );
+}
+
+/// A machine that says something no branch accounts for is refused, not
+/// defaulted. A silent default is a machine configured as though it were a
+/// different one, which is worse than one that is not configured.
+#[test]
+fn a_machine_that_says_something_unaccounted_for_is_refused() {
+    let scratch = Scratch::new("unaccounted");
+    let mut only_arm = std::collections::BTreeMap::new();
+    only_arm.insert(
+        "definitely-not-this-machine".to_owned(),
+        Value::Text(scratch.join("conf")),
+    );
+
+    let graph = graph_of(vec![Resource::new(address("os:file.conf@localhost")).with(
+        "path",
+        Choice::among(Fact::of(node("localhost"), "arch"), only_arm),
+    )]);
+
+    let providers = providers();
+    let state = State::new();
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
+
+    let refusal = plan(&graph, &observed, &state, &providers.schema(), secrets())
+        .expect_err("this machine is not in the set");
+    assert!(
+        refusal.to_string().contains("arch"),
+        "the refusal should name the fact and what the machine said: {refusal}"
+    );
 }

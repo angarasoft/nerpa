@@ -19,7 +19,9 @@
 
 use std::fmt;
 
-use crate::address::Address;
+use std::collections::BTreeMap;
+
+use crate::address::{Address, Target};
 use crate::secret::Source;
 use crate::value::Value;
 
@@ -58,6 +60,98 @@ impl fmt::Display for Reference {
     }
 }
 
+/// Something read from a machine rather than declared.
+///
+/// A fact is not a resource attribute, so it is not a [`Reference`]: nothing
+/// created it and nothing depends on it existing. It is what the machine turned
+/// out to be.
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+pub struct Fact {
+    node: Target,
+    name: String,
+}
+
+impl Fact {
+    /// Names a fact of a machine.
+    pub fn of(node: Target, name: impl Into<String>) -> Self {
+        Self {
+            node,
+            name: name.into(),
+        }
+    }
+
+    /// Whose fact this is.
+    #[must_use]
+    pub fn node(&self) -> &Target {
+        &self.node
+    }
+
+    /// Which fact.
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+impl fmt::Display for Fact {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}'s {}", self.node, self.name)
+    }
+}
+
+/// A value chosen from a closed set by a fact.
+///
+/// The mechanism decision 0029 settles. Every branch is written down, so the
+/// graph is fully known — one resource, one edge, one place in the order — and
+/// only the value is open, within a set the plan can print. That is more useful
+/// than "unknown after apply", which names no possibilities at all.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Choice {
+    fact: Fact,
+    options: BTreeMap<String, Value>,
+}
+
+impl Choice {
+    /// Chooses among these by that fact.
+    #[must_use]
+    pub fn among(fact: Fact, options: BTreeMap<String, Value>) -> Self {
+        Self { fact, options }
+    }
+
+    /// What decides.
+    #[must_use]
+    pub fn fact(&self) -> &Fact {
+        &self.fact
+    }
+
+    /// Everything it could be, by the fact value that would pick it.
+    #[must_use]
+    pub fn options(&self) -> &BTreeMap<String, Value> {
+        &self.options
+    }
+
+    /// What this would be if the fact turned out to say that.
+    #[must_use]
+    pub fn given(&self, said: &str) -> Option<&Value> {
+        self.options.get(said)
+    }
+}
+
+impl fmt::Display for Choice {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "one of ")?;
+        for (position, value) in self.options.values().enumerate() {
+            if position > 0 {
+                f.write_str(", ")?;
+            }
+            write!(f, "{value}")?;
+        }
+        write!(f, ", by {}", self.fact)
+    }
+}
+
 /// What a declaration says about one attribute.
 ///
 /// Non-exhaustive: provider schemas will want readings this does not have yet.
@@ -68,6 +162,12 @@ pub enum Attribute {
     Known(Value),
     /// Not settled. Will be read from another resource once that exists.
     Unresolved(Reference),
+    /// Chosen from a closed set by something read from the machine.
+    ///
+    /// A fact may decide what an attribute *says* and never whether a resource
+    /// exists. That is the whole boundary, and writing it here rather than
+    /// leaving it to an error message is the point of decision 0029.
+    Chosen(Choice),
     /// Settled somewhere else, and deliberately not brought here.
     ///
     /// The declaration names a store and a path; the value is fetched when a
@@ -85,7 +185,7 @@ impl Attribute {
     pub fn known(&self) -> Option<&Value> {
         match self {
             Attribute::Known(value) => Some(value),
-            Attribute::Unresolved(_) | Attribute::Secret(_) => None,
+            Attribute::Unresolved(_) | Attribute::Secret(_) | Attribute::Chosen(_) => None,
         }
     }
 
@@ -94,7 +194,7 @@ impl Attribute {
     pub fn secret(&self) -> Option<&Source> {
         match self {
             Attribute::Secret(source) => Some(source),
-            Attribute::Known(_) | Attribute::Unresolved(_) => None,
+            Attribute::Known(_) | Attribute::Unresolved(_) | Attribute::Chosen(_) => None,
         }
     }
 
@@ -107,7 +207,7 @@ impl Attribute {
     // ENFORCES: INV-GRAPH-003
     pub fn reference(&self) -> Option<&Reference> {
         match self {
-            Attribute::Known(_) | Attribute::Secret(_) => None,
+            Attribute::Known(_) | Attribute::Secret(_) | Attribute::Chosen(_) => None,
             Attribute::Unresolved(reference) => Some(reference),
         }
     }
@@ -119,7 +219,26 @@ impl fmt::Display for Attribute {
             Attribute::Known(value) => write!(f, "{value}"),
             Attribute::Unresolved(reference) => write!(f, "unknown until apply, from {reference}"),
             Attribute::Secret(source) => write!(f, "(secret from {source})"),
+            Attribute::Chosen(choice) => write!(f, "{choice}"),
         }
+    }
+}
+
+impl Attribute {
+    /// What a fact would have to say for this attribute to be settled, if it is
+    /// waiting on one.
+    #[must_use]
+    pub fn chosen(&self) -> Option<&Choice> {
+        match self {
+            Attribute::Chosen(choice) => Some(choice),
+            Attribute::Known(_) | Attribute::Unresolved(_) | Attribute::Secret(_) => None,
+        }
+    }
+}
+
+impl From<Choice> for Attribute {
+    fn from(choice: Choice) -> Self {
+        Attribute::Chosen(choice)
     }
 }
 

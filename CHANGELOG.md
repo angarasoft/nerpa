@@ -181,6 +181,18 @@ without ceremony until the first stage is complete.
   provider has no world inside it.
 
 
+- Values chosen by what a machine turns out to be. `web.os_family` is a fact and
+  `select(web.os_family, {"debian": …, "gentoo": …})` picks by it, so a path that
+  differs by distribution is expressible without letting a fact decide which
+  resources exist. Every branch is written down, so the graph is the same
+  whichever way it goes; only the value is open, and the plan prints the set
+  rather than "unknown", because a person can approve a set. A machine that says
+  something no branch accounts for is refused, not defaulted.
+
+  Facts are gathered in the same journey as everything else, from a closed list —
+  `arch` and `os_family` today — so what gathering costs is the length of that
+  list rather than the length of what a machine could be asked.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

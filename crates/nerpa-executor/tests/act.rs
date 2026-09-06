@@ -224,3 +224,48 @@ fn removing_a_directory_does_not_take_what_is_in_it() {
 fn a_fingerprint_is_refused_rather_than_invented() {
     assert!(matches!(answer(&Ask::Fingerprint), Answer::Failed { .. }));
 }
+
+/// Two questions about one path, and the answers differ on purpose.
+///
+/// "What is at this path" reports a link, because managing a path means knowing
+/// what object is there — a record of one object's mode with another's contents
+/// describes nothing that exists. "What does this path hold" follows it, because
+/// `/etc/os-release` is a link on most machines and what the asker wants is what
+/// it says. Found by running it on a real one.
+#[test]
+fn asking_what_a_path_holds_follows_a_link_and_asking_what_is_there_does_not() {
+    let scratch = scratch();
+    let real = scratch.path().join("os-release");
+    let link = scratch.path().join("link");
+    fs::write(&real, "ID=gentoo\n").unwrap();
+    std::os::unix::fs::symlink(&real, &link).unwrap();
+
+    let Answer::Found { seen } = look(vec![
+        at(&link),
+        Observation::Contents {
+            path: link.display().to_string(),
+        },
+    ]) else {
+        panic!("both are answerable")
+    };
+
+    assert!(
+        matches!(&seen[0], Seen::Entry(Entry::Symlink { .. })),
+        "what is at the path is a link"
+    );
+    assert!(
+        matches!(&seen[1], Seen::Entry(Entry::File { content, .. }) if content == b"ID=gentoo\n"),
+        "what the path holds is what it points at"
+    );
+}
+
+#[test]
+fn a_path_that_holds_nothing_because_it_is_not_there_says_so() {
+    let scratch = scratch();
+    let Answer::Found { seen } = look(vec![Observation::Contents {
+        path: scratch.path().join("absent").display().to_string(),
+    }]) else {
+        panic!("answerable")
+    };
+    assert_eq!(seen[0], Seen::Nothing);
+}

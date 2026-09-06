@@ -91,6 +91,41 @@ pub fn observe(
         }
     }
 
+    // Asked once per machine, in a journey of its own. Every fact is a question
+    // somebody wrote down, so what this costs is the length of that list rather
+    // than the length of what a machine could be asked. See decision 0029.
+    for node in graph.inventory().nodes() {
+        if !observed.reached(node) {
+            continue;
+        }
+        let Ok(reach) = machines.reach(Some(node)) else {
+            observed.unreachable(node.clone());
+            continue;
+        };
+        match reach.ask(&nerpa_proto::Ask::Look {
+            observations: crate::facts::ASKED
+                .iter()
+                .map(|asked| (asked.ask)())
+                .collect(),
+        }) {
+            Ok(nerpa_proto::Answer::Found { seen }) => {
+                for (asked, answer) in crate::facts::ASKED.iter().zip(seen) {
+                    if let Some(said) = (asked.read)(&answer) {
+                        observed.learn(node.clone(), asked.name, said);
+                    }
+                }
+            }
+            // A machine that will not say what it is is a machine nothing can
+            // be planned for, and that is the same fact as one that did not
+            // answer — whatever the reason. This is the one place where every
+            // failure becomes unreachability rather than only the one that
+            // already is, because the subject is a machine rather than a
+            // resource on it.
+            // ENFORCES: INV-REACH-002
+            Ok(_) | Err(_) => observed.unreachable(node.clone()),
+        }
+    }
+
     Ok(observed)
 }
 
@@ -132,7 +167,10 @@ fn settled_declaration(resource: &Resource) -> Attributes {
             // A secret is never a locator: nothing is found by its password, and
             // fetching one in order to look something up would be reaching for a
             // credential to do a job that does not need it.
-            Attribute::Unresolved(_) | Attribute::Secret(_) => None,
+            // Nor is a value that depends on what the machine turned out to be:
+            // finding a resource requires knowing where it is, and that is
+            // exactly what is not settled yet.
+            Attribute::Unresolved(_) | Attribute::Secret(_) | Attribute::Chosen(_) => None,
         })
         .collect()
 }
@@ -270,7 +308,9 @@ fn dependencies(change: &Change) -> BTreeSet<Address> {
         .iter()
         .filter_map(|(_, value)| match value {
             Confidence::Unknown(reference) => Some(reference.source().clone()),
-            Confidence::Known(_) | Confidence::Secret(_) => None,
+            // A fact is not a resource, so nothing was created to depend on. It
+            // orders nothing, which is the point of it not being a reference.
+            Confidence::Known(_) | Confidence::Secret(_) | Confidence::Bounded(_) => None,
         })
         .collect()
 }
@@ -332,6 +372,20 @@ pub enum RunError {
         /// The attribute that went in and did not come out.
         attribute: String,
     },
+    /// A value that depends on a fact was still open when its stage ran.
+    ///
+    /// The machine was not looked at, so the branch cannot be taken. Guessing at
+    /// one would configure a machine as though it were another, which is the
+    /// failure the closed set exists to prevent.
+    #[error("{address}: {attribute} waits on {fact}, which was never read")]
+    Unsettled {
+        /// The resource whose attribute is open.
+        address: Address,
+        /// Which attribute.
+        attribute: String,
+        /// What it is waiting on.
+        fact: String,
+    },
     /// What had been done could not be written down.
     ///
     /// Stops the run. Carrying on would make more changes that nothing is
@@ -349,7 +403,7 @@ fn settle(
     change: &Change,
     observed: &Observed,
     secrets: Secrets<'_>,
-) -> Result<Attributes, FetchError> {
+) -> Result<Attributes, RunError> {
     let mut attributes = Attributes::new();
     for (name, wanted) in change.desired() {
         let value = match wanted {
@@ -371,6 +425,17 @@ fn settle(
             // The last moment, and the only one: fetched here and handed
             // straight to the provider that writes it.
             Confidence::Secret(sealed) => secrets.fetch(sealed.source())?,
+            // Still open when the plan was made, and nothing since has settled
+            // it: the machine was not looked at, so the branch cannot be taken.
+            // Guessing at one would configure a machine as though it were
+            // another.
+            Confidence::Bounded(choice) => {
+                return Err(RunError::Unsettled {
+                    address: change.address().clone(),
+                    attribute: name.clone(),
+                    fact: choice.fact().to_string(),
+                });
+            }
         };
         attributes.insert(name.clone(), value);
     }

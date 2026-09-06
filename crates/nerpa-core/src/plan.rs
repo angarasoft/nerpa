@@ -23,7 +23,7 @@
 use std::collections::BTreeSet;
 
 use crate::address::{Address, Target};
-use crate::attribute::Reference;
+use crate::attribute::{Choice, Reference};
 use crate::graph::StageKind;
 use std::fmt;
 
@@ -70,6 +70,12 @@ pub enum Confidence {
     /// Settled, and deliberately not written here: a secret is carried as where
     /// it came from and what it hashes to. See decision 0027.
     Secret(Sealed),
+    /// One of a written-down set, and which one is not settled yet.
+    ///
+    /// More useful than "unknown after apply", which names no possibilities at
+    /// all: a person reading this knows every value it could take and can
+    /// approve or refuse the set. See decision 0029.
+    Bounded(Choice),
 }
 
 impl Confidence {
@@ -659,6 +665,15 @@ fn encode_confidence(confidence: &Confidence, out: &mut Vec<u8>) {
             out.push(3);
             value::text(&sealed.source().to_string(), out);
             out.extend_from_slice(sealed.digest().raw());
+        }
+        Confidence::Bounded(choice) => {
+            out.push(4);
+            value::text(&choice.fact().to_string(), out);
+            out.extend_from_slice(&value::length(choice.options().len()));
+            for (said, value) in choice.options() {
+                value::text(said, out);
+                value::encode(value, out);
+            }
         }
     }
 }

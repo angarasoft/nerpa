@@ -40,6 +40,18 @@ pub enum PlanError {
     /// resource on a node the inventory does not know.
     #[error(transparent)]
     Graph(#[from] GraphError),
+    /// A machine said something the configuration wrote no branch for.
+    ///
+    /// Refused rather than defaulted. A silent default is a machine configured
+    /// as though it were a different one, which is worse than a machine that is
+    /// not configured.
+    #[error("{fact} is {said:?}, and the configuration accounts for no such value")]
+    Unaccounted {
+        /// Which fact.
+        fact: crate::attribute::Fact,
+        /// What the machine said.
+        said: String,
+    },
     /// A secret could not be fetched, and whether it changed cannot be guessed.
     ///
     /// Planning stops rather than reporting a secret as unchanged, which is the
@@ -188,7 +200,7 @@ fn change_for(
     schema: &Schema,
     secrets: Secrets<'_>,
     outdated: &mut Vec<Outdated>,
-) -> Result<Option<Change>, FetchError> {
+) -> Result<Option<Change>, PlanError> {
     let address = resource.address();
     let existing = observed.get(address);
 
@@ -259,7 +271,7 @@ fn resolve(
     declared: &Attribute,
     observed: &Observed,
     secrets: Secrets<'_>,
-) -> Result<Confidence, FetchError> {
+) -> Result<Confidence, PlanError> {
     Ok(match declared {
         Attribute::Known(value) => Confidence::Known(value.clone()),
         Attribute::Unresolved(reference) => {
@@ -271,6 +283,27 @@ fn resolve(
         // Fetched to be hashed, and dropped in `seal`. The only way to say
         // whether a secret changed is to look at what is there now.
         Attribute::Secret(source) => Confidence::Secret(secrets.seal(source)?),
+        // Every branch is written down, so the graph is known whichever way this
+        // goes. What is open is the value, and only within the set — which the
+        // plan can print, and a person can approve.
+        // ENFORCES: INV-FACT-001
+        Attribute::Chosen(choice) => {
+            match observed.fact(choice.fact().node(), choice.fact().name()) {
+                Some(said) => match choice.given(said) {
+                    Some(value) => Confidence::Known(value.clone()),
+                    // Caught here rather than at apply, which decision 0029
+                    // expected: the fact is already known, so the plan can say
+                    // what went wrong instead of a machine finding out later.
+                    None => {
+                        return Err(PlanError::Unaccounted {
+                            fact: choice.fact().clone(),
+                            said: said.to_owned(),
+                        });
+                    }
+                },
+                None => Confidence::Bounded(choice.clone()),
+            }
+        }
     })
 }
 

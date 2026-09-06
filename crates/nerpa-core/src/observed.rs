@@ -20,11 +20,30 @@ use crate::value::Value;
 /// Observed state, gathered before planning.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Observed {
+    facts: BTreeMap<Target, BTreeMap<String, String>>,
     resources: BTreeMap<Address, BTreeMap<String, Value>>,
     unreachable: BTreeSet<Target>,
 }
 
 impl Observed {
+    /// Records what a machine turned out to be.
+    ///
+    /// Facts are readings like any other, gathered in the same journey. They are
+    /// kept apart from resource attributes because nothing created them and
+    /// nothing depends on them existing — see decision 0029.
+    pub fn learn(&mut self, node: Target, name: impl Into<String>, said: impl Into<String>) {
+        self.facts
+            .entry(node)
+            .or_default()
+            .insert(name.into(), said.into());
+    }
+
+    /// What a machine said about itself, if it was asked and answered.
+    #[must_use]
+    pub fn fact(&self, node: &Target, name: &str) -> Option<&str> {
+        self.facts.get(node)?.get(name).map(String::as_str)
+    }
+
     /// Nothing read, and therefore nothing existing.
     #[must_use]
     pub fn new() -> Self {

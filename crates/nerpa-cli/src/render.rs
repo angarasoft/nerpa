@@ -213,6 +213,9 @@ fn shown(after: &Confidence) -> String {
         Confidence::Known(value) => value.to_string(),
         Confidence::Unknown(reference) => format!("unknown until apply, from {reference}"),
         Confidence::Secret(sealed) => format!("(secret from {})", sealed.source()),
+        // Every value it could take, because a person can approve a set and
+        // cannot approve "unknown". See decision 0029.
+        Confidence::Bounded(choice) => choice.to_string(),
         _ => "unrecognised".to_owned(),
     }
 }

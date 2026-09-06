@@ -42,6 +42,7 @@
 //! * [`domain`] — where a resource's state can be read, and why that does not
 //!   force planning to happen in waves.
 //! * [`attribute`] — what a declaration says, including values that do not exist yet.
+//! * [`facts`] — what a machine turns out to be, and how it is asked.
 //! * [`graph`] — the desired-state graph, and the stages it is applied in.
 //! * [`inventory`] — where the nodes come from.
 //! * [`observed`] — what the world looks like, read before planning starts.
@@ -63,6 +64,7 @@ pub mod address;
 pub mod attribute;
 pub mod contract;
 pub mod domain;
+pub mod facts;
 pub mod graph;
 pub mod inventory;
 pub mod observed;

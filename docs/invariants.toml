@@ -859,3 +859,38 @@ bypass = "An operation whose effect was not derived from anything in the premise
 enforced_by = ["crates/nerpa-executor/src/lib.rs"]
 tests = ["what_it_did_is_read_back_rather_than_echoed"]
 adversarial = ["a_batch_whose_premise_moved_does_nothing_and_says_which"]
+
+[[invariant]]
+id = "INV-FACT-001"
+status = "enforced"
+statement = "Something read from a machine may decide what an attribute says and never whether a resource exists."
+rationale = """
+A single planning pass is possible because the set of resources is known before \
+anything runs. A fact is not known then — it is what the machine turned out to \
+be — so letting one decide which resources exist would take the property the \
+whole design rests on.
+
+But a path that differs by distribution is a *value*, and refusing that outright \
+would make the tool unusable on a mixed fleet. So `select(fact, {closed set})` is \
+the mechanism and the only one: every branch is written down, the graph is the \
+same whichever way it goes, and what is open is the value — within a set the plan \
+prints, which is more useful than "unknown after apply" because a person can \
+approve a set.
+
+A machine that says something no branch accounts for is refused, not defaulted. A \
+silent default is a machine configured as though it were a different one, which \
+is worse than a machine that is not configured."""
+bypass = "A fact reaching a condition. Comparison, ordering, indexing and iteration are refused by the value, truthiness poisons the run, and the syntax pass catches the comparisons Starlark answers without consulting a value — but that pass does not follow a function parameter, so a fact handed into a function and compared inside it is silently false there, exactly as `INV-PLAN-001` describes for a handle."
+enforced_by = [
+  "crates/nerpa-config/src/handle.rs",
+  "crates/nerpa-core/src/planner.rs",
+]
+tests = [
+  "a_value_may_be_chosen_by_what_a_machine_turns_out_to_be",
+  "a_value_chosen_by_a_fact_settles_from_the_machine",
+]
+adversarial = [
+  "a_fact_cannot_decide_whether_a_resource_exists",
+  "a_fact_refuses_to_be_a_condition_on_its_own",
+  "a_machine_that_says_something_unaccounted_for_is_refused",
+]
