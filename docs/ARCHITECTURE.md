@@ -144,21 +144,29 @@ Load-bearing rather than an optimisation, because the plan is single-pass.
 
 ## The executor and transports — [0010](decisions/0010-static-executor-pluggable-transport.md) · partly built
 
-A static Rust binary — 767 KB — speaking framed CBOR over stdin and stdout —
-four bytes of length, then the body. Every frame carries the protocol version it
-was written by, because an executor installed once outlives the engine that put
-it there, and an unknown version is refused rather than read as a subset. The
-length is checked before a byte is allocated: it is an instruction to allocate
-arriving from the far end of a pipe.
+A static Rust binary — 774 776 bytes, built for `x86_64-unknown-linux-musl` —
+speaking framed CBOR over stdin and stdout: four bytes of length, then the body.
+Every frame carries the protocol version it was written by, because an executor
+installed once outlives the engine that put it there, and an unknown version is
+refused rather than read as a subset. The length is checked before a byte is
+allocated: it is an instruction to allocate arriving from the far end of a pipe.
+
 The transport carries bytes and knows nothing about them, and is a command that
 produces a pipe: the executor here, or `ssh` to run it there. One connection
 carries a whole run.
 
-Built and shown against a machine reached through a bastion: read, plan, write,
-and a second run with nothing to do. Not built: `teleport`, getting the executor
-onto a machine — today it is copied by hand — and the fingerprint, which the
-executor refuses to invent rather than answering with a number nothing stands
-behind.
+The executor puts itself on a machine, by the transport's own means rather than
+over the wire: until the binary is there, there is nothing to speak to. It lands
+under a name carrying its digest, so a machine holding a different build holds
+it under a different name and "is the right one there" is a file test rather
+than a version negotiation; it is written beside and moved into place, because a
+half-copied file that is executable would pass that test for ever. One
+architecture, and a machine that is not it is told so by name — `W-008`.
+
+Built and shown against two machines reached through a bastion: delivery, read,
+plan, write, and a second run with nothing to do. Not built: `teleport`, and the
+fingerprint, which the executor refuses to invent rather than answering with a
+number nothing stands behind.
 
 ## Where provider logic runs — [0032](decisions/0032-provider-logic-stays-on-the-control-machine.md) · built
 

@@ -17,8 +17,11 @@ edition = "2024"
 rust-version = "1.98"
 license = "Apache-2.0"
 authors = ["Anishchuk Sergei <anishukserg@gmail.com>"]
-repository = "https://github.com/anishukserg/nerpa"
-homepage = "https://github.com/anishukserg/nerpa"
+# GitLab, because that is where the gate runs and where the code actually lives.
+# The GitHub repository is a mirror, and naming a mirror here would send anybody
+# who follows the link to a copy rather than to the branch a release came from.
+repository = "https://gitlab.com/anishukserg/nerpa"
+homepage = "https://gitlab.com/anishukserg/nerpa"
 documentation = "https://docs.rs/nerpa-core"
 readme = "README.md"
 keywords = ["infrastructure", "configuration", "iac", "provisioning"]
