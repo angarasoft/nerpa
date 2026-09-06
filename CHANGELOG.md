@@ -319,6 +319,17 @@ without ceremony until the first stage is complete.
   become a derivative work.
 
 
+- A secret could be compared against a guess, silently, by reading it back out
+  of a container with `.get` instead of `[...]` — or out of a lambda, or out of
+  an argument handed to a method. The comparison answered `false` without
+  consulting the value, so a resource appeared in the plan if and only if the
+  guess was right: an oracle, which is the thing 0027 names as the reason
+  secrets are tainted at all. The same route made an unresolved attribute
+  silently false. Taint now follows a method call's receiver and its arguments,
+  and a lambda body is walked as a `def` body already was. Found by an
+  independent review, reproduced end to end against the binary, and pinned by
+  four tests written from the routes rather than the property.
+
 - Two different plans could carry one number. An unresolved reference and a
   secret's source were hashed as their printed form, and printing joins two
   pieces with a separator either piece may contain: a resource name may hold a

@@ -20,8 +20,15 @@
 //!
 //! So the taint is followed instead. A value is **opaque** if it will not exist
 //! until apply or if it is a secret; opacity spreads from the expression that
-//! produces it through assignments, containers, indexing, iteration and function
-//! returns, and any comparison with an opaque side is refused.
+//! produces it through assignments, containers, indexing, iteration, method
+//! calls, arguments, lambda bodies and function returns, and any comparison with
+//! an opaque side is refused.
+//!
+//! Twice now the list has grown after somebody found what was not on it. The
+//! first review found the dictionary read back with `[...]`; the second found
+//! the same dictionary read back with `.get`, which the first fix had walked
+//! straight past. The list is written out above rather than described, because
+//! the failure both times was a shape nobody had written down.
 //!
 //! # What it deliberately over-refuses
 //!
@@ -38,15 +45,17 @@
 //!
 //! This is a static over-approximation, not a proof. An opaque value that
 //! reaches a comparison through a function *parameter* is not followed, because
-//! that needs the call sites of every function and this does not have them. The
-//! guarantee is worth exactly what the analysis is worth, and saying so is the
-//! point of saying it here.
+//! that needs the call sites of every function and this does not have them —
+//! including the case where the function is an identity that hands the value
+//! back into the module. The guarantee is worth exactly what the analysis is
+//! worth, and saying so is the point of saying it here.
 
 use std::collections::BTreeMap;
 
 use starlark::syntax::AstModule;
 use starlark_syntax::syntax::ast::{
-    AssignTargetP, AstExprP, AstNoPayload, AstStmtP, BinOp, ClauseP, ExprP, StmtP,
+    ArgumentP, AssignTargetP, AstArgumentP, AstExprP, AstNoPayload, AstStmtP, BinOp, ClauseP,
+    ExprP, StmtP,
 };
 use starlark_syntax::syntax::uniplate::Visit;
 
@@ -185,12 +194,28 @@ fn taint(expression: &AstExprP<AstNoPayload>, tainted: &Tainted) -> Option<Opaqu
         // In this language a bare `x.y` is a resource attribute.
         ExprP::Dot(..) => Some(Opaque::Deferred),
         ExprP::Identifier(name) => tainted.get(&name.node.ident).copied(),
-        ExprP::Call(callee, _) => match &callee.node {
-            ExprP::Identifier(name) if name.node.ident == SECRET => Some(Opaque::Secret),
-            ExprP::Identifier(name) => tainted.get(&name.node.ident).copied(),
-            // A method call is `x.y()`, which reads nothing from a resource.
-            _ => None,
-        },
+        ExprP::Call(callee, arguments) => {
+            let held = match &callee.node {
+                ExprP::Identifier(name) if name.node.ident == SECRET => Some(Opaque::Secret),
+                // A method call reads nothing from a resource *itself* — but it
+                // hands back what the receiver was holding, and a dictionary
+                // gives its value up to `.get` exactly as readily as to `[...]`.
+                // Taking the receiver rather than the whole `x.y` matters: a
+                // bare `x.y` is a resource attribute and always opaque, so
+                // asking about it here would make every method call on every
+                // string opaque too.
+                ExprP::Dot(receiver, _) => taint(receiver, tainted),
+                _ => taint(callee, tainted),
+            };
+            // And what it was handed, for the method that gives an argument
+            // back rather than something it held: `held.get(key, fallback)`.
+            held.or_else(|| {
+                arguments
+                    .args
+                    .iter()
+                    .find_map(|argument| handed(argument, tainted))
+            })
+        }
         ExprP::Index(pair) => taint(&pair.0, tainted),
         ExprP::Index2(triple) => taint(&triple.0, tainted),
         ExprP::Slice(base, ..) => taint(base, tainted),
@@ -211,7 +236,21 @@ fn taint(expression: &AstExprP<AstNoPayload>, tainted: &Tainted) -> Option<Opaqu
         ExprP::DictComprehension(pair, clause, _) => taint(&pair.0, tainted)
             .or_else(|| taint(&pair.1, tainted))
             .or_else(|| taint(&clause.over, tainted)),
-        ExprP::Literal(_) | ExprP::Lambda(_) | ExprP::FString(_) => None,
+        // A `def` body is walked for what it returns; a lambda is a body with
+        // nothing else in it, and not walking it made the shortest way to write
+        // the same thing the one way through.
+        ExprP::Lambda(lambda) => taint(&lambda.body, tainted),
+        ExprP::Literal(_) | ExprP::FString(_) => None,
+    }
+}
+
+/// What an argument carries into a call.
+fn handed(argument: &AstArgumentP<AstNoPayload>, tainted: &Tainted) -> Option<Opaque> {
+    match &argument.node {
+        ArgumentP::Positional(expression)
+        | ArgumentP::Named(_, expression)
+        | ArgumentP::Args(expression)
+        | ArgumentP::KwArgs(expression) => taint(expression, tainted),
     }
 }
 

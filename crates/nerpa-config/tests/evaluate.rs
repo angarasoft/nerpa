@@ -789,3 +789,113 @@ resource("os:file.a@web-01", {"path": select(web.os_family, "debian")})
         assert!(refusal.contains(expected), "{refusal}");
     }
 }
+
+/// The second independent review found this one: the same dictionary, read back
+/// with `.get` instead of `[...]`. The analysis followed the index and stopped
+/// at the method call, and a secret compared against a guess answered silently.
+/// That is an oracle — the resource appears if and only if the guess is right.
+#[test]
+fn a_secret_cannot_be_laundered_through_a_method_call() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+held = {"password": secret("vault", "db/password")}
+if held.get("password") == "changeme":
+    resource("os:file.weak@web-01", {"path": "/tmp/weak"})
+"#,
+        Box::new(Held::new()),
+        Fleet::empty(),
+    )
+    .expect_err("reading it back by method is not a way around it");
+    let ConfigError::ComparedUnresolved(message) = refusal else {
+        panic!("the comparison should be refused before evaluation");
+    };
+    assert!(message.contains("is a secret"), "{message}");
+}
+
+#[test]
+fn a_value_that_does_not_exist_yet_cannot_be_laundered_through_a_method_call() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+db = resource("yandex:instance.db")
+held = {"address": db.ip}
+if held.get("address") == "10.0.0.1":
+    resource("yandex:instance.yes", {})
+"#,
+        Box::new(Held::new()),
+        Fleet::empty(),
+    )
+    .expect_err("nor for a value that does not exist yet");
+    assert!(
+        matches!(refusal, ConfigError::ComparedUnresolved(_)),
+        "{refusal}"
+    );
+}
+
+/// A method that hands back something it was given rather than something it
+/// held: the receiver is clean and the argument is not.
+#[test]
+fn a_secret_cannot_be_laundered_through_a_method_it_was_handed_to() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+empty = {}
+if empty.get("password", secret("vault", "db/password")) == "changeme":
+    resource("os:file.weak@web-01", {"path": "/tmp/weak"})
+"#,
+        Box::new(Held::new()),
+        Fleet::empty(),
+    )
+    .expect_err("handing it in is not a way around it either");
+    let ConfigError::ComparedUnresolved(message) = refusal else {
+        panic!("the comparison should be refused before evaluation");
+    };
+    assert!(message.contains("is a secret"), "{message}");
+}
+
+/// A `def` body is walked for what it returns. A lambda's was not walked at
+/// all, so the shortest way to write the same thing went straight through.
+#[test]
+fn a_value_that_does_not_exist_yet_cannot_be_laundered_through_a_lambda() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+db = resource("yandex:instance.db")
+address = lambda: db.ip
+if address() == "10.0.0.1":
+    resource("yandex:instance.yes", {})
+"#,
+        Box::new(Held::new()),
+        Fleet::empty(),
+    )
+    .expect_err("a lambda is not a way around it");
+    assert!(
+        matches!(refusal, ConfigError::ComparedUnresolved(_)),
+        "{refusal}"
+    );
+}
+
+/// The other direction. Taint follows a method call's *receiver*, not the whole
+/// `x.y` — a bare `x.y` is a resource attribute and always opaque, so asking
+/// about it here would make every method call on every string opaque too, and
+/// refuse a configuration that does nothing wrong.
+#[test]
+fn an_ordinary_method_call_is_not_refused_for_looking_like_one() {
+    let graph = evaluate(
+        "main.star",
+        r#"
+names = {"kind": "web"}
+if names.get("kind") == "web" and "WEB".lower() == "web":
+    resource("yandex:instance.yes", {})
+"#,
+        Box::new(Held::new()),
+        Fleet::empty(),
+    )
+    .expect("nothing here is opaque");
+    assert_eq!(
+        graph.len(),
+        1,
+        "the branch was taken and the resource exists"
+    );
+}
