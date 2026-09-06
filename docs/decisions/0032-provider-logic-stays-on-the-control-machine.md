@@ -2,6 +2,9 @@
 
 - Status: accepted
 - Date: 2026-09-06
+- Corrected: 2026-09-06 — the round-trip figures were stated without saying where
+  they came from, which `docs/WRITING.md` refuses. Sources added; no reasoning
+  changed.
 
 ## Context
 
@@ -66,7 +69,19 @@ that is not an accident.
 
 Two round trips a machine a run, against Ansible's five or six ssh operations per
 task per host — one with pipelining. Forty tasks on a hundred hosts is four
-thousand operations there and two hundred here. Nothing to install, no daemon to
+thousand operations there and two hundred here.
+
+Those figures are Ansible's own documented behaviour and the reason `pipelining`
+exists: see
+[SSH pipelining](https://oneuptime.com/blog/post/2026-02-21-how-to-use-ansible-ssh-pipelining-for-performance/view)
+and
+[ansible#76941](https://github.com/ansible/ansible/issues/76941)
+on the overhead of building and shipping a module per task. How the module gets
+there is described in
+[Ansible module architecture](https://docs.ansible.com/projects/ansible/latest/dev_guide/developing_program_flow_modules.html);
+Puppet's split is in
+[its architecture](https://www.puppet.com/docs/puppet/6/architecture.html) and
+[catalog compilation](https://help.puppet.com/core/current/Content/PuppetCore/subsystem_catalog_compilation.htm). Nothing to install, no daemon to
 keep alive, no key to rotate on two hundred machines. One binary version to reason
 about rather than a provider matrix per machine. And the plan is computed where
 the plan is shown, so a person approves the bytes that get sent.

@@ -135,7 +135,7 @@ Load-bearing rather than an optimisation, because the plan is single-pass.
 
 ## The executor and transports — [0010](decisions/0010-static-executor-pluggable-transport.md) · partly built
 
-A static Rust binary on the target, speaking framed CBOR over stdin and stdout —
+A static Rust binary — 767 KB — speaking framed CBOR over stdin and stdout —
 four bytes of length, then the body. Every frame carries the protocol version it
 was written by, because an executor installed once outlives the engine that put
 it there, and an unknown version is refused rather than read as a subset. The
@@ -144,6 +144,71 @@ arriving from the far end of a pipe.
 The transport carries bytes and knows nothing about them: `teleport`, `ssh`,
 `local`, `container`. The executor holds no secrets and no state beyond its
 fingerprint, and is signed and verified in both directions.
+
+## Where provider logic runs — [0032](decisions/0032-provider-logic-stays-on-the-control-machine.md) · built
+
+Providers run where the engine runs. The executor performs a small closed set of
+operations and contains no provider code, so a provider is a translator: readings
+become things to look at, a change becomes things to do, and the answers become
+attributes.
+
+Nobody else plans centrally and runs the logic centrally. Ansible ships the module
+and runs it there; Salt keeps a daemon that already has it; Puppet compiles a
+catalog centrally and applies it with providers on the node. The reason they
+cannot is round trips — a provider deciding on the strength of a reading needs one
+per decision — and a single planning pass already forbade deciding after reading.
+
+Two journeys a machine a run rather than one per task. Nothing to install, no
+daemon to keep alive, no key to rotate on two hundred machines. The cost is that
+this machine has to know `emerge` from `apt`, that parsing output has no local
+give, and that a value which only exists after an operation costs a round trip.
+
+## What the wire may be asked — [0033](decisions/0033-process-is-a-providers-word-not-an-authors.md) · partly built
+
+The operation set is small enough to freeze because it is general, and general
+means it includes running a program: installing a package *is* running `emerge`.
+Reading is the same shape, because a provider needs `qlist -I` to know what is
+installed as much as `emerge` to change it.
+
+`Operation::Process` is emitted by providers and never written by the author of a
+configuration. Write it into the language and this is Terraform's `remote-exec`,
+with every criticism of it deserved: not idempotent, never recorded in state, a
+plan that cannot say what a script will change. The distinction is not whether a
+process runs — Ansible's `package` module runs `apt-get` — but who wrote the
+command and whether the plan describes its effect.
+
+The wire carries it and the executor runs it; no provider emits one yet.
+
+## A plan carries its premise — [0034](decisions/0034-a-plan-carries-its-premise.md) · partly built
+
+Between looking and acting the machine can change, and reading everything once
+makes that window the whole run where Ansible's is one task. So a batch carries
+the premise — a digest of every observed value the plan was computed from — and
+the far end looks again before it does anything, refusing the whole batch if any
+of it moved. Not failing: `Moved` says the plan is stale, which is different
+advice.
+
+It is also what makes a signature mean something. Signing a plan whose premise
+cannot be checked is signing *do this, whatever is there*.
+
+The protocol carries it and the executor checks it; the planner does not yet
+produce one.
+
+## Privilege — [0035](decisions/0035-privilege-belongs-to-the-transport.md) · planned
+
+Escalation is the transport's business, because the executor is a filter that
+knows nothing about how it was reached:
+
+```text
+ssh web-01 sudo -n /usr/local/bin/nerpa-executor
+```
+
+No pty, no prompt, no regular expression, and nothing about privilege on the wire.
+Ansible's `become` is a matrix because escalation lives inside the task layer;
+here it is an argument, and arguments do not freeze. No password travels: a sudo
+password is a key, and the record about keys says not to carry them.
+
+Nothing escalates yet, because nothing has reached a second machine.
 
 ## Configuration files — [0023](decisions/0023-templates-that-look-like-the-file.md) · partly built
 
@@ -180,6 +245,23 @@ A reaction that was triggered and did not complete is recorded in state as owed
 and appears as pending in the next plan. The state Ansible reaches when a play
 fails between the write and its handlers — new file, old process, no record — is
 not reachable here.
+
+## Parallelism — [0031](decisions/0031-parallelism-is-threads-and-providers-are-sync.md) · partly built
+
+Threads, not async. The workload is hundreds of conversations that spend their
+time waiting rather than tens of thousands, and `async` would colour the one
+signature strangers write against — a provider author would have to bring a
+runtime, and a WASM provider would have to bridge one across the sandbox boundary
+that exists to keep things out.
+
+So `Provider` is `Send + Sync`, added while there are no providers outside this
+repository and the change costs nothing. Fan-out is bounded, planning stays
+single-threaded and stays first, results are collected in a fixed order, and state
+is written from one place.
+
+The bound is there and nothing is parallel yet, which is the risk the invariant
+names: it is load-bearing only at stage 3, so until then it looks like something
+nobody needs.
 
 ## Providers — [0004](decisions/0004-providers-in-tree-and-wasm.md) · partly built
 
