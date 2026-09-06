@@ -650,7 +650,7 @@ same reasoning refuses to write through a symlink: the declaration names a path,
 and the file on the other side of a pointer is not that path. A directory with \
 something in it fails the removal and says so, which is a person's decision to \
 make rather than the tool's."""
-bypass = "A removal that reaches for `remove_dir_all` because a non-empty directory is inconvenient, or a write that lands on a symlink and follows it into a file the declaration never named. Both read as correct against the in-memory fake, which has no directory that can be non-empty and no link to follow."
+bypass = "A removal that reaches for `remove_dir_all` because a non-empty directory is inconvenient, or a write that lands on a symlink and follows it into a file the declaration never named — and the same for a directory, where `create_dir_all` calls a link to one already done and the mode then lands on whatever it pointed at. All three read as correct against the in-memory fake, which has no directory that can be non-empty and no link to follow."
 enforced_by = ["crates/nerpa-executor/src/lib.rs"]
 tests = [
   "an_empty_directory_is_still_removed",
@@ -659,6 +659,7 @@ tests = [
 adversarial = [
   "deleting_a_directory_does_not_take_what_nerpa_did_not_make",
   "writing_where_a_symlink_is_replaces_the_link_and_leaves_its_target_alone",
+  "making_a_directory_where_a_symlink_is_leaves_what_it_pointed_at_alone",
 ]
 
 [[invariant]]

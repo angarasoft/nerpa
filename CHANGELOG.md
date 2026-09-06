@@ -319,6 +319,26 @@ without ceremony until the first stage is complete.
   become a derivative work.
 
 
+- A replacement destroyed the old resource and could then stop without writing
+  that down. `Replace` deletes before it creates; if creating failed — no quota,
+  no address, no image — the run returned with state still saying where the old
+  one was, and every later plan reasoned from that. The deletion is a change and
+  is now recorded like one. What hid it: inside that branch `record` is a
+  `Record` borrowed from state, shadowing the callback of the same name.
+
+- A template could stop a run for ever. `pycompat` was wired in whole, which put
+  around twenty-five methods inside the sandbox that the filter list never saw,
+  and one of them — `str.count("")` — does not terminate. Fuel could not stop
+  it: fuel is charged per instruction of the template's machine, and that loop
+  runs inside a call the machine is waiting on. Measured at a full core until killed.
+  Methods are a named list now, checked before the callback is reached.
+
+- Making a directory where a symlink was gave its mode to whatever the link
+  pointed at. `create_dir_all` calls a link to a directory already done, and
+  `set_permissions` is `chmod`, which follows one — so a declared mode landed
+  somewhere nothing declared, as root. Files had this guard and said why; the
+  directory beside them did not.
+
 - A secret could be compared against a guess, silently, by reading it back out
   of a container with `.get` instead of `[...]` — or out of a lambda, or out of
   an argument handed to a method. The comparison answered `false` without

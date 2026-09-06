@@ -282,3 +282,43 @@ fn an_empty_directory_is_still_removed() {
         .expect("an empty directory goes");
     assert!(!directory.exists());
 }
+
+/// The same, for a directory. `create_dir_all` treats a link to a directory as
+/// already done, and `set_permissions` is `chmod`, which follows a link — so a
+/// declared mode landed on whatever the link pointed at. The executor runs
+/// privileged (0035), which makes that a `chmod` as root on a directory nothing
+/// declared.
+#[test]
+fn making_a_directory_where_a_symlink_is_leaves_what_it_pointed_at_alone() {
+    let scratch = Scratch::new("through-a-directory");
+    let target = scratch.join("target");
+    let link = scratch.join("declared");
+    fs::create_dir(&target).unwrap();
+    fs::set_permissions(&target, fs::Permissions::from_mode(0o700)).unwrap();
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+
+    let mut wanted = at(&link);
+    wanted.insert("mode".to_owned(), Value::Text("0777".to_owned()));
+    Os::new()
+        .apply(
+            &address("os:directory.subject@localhost"),
+            ChangeKind::Create,
+            &wanted,
+            &HERE,
+        )
+        .expect("it makes the directory");
+
+    assert_eq!(
+        fs::metadata(&target).unwrap().permissions().mode() & 0o777,
+        0o700,
+        "the directory the link pointed at was never declared and must not have \
+         been given a mode"
+    );
+    assert!(
+        !fs::symlink_metadata(&link)
+            .unwrap()
+            .file_type()
+            .is_symlink(),
+        "the declared path is a directory of its own now, not a pointer"
+    );
+}

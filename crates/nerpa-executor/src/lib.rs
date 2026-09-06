@@ -161,6 +161,16 @@ fn act(operation: &Operation) -> Result<Seen, String> {
     match operation {
         Operation::Directory { path, mode } => {
             let path = Path::new(path);
+            // A symlink here points at a directory the plan does not name.
+            // `create_dir_all` sees a link to a directory and calls the work
+            // done, and the mode below is `chmod`, which follows the link — so
+            // a declared mode would land on whatever somebody else pointed it
+            // at, and everything here is privileged. Removing a pointer
+            // destroys nothing. The same reasoning as the file below, which had
+            // it and this did not.
+            if fs::symlink_metadata(path).is_ok_and(|found| found.file_type().is_symlink()) {
+                fs::remove_file(path).map_err(|error| format!("{}: {error}", path.display()))?;
+            }
             fs::create_dir_all(path).map_err(|error| format!("{}: {error}", path.display()))?;
             fs::set_permissions(path, fs::Permissions::from_mode(*mode))
                 .map_err(|error| format!("{}: {error}", path.display()))?;

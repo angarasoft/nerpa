@@ -30,6 +30,15 @@
 //! widening what a configuration may say, and a configuration written against
 //! the wider set failing on an older nerpa with no explanation. So the set is
 //! named here, and adding to it is a decision somebody makes on purpose.
+//!
+//! Method syntax is a **second** surface, not the same one. `pycompat` answers
+//! `value.method()` through a callback of its own, which the filter list does
+//! not touch — taking it whole put around twenty-five methods nobody had looked
+//! at inside the sandbox, and one of them, `str.count("")`, never returns: it
+//! advances by the length of what it searched for. Fuel does not stop that,
+//! because fuel is charged per instruction of the template's own machine and
+//! that loop is inside a call the machine is waiting on. So the methods are a
+//! named list too, and it is checked before the callback is reached.
 
 use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
@@ -45,6 +54,34 @@ const FUEL: u64 = 2_000_000;
 
 /// How deep `include` and macros may go.
 const DEPTH: usize = 32;
+
+/// The methods a template may call on a value.
+///
+/// Named for the same reason the filters are, and separately, because they
+/// arrive by a different door. Deliberately absent: `count`, whose
+/// implementation does not terminate when asked to count the empty string, and
+/// `format`, which is a second templating language inside this one.
+const METHODS: [&str; 17] = [
+    // What a mapping offers.
+    "items",
+    "keys",
+    "values",
+    "get",
+    // What a string offers.
+    "upper",
+    "lower",
+    "title",
+    "capitalize",
+    "strip",
+    "lstrip",
+    "rstrip",
+    "split",
+    "splitlines",
+    "replace",
+    "startswith",
+    "endswith",
+    "join",
+];
 
 /// Where a template's text comes from.
 ///
@@ -235,9 +272,17 @@ impl Renderer {
         environment.set_fuel(Some(FUEL));
         environment.set_recursion_limit(DEPTH);
         // Jinja templates call Python methods on values — `.items()`,
-        // `.upper()`, `.split()`. This maps them onto the filters above.
-        environment
-            .set_unknown_method_callback(minijinja_contrib::pycompat::unknown_method_callback);
+        // `.upper()`, `.split()`. `pycompat` answers those, and it answers more
+        // than that, through a path the filter list above never sees.
+        environment.set_unknown_method_callback(|state, value, method, arguments| {
+            if !METHODS.contains(&method) {
+                return Err(minijinja::Error::new(
+                    minijinja::ErrorKind::UnknownMethod,
+                    format!("{method} is not one of the methods nerpa offers"),
+                ));
+            }
+            minijinja_contrib::pycompat::unknown_method_callback(state, value, method, arguments)
+        });
 
         Self {
             environment,

@@ -240,10 +240,23 @@ pub fn apply(
             // Destroy before create, and only for a replacement: the resource
             // that is there is in the way of the one that should be, and only
             // state knows where the first one actually is.
+            //
+            // ENFORCES: INV-STATE-005
+            // The destruction is a change like any other, so it is written down
+            // before anything else is attempted. Creating the replacement can
+            // fail — no quota, no address, no image — and until this was here
+            // that failure left state saying where the old one was, for a
+            // resource that had already been destroyed. Every later plan then
+            // reasoned from that.
+            // The locator is taken out first because `record` here is the
+            // callback that writes state down, and a `Record` borrowed from
+            // state would shadow it — which is how the write came to be missing.
             if change.kind() == ChangeKind::Replace
-                && let Some(record) = state.get(address)
+                && let Some(locator) = state.get(address).map(Record::locator)
             {
-                provider.delete(address, &record.locator(), reach)?;
+                provider.delete(address, &locator, reach)?;
+                state.forget(address);
+                record(state).map_err(RunError::Record)?;
             }
 
             let attributes = settle(change, &observed, secrets)?;

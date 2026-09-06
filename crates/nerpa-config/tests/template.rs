@@ -128,6 +128,31 @@ fn a_template_that_would_not_stop_is_stopped() {
     assert!(refusal.contains("fuel"), "{refusal}");
 }
 
+/// Methods arrive by a different door than filters. `pycompat` was taken whole,
+/// which put around twenty-five of them inside the sandbox unexamined — and one,
+/// `str.count("")`, never returns: it advances by the length of what it searched
+/// for, and searching for nothing advances nothing. Fuel cannot stop it, because
+/// fuel is charged per instruction of the template's own machine and that loop
+/// runs inside a call the machine is waiting on. Measured before the list
+/// existed: a plan over this template ran at a full core until it was killed.
+#[test]
+fn a_method_that_is_not_on_the_list_is_refused_by_name() {
+    let refusal = rendered(r#"{{ "x".count("") }}"#).expect_err("not on the list");
+    assert!(
+        refusal.contains("count"),
+        "the refusal should name it: {refusal}"
+    );
+}
+
+/// And the ones that are on it still work, which is why `pycompat` is here.
+#[test]
+fn the_methods_ansible_templates_use_still_answer() {
+    assert_eq!(
+        rendered(r#"{{ name.upper() }} {{ name.split(".")[0] }}"#).expect("both are on the list"),
+        "EXAMPLE.COM example"
+    );
+}
+
 #[test]
 fn a_template_that_is_not_there_says_so() {
     let refusal = evaluate(
