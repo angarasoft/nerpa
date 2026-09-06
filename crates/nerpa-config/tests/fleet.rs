@@ -178,7 +178,7 @@ groups = ["test"]
 
 [nodes.plain]
 groups = ["test"]
-ssh = "10.0.61.34"
+ssh = "192.0.2.34"
 
 [nodes.privileged]
 groups = ["test"]
@@ -204,7 +204,7 @@ ssh_config = "/home/somebody/.tbot/nerpa/ssh_config"
     assert_eq!(
         fleet.route(&node("plain")),
         Route::Ssh {
-            host: "10.0.61.34".to_owned(),
+            host: "192.0.2.34".to_owned(),
             config: None,
             executor: None,
             escalate: Vec::new(),

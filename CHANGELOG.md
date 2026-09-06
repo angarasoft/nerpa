@@ -295,6 +295,17 @@ without ceremony until the first stage is complete.
 
 ### Fixed
 
+- Documents and a test named somebody's real machines: a Teleport proxy by its
+  address, two hosts by their names, a private address and a home directory.
+  What was measured is what a record is for; whose machines they were is not,
+  and this repository is meant to be read by people who have no business
+  knowing. Examples now use the ranges and names reserved for them.
+
+- The README showed output the tool does not produce. A file's contents have
+  been printed as lines under `becomes:` since templates arrived, and a plan has
+  carried a number since the premise did; the transcript still showed neither.
+  It is now what the commands actually print, checked by running them.
+
 - A fleet holding one machine that was switched off stopped the whole run, and
   stopped it by hanging: `ssh` was given no connect timeout, so it waited out the
   operating system's TCP timeout, and the failure ended the run before the

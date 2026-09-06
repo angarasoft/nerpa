@@ -241,8 +241,8 @@ A node says how it is reached and what it runs under, and nothing else does:
 
 ```toml
 [nodes.web-01]
-ssh = "10.0.61.34"
-executor = "/home/zevs/.cache/nerpa/nerpa-executor"
+ssh = "web-01.example.internal"
+executor = "/opt/nerpa/nerpa-executor"
 become = "sudo -n"
 ```
 

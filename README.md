@@ -34,9 +34,13 @@ stage 1 · target: localhost
   [create   ] os:directory.etc@localhost
                ~ path           — → "/tmp/demo/etc"
   [create   ] os:file.app@localhost
-               ~ content        — → "listen 80;\n"
+               ~ content
+                 becomes:
+                   │ listen 80;
                ~ mode           — → "0640"
                ~ path           — → "/tmp/demo/etc/app.conf"
+
+plan d91f8cbb2c1e
 
 $ nerpa apply
 applied 2 changes
@@ -44,6 +48,11 @@ applied 2 changes
 $ nerpa plan
 nothing to do: the world already matches the configuration
 ```
+
+That number under the plan is a digest of everything the plan says and
+everything it was read from. A second run against an unchanged world produces it
+again; a world that moved underneath produces a different one, which is what
+makes approving a plan mean something.
 
 ## What it is not
 

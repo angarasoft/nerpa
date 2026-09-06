@@ -2,6 +2,10 @@
 
 - Status: accepted
 - Date: 2026-09-06
+- Corrected: 2026-09-06 — the two machines were named by their real hostnames
+  and the proxy by its real address. What was measured is what matters and whose
+  machines they were is not; a repository open to everybody is not the place to
+  write down somebody's infrastructure.
 
 ## Context
 
@@ -31,7 +35,7 @@ there will not be one.
 
 ```toml
 [nodes.web-01]
-ssh = "nerpa@web-01.link.example.internal"
+ssh = "nerpa@web-01.example.internal"
 ssh_config = "/home/somebody/.tbot/nerpa/ssh_config"
 ```
 
@@ -40,9 +44,8 @@ jump host, the certificate and the proxy command belong to `ssh`, exactly as
 they already did for a plain host; the one thing `ssh` cannot work out by itself
 is that a generated configuration exists, so that is the one thing written down.
 
-Measured before deciding, on 2026-09-06, against `angarabase-test` and
-`angarabase-client` — Rocky Linux 9.7, reached as the bot identity `bot-nerpa`
-through `link.angarahub.ru:443`:
+Measured before deciding, on 2026-09-06, against two Rocky Linux 9.7 machines
+behind a Teleport proxy, reached as a bot identity rather than as a person:
 
 * 64 KiB of random bytes came back byte-for-byte from both machines, the same
   SHA-256 as went in. The wire is framed CBOR — four bytes of length, then a
