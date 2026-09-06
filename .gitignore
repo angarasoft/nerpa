@@ -4,3 +4,8 @@
 /mutants.out
 /mutants.out.old
 dist/
+
+# The documentation environment and the pages assembled from the sources.
+# Both are build output: `cargo xtask book` and sphinx-build make them.
+.venv-docs/
+docs/book/chapters/

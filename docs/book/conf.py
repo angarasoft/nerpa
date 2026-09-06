@@ -1,0 +1,34 @@
+"""Sphinx configuration for the nerpa book.
+
+Reasoning: decision record 0036.
+
+The book is assembled from sources that already exist and are already checked,
+so there is very little to configure here: where the extensions live, and the
+fact that warnings are failures. Anything that looks like content in this file
+is a mistake — content lives in the repository, not in a build script.
+"""
+
+project = "nerpa"
+author = "Anishchuk Sergei"
+copyright = "2026, Anishchuk Sergei — Apache-2.0"
+
+extensions = ["myst_parser", "nerpa"]
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent / "_ext"))
+
+# The module documentation this book is made of is Markdown, because rustdoc is
+# Markdown. MyST reads it without a conversion step, and a conversion step is a
+# place for the text to change meaning on its way to the reader.
+source_suffix = {".md": "markdown"}
+myst_enable_extensions = ["colon_fence", "deflist"]
+
+# A broken cross-reference is a broken promise about where something is, which
+# is the failure `cargo xtask docs` already refuses in the Markdown corpus.
+nitpicky = True
+
+html_theme = "furo"
+html_title = "nerpa"
+templates_path = []
+exclude_patterns = ["_build", "requirements.txt", "_ext"]

@@ -1,5 +1,7 @@
 //! Turning desired and observed state into a plan, in one pass.
 //!
+//! Expands: 0006
+//!
 //! # Why one pass is enough
 //!
 //! The whole graph is known before anything runs, and so is everything that

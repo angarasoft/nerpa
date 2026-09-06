@@ -1,5 +1,7 @@
 //! What the world looks like, as far as anything has been read.
 //!
+//! Expands: 0011
+//!
 //! Deliberately a plain record rather than a live view. Everything is read
 //! before planning starts ([0006](../../../docs/decisions)), so by the time the
 //! planner runs there is nothing left to ask anybody — which is what lets a plan

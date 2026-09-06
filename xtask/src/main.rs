@@ -41,6 +41,7 @@
 
 use std::process::ExitCode;
 
+mod book;
 mod budget;
 mod commit;
 mod docs;
@@ -60,6 +61,7 @@ tasks:
   docs        decision records, then rustdoc with warnings denied
   deny        dependency licences and advisories
   mutants     mutation testing (minutes; not part of ci)
+  book        assemble the book's index from what is already written
   budget      what a plan costs, against docs/budgets.toml (not part of ci)
   commit-msg  the shape of a commit subject; takes a file, or judges HEAD
   hooks       point git at .githooks, so commit-msg runs where it is written
@@ -75,6 +77,7 @@ fn main() -> ExitCode {
         Some("invariants") => invariants::check(),
         Some("docs") => docs::check(),
         Some("deny") => deny(),
+        Some("book") => book::check(),
         Some("budget") => budget::check(),
         Some("commit-msg") => commit::check(std::env::args().nth(2).as_deref()),
         Some("hooks") => hooks(),
@@ -97,6 +100,7 @@ fn ci() -> Result<(), String> {
     lint()?;
     test()?;
     invariants::check()?;
+    book::check()?;
     docs::check()?;
     deny()
 }

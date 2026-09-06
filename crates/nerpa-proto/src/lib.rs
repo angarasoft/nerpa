@@ -1,5 +1,7 @@
 //! The wire between the engine and an executor on a machine.
 //!
+//! Expands: 0010
+//!
 //! Everything the engine wants done on a node crosses this, and nothing else
 //! does. The transport underneath carries bytes and knows nothing about their
 //! meaning ([0010](../../../docs/decisions)); this crate is that meaning, and

@@ -300,6 +300,11 @@ struct Written {
     present: BTreeSet<String>,
 }
 
+/// Whether a directory holds something other than this repository's writing.
+fn skipped(name: &str) -> bool {
+    name.starts_with('.') || matches!(name, "target" | "mutants.out" | "node_modules")
+}
+
 fn written() -> Result<Written, String> {
     let root = shell::root();
     let mut pages = Vec::new();
@@ -315,12 +320,11 @@ fn written() -> Result<Written, String> {
                 continue;
             };
             let shown = relative.to_string_lossy().replace('\\', "/");
-            // Build output and version control are not documentation, and
-            // walking them is seconds rather than milliseconds.
-            if matches!(
-                shown.as_str(),
-                "target" | ".git" | "mutants.out" | ".cargo" | "node_modules"
-            ) {
+            // Build output, version control and installed dependencies are not
+            // this repository's documentation. A dependency ships its own README
+            // with its own broken links, and reporting those is noise that
+            // teaches somebody to stop reading the report.
+            if skipped(&shown) {
                 continue;
             }
 
@@ -409,7 +413,7 @@ fn check_supersession(record: &Record, successor: &str, records: &[Record]) -> V
     reason = "tests may be blunt: an unwrap is an expectation and an index is a claim about shape"
 )]
 mod tests {
-    use super::{Record, architecture, audit, resolve, routes};
+    use super::{Record, architecture, audit, resolve, routes, skipped};
     use std::collections::BTreeSet;
 
     fn record(number: u16, status: &str, extra: &str) -> Record {
@@ -686,5 +690,16 @@ mod tests {
         )];
         let present = BTreeSet::from(["docs/decisions/0005-a.md".to_owned()]);
         assert_eq!(routes(&pages, &present), Vec::<String>::new());
+    }
+
+    #[test]
+    fn what_is_not_this_repositorys_writing_is_not_walked() {
+        // A virtual environment ships hundreds of READMEs with links of their
+        // own, and this gate reported two of them the day the book arrived.
+        for name in [".venv-docs", ".git", ".cargo", "target", "node_modules"] {
+            assert!(skipped(name), "{name} should not be walked");
+        }
+        assert!(!skipped("docs"), "docs must still be walked");
+        assert!(!skipped("crates"), "crates must still be walked");
     }
 }

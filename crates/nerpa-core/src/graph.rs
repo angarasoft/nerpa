@@ -1,5 +1,7 @@
 //! The desired-state graph, and the order it has to be applied in.
 //!
+//! Expands: 0006
+//!
 //! Resources are nodes, declared dependencies are edges. The graph exists so
 //! that two questions can be answered before anything is touched: is this
 //! configuration coherent, and in what order does it have to happen.

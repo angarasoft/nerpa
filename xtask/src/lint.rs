@@ -77,6 +77,71 @@ fn unwinds_on_panic(manifest: &str) -> Vec<String> {
         .collect()
 }
 
+/// Module documentation is written impersonally, and carries nothing unfinished.
+///
+/// The voice was already the convention — one first person plural in seven
+/// hundred lines, and that one inside a quoted phrase — so this writes down what
+/// was already true rather than imposing a taste. It looks at `//!` blocks only.
+/// Decision records are immutable by rule 1, so a gate over them could never be
+/// anything but a list of things nobody is allowed to fix.
+///
+/// Quoted text is left alone. `no field means "we will work this out during
+/// apply"` is the document reporting somebody else's voice, not speaking in it,
+/// and a check that cannot tell the difference would be wrong on the one example
+/// this repository actually contains.
+fn header_prose(path: &str, text: &str) -> Vec<String> {
+    let mut complaints = Vec::new();
+
+    for (index, line) in text.lines().enumerate() {
+        let Some(body) = line.strip_prefix("//!") else {
+            if line.trim().is_empty() {
+                continue;
+            }
+            break;
+        };
+
+        let outside_quotes: String = {
+            let mut kept = String::with_capacity(body.len());
+            let mut quoted = false;
+            for ch in body.chars() {
+                if ch == '"' {
+                    quoted = !quoted;
+                    continue;
+                }
+                kept.push(if quoted { ' ' } else { ch });
+            }
+            kept
+        };
+
+        let words = outside_quotes
+            .to_lowercase()
+            .split(|ch: char| !ch.is_ascii_alphabetic())
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+
+        for pronoun in ["we", "our", "ours"] {
+            if words.iter().any(|word| word == pronoun) {
+                complaints.push(format!(
+                    "{path}:{}: module documentation is impersonal — {pronoun:?} \
+                     names a speaker the reader cannot see",
+                    index + 1
+                ));
+            }
+        }
+        for unfinished in ["TODO", "TBD", "FIXME"] {
+            if body.contains(unfinished) {
+                complaints.push(format!(
+                    "{path}:{}: {unfinished} in a module header. A header is a \
+                     chapter of the book; leave the note in the code or the watchlist",
+                    index + 1
+                ));
+            }
+        }
+    }
+
+    complaints
+}
+
 pub(crate) fn repository_rules() -> Result<(), String> {
     let sources = library_sources();
     let mut complaints = Vec::new();
@@ -89,6 +154,7 @@ pub(crate) fn repository_rules() -> Result<(), String> {
         let shown = display(path);
         complaints.extend(bare_unwrap(&shown, text));
         complaints.extend(missing_module_docs(&shown, text));
+        complaints.extend(header_prose(&shown, text));
     }
 
     if complaints.is_empty() {
@@ -160,7 +226,7 @@ pub(crate) fn display(path: &Path) -> String {
     reason = "tests may be blunt: an unwrap is an expectation and an index is a claim about shape"
 )]
 mod tests {
-    use super::{bare_unwrap, missing_module_docs, unwinds_on_panic};
+    use super::{bare_unwrap, header_prose, missing_module_docs, unwinds_on_panic};
 
     #[test]
     fn a_bare_unwrap_is_reported_with_its_line() {
@@ -248,5 +314,50 @@ mod tests {
             unwinds_on_panic("[profile.release]\nlto = true\npanic = \"unwind\"\n"),
             Vec::<String>::new()
         );
+    }
+
+    #[test]
+    fn a_module_header_that_names_a_speaker_is_reported() {
+        let complaints = header_prose("a.rs", "//! We decided this together.\n");
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(complaints[0].contains("impersonal"), "{complaints:?}");
+    }
+
+    #[test]
+    fn a_quoted_voice_is_not_the_document_speaking() {
+        // The one real example: a field that would say this, if it existed.
+        let complaints = header_prose(
+            "a.rs",
+            "//! no field means \"we will work this out during apply\".\n",
+        );
+        assert_eq!(complaints, Vec::<String>::new(), "{complaints:?}");
+    }
+
+    #[test]
+    fn a_word_that_merely_contains_a_pronoun_is_left_alone() {
+        // "weight", "ourselves" as substrings, and "Owner" capitalised.
+        let complaints = header_prose("a.rs", "//! The weight of the answer is ours to bear.\n");
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(complaints[0].contains("ours"), "{complaints:?}");
+        assert_eq!(
+            header_prose("a.rs", "//! The weight of it.\n"),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn something_unfinished_in_a_header_is_reported() {
+        let complaints = header_prose("a.rs", "//! Reads a plan. TODO: the rest.\n");
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(
+            complaints[0].contains("chapter of the book"),
+            "{complaints:?}"
+        );
+    }
+
+    #[test]
+    fn code_below_the_header_is_not_prose() {
+        let complaints = header_prose("a.rs", "//! Impersonal.\n\nfn we_do_things() {}\n");
+        assert_eq!(complaints, Vec::<String>::new(), "{complaints:?}");
     }
 }

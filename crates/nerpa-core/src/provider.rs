@@ -1,5 +1,7 @@
 //! The boundary between the model and anything that touches the world.
 //!
+//! Expands: 0004
+//!
 //! Everything in this crate up to here is arithmetic on declarations. A provider
 //! is where that stops: it reads what is actually there and makes it what it
 //! should be. Nothing else in the workspace is allowed to.

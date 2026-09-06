@@ -14,6 +14,7 @@ one place.
 | Where does this go? | `docs/MAP.md` | `cargo xtask docs` |
 | What must never happen? | `RULES.md` | itself |
 | How do I write a commit? | `docs/COMMITS.md` | `.githooks/commit-msg` |
+| How do I write prose? | `docs/WRITING.md` | partly — the table in it says which parts |
 | Something I noticed | `docs/WATCHLIST.md` | review |
 | Something nobody has to answer yet | `docs/OPEN_QUESTIONS.md` | review |
 | What may a plan cost? | `docs/budgets.toml` | `cargo xtask budget` |

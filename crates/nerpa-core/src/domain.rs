@@ -1,5 +1,7 @@
 //! Where a resource's state can be read and changed.
 //!
+//! Expands: 0001
+//!
 //! This is the distinction the rest of Nerpa is built on, and the one neither
 //! Terraform nor Ansible expresses. A VM's state is a question you ask an API,
 //! from wherever you happen to be standing. A package's state is a question you

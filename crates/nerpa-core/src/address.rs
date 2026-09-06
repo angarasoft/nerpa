@@ -1,5 +1,7 @@
 //! Resource addresses: the names Nerpa writes into state and never gets to change.
 //!
+//! Expands: 0002
+//!
 //! An address is the identity of one resource across every run, every plan and
 //! every state file that will ever exist. Once a state file leaves this machine
 //! the scheme is frozen, so the grammar here is deliberately small.
