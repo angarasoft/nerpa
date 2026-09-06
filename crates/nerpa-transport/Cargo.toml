@@ -1,0 +1,24 @@
+[package]
+name = "nerpa-transport"
+description = "Carrying the wire to a machine, and knowing nothing about what it says"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+nerpa-core = { workspace = true }
+nerpa-proto = { workspace = true }
+
+[dev-dependencies]
+nerpa-executor = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

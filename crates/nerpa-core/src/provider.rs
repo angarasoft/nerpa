@@ -254,3 +254,28 @@ impl Providers {
         self.registered.is_empty()
     }
 }
+
+/// A way to reach the machine a batch is about.
+///
+/// Provider logic runs here and the work happens there
+/// ([0032](../../../docs/decisions)); this is the seam. A provider composes what
+/// it wants looked at or done, hands it over, and reads the answers — it does
+/// not know whether the far end was reached by a pipe, by `ssh`, or by an
+/// identity-aware proxy, and it must not care.
+///
+/// A provider whose resources live in the `control` domain never uses one. There
+/// is no machine to reach: a cloud API is reached from where the engine already
+/// is.
+pub trait Reach: std::fmt::Debug + Send + Sync {
+    /// Asks, and waits for the answer.
+    ///
+    /// One journey. The batch is the unit precisely so this is called once per
+    /// machine per phase rather than once per resource — see `INV-BATCH-001`.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError::Unreachable`] when the machine could not be
+    /// contacted at all — the one failure a run survives — and
+    /// [`ProviderError::World`] for anything else.
+    fn ask(&self, ask: &nerpa_proto::Ask) -> Result<nerpa_proto::Answer, ProviderError>;
+}

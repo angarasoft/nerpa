@@ -5,6 +5,7 @@ members = [
   "crates/nerpa-config",
   "crates/nerpa-core",
   "crates/nerpa-executor",
+  "crates/nerpa-transport",
   "crates/nerpa-proto",
   "crates/nerpa-provider-os",
   "xtask",
@@ -31,6 +32,7 @@ nerpa-config = { path = "crates/nerpa-config", version = "=0.0.1" }
 nerpa-core = { path = "crates/nerpa-core", version = "=0.0.1" }
 nerpa-executor = { path = "crates/nerpa-executor", version = "=0.0.1" }
 nerpa-proto = { path = "crates/nerpa-proto", version = "=0.0.1" }
+nerpa-transport = { path = "crates/nerpa-transport", version = "=0.0.1" }
 nerpa-provider-os = { path = "crates/nerpa-provider-os", version = "=0.0.1" }
 
 thiserror = "2.0"
