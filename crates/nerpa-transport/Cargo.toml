@@ -14,10 +14,10 @@ categories.workspace = true
 
 [dependencies]
 nerpa-core = { workspace = true }
+nerpa-executor = { workspace = true }
 nerpa-proto = { workspace = true }
 
 [dev-dependencies]
-nerpa-executor = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]

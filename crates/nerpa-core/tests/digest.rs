@@ -14,7 +14,7 @@ use std::collections::BTreeMap;
 use nerpa_core::address::address;
 use nerpa_core::plan::PlanDigest;
 use nerpa_core::planner::plan_at;
-use nerpa_core::provider::{Attributes, Provider, ProviderError, Providers, Reading};
+use nerpa_core::provider::{Attributes, Provider, ProviderError, Providers, Reach, Reading};
 use nerpa_core::schema::Schema;
 use nerpa_core::secret::{Key, Remembered, Secrets};
 use nerpa_core::state::{State, Written};
@@ -39,7 +39,11 @@ impl Provider for Empty {
     fn schema(&self) -> Schema {
         Schema::new()
     }
-    fn read(&self, _batch: &[Reading]) -> Result<BTreeMap<Address, Attributes>, ProviderError> {
+    fn read(
+        &self,
+        _batch: &[Reading],
+        _reach: &dyn Reach,
+    ) -> Result<BTreeMap<Address, Attributes>, ProviderError> {
         Ok(BTreeMap::new())
     }
     fn apply(
@@ -47,10 +51,16 @@ impl Provider for Empty {
         _address: &Address,
         _kind: nerpa_core::ChangeKind,
         attributes: &Attributes,
+        _reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
         Ok(attributes.clone())
     }
-    fn delete(&self, _address: &Address, _recorded: &Attributes) -> Result<(), ProviderError> {
+    fn delete(
+        &self,
+        _address: &Address,
+        _recorded: &Attributes,
+        _reach: &dyn Reach,
+    ) -> Result<(), ProviderError> {
         Ok(())
     }
     fn fake() -> Self {

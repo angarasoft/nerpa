@@ -8,12 +8,21 @@ use std::path::PathBuf;
 
 use nerpa_core::address::address;
 use nerpa_core::planner::plan;
+use nerpa_core::provider::Machines;
 use nerpa_core::provider::{Attributes, Provider, Providers};
 use nerpa_core::run::{apply, observe};
 use nerpa_core::secret::{Key, Remembered, Secrets};
 use nerpa_core::state::State;
 use nerpa_core::{ChangeKind, Graph, Reference, Resource, Target, Value};
 use nerpa_provider_os::Os;
+use nerpa_transport::Here;
+
+/// Every machine is this one, reached by the executor in this process — the same
+/// code a far end runs. Where the pipe itself matters it is tested where the
+/// pipe is the subject.
+fn machines() -> Machines {
+    Machines::new().everywhere(Box::new(Here))
+}
 
 /// A run that does not care where state goes, only what ends up in it.
 #[allow(
@@ -86,7 +95,7 @@ fn a_file_is_written_and_the_second_run_has_nothing_to_do() {
             .with("mode", "0640"),
     ]);
 
-    let before = observe(&graph, &providers, &state).expect("readable");
+    let before = observe(&graph, &providers, &machines(), &state).expect("readable");
     assert!(before.is_empty(), "nothing exists yet");
 
     let first = plan(&graph, &before, &state, &providers.schema(), secrets()).expect("plannable");
@@ -95,6 +104,7 @@ fn a_file_is_written_and_the_second_run_has_nothing_to_do() {
     let applied = apply(
         &first,
         &providers,
+        &machines(),
         &before,
         &mut state,
         secrets(),
@@ -105,7 +115,7 @@ fn a_file_is_written_and_the_second_run_has_nothing_to_do() {
     assert_eq!(fs::read_to_string(&path).expect("written"), "hello\n");
 
     // The property the whole tool exists to have.
-    let after = observe(&graph, &providers, &state).expect("readable");
+    let after = observe(&graph, &providers, &machines(), &state).expect("readable");
     let second = plan(&graph, &after, &state, &providers.schema(), secrets()).expect("plannable");
     assert!(
         second.is_empty(),
@@ -125,10 +135,11 @@ fn a_file_edited_by_hand_is_brought_back() {
             .with("content", "listen 80;\n"),
     ]);
 
-    let observed = observe(&graph, &providers, &state).expect("readable");
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
     apply(
         &plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable"),
         &providers,
+        &machines(),
         &observed,
         &mut state,
         secrets(),
@@ -138,7 +149,7 @@ fn a_file_edited_by_hand_is_brought_back() {
 
     fs::write(&path, "listen 8080;\n").expect("somebody edits it during an incident");
 
-    let drifted = observe(&graph, &providers, &state).expect("readable");
+    let drifted = observe(&graph, &providers, &machines(), &state).expect("readable");
     let repair = plan(&graph, &drifted, &state, &providers.schema(), secrets()).expect("plannable");
     assert_eq!(repair.blast_radius().updates(), 1);
     assert_eq!(
@@ -149,6 +160,7 @@ fn a_file_edited_by_hand_is_brought_back() {
     apply(
         &repair,
         &providers,
+        &machines(),
         &drifted,
         &mut state,
         secrets(),
@@ -173,13 +185,14 @@ fn a_directory_comes_before_the_file_in_it() {
             .after(address("os:directory.etc@localhost")),
     ]);
 
-    let observed = observe(&graph, &providers, &state).expect("readable");
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
     let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
     assert_eq!(plan.stages().len(), 2, "the file waits for the directory");
 
     let applied = apply(
         &plan,
         &providers,
+        &machines(),
         &observed,
         &mut state,
         secrets(),
@@ -211,10 +224,11 @@ fn moving_a_file_replaces_it_and_takes_the_old_one_with_it() {
             .with("path", old.clone())
             .with("content", "hello\n"),
     ]);
-    let observed = observe(&before, &providers, &state).expect("readable");
+    let observed = observe(&before, &providers, &machines(), &state).expect("readable");
     apply(
         &plan(&before, &observed, &state, &providers.schema(), secrets()).expect("plannable"),
         &providers,
+        &machines(),
         &observed,
         &mut state,
         secrets(),
@@ -228,7 +242,7 @@ fn moving_a_file_replaces_it_and_takes_the_old_one_with_it() {
             .with("path", new.clone())
             .with("content", "hello\n"),
     ]);
-    let observed = observe(&moved, &providers, &state).expect("readable");
+    let observed = observe(&moved, &providers, &machines(), &state).expect("readable");
     let plan = plan(&moved, &observed, &state, &providers.schema(), secrets()).expect("plannable");
 
     let change = plan.changes().next().expect("one change");
@@ -239,6 +253,7 @@ fn moving_a_file_replaces_it_and_takes_the_old_one_with_it() {
     apply(
         &plan,
         &providers,
+        &machines(),
         &observed,
         &mut state,
         secrets(),
@@ -263,10 +278,11 @@ fn a_resource_removed_from_the_configuration_is_removed_from_the_machine() {
             .with("path", path.clone())
             .with("content", "for now\n"),
     ]);
-    let observed = observe(&declared, &providers, &state).expect("readable");
+    let observed = observe(&declared, &providers, &machines(), &state).expect("readable");
     apply(
         &plan(&declared, &observed, &state, &providers.schema(), secrets()).expect("plannable"),
         &providers,
+        &machines(),
         &observed,
         &mut state,
         secrets(),
@@ -278,7 +294,7 @@ fn a_resource_removed_from_the_configuration_is_removed_from_the_machine() {
 
     // The declaration is gone.
     let empty = Graph::new();
-    let observed = observe(&empty, &providers, &state).expect("readable");
+    let observed = observe(&empty, &providers, &machines(), &state).expect("readable");
     let plan = plan(&empty, &observed, &state, &providers.schema(), secrets()).expect("plannable");
 
     assert_eq!(plan.blast_radius().deletes(), 1);
@@ -294,6 +310,7 @@ fn a_resource_removed_from_the_configuration_is_removed_from_the_machine() {
     apply(
         &plan,
         &providers,
+        &machines(),
         &observed,
         &mut state,
         secrets(),
@@ -322,10 +339,11 @@ fn what_depended_on_a_thing_is_removed_before_the_thing() {
                 Reference::to(address("os:directory.etc@localhost"), "path"),
             ),
     ]);
-    let observed = observe(&declared, &providers, &state).expect("readable");
+    let observed = observe(&declared, &providers, &machines(), &state).expect("readable");
     apply(
         &plan(&declared, &observed, &state, &providers.schema(), secrets()).expect("plannable"),
         &providers,
+        &machines(),
         &observed,
         &mut state,
         secrets(),
@@ -334,7 +352,7 @@ fn what_depended_on_a_thing_is_removed_before_the_thing() {
     .expect("applies");
 
     let empty = Graph::new();
-    let observed = observe(&empty, &providers, &state).expect("readable");
+    let observed = observe(&empty, &providers, &machines(), &state).expect("readable");
     let plan = plan(&empty, &observed, &state, &providers.schema(), secrets()).expect("plannable");
 
     assert_eq!(plan.blast_radius().deletes(), 2);
@@ -352,6 +370,7 @@ fn what_depended_on_a_thing_is_removed_before_the_thing() {
     apply(
         &plan,
         &providers,
+        &machines(),
         &observed,
         &mut state,
         secrets(),
@@ -381,7 +400,7 @@ fn an_unresolved_value_is_settled_from_the_stage_before_it() {
             ),
     ]);
 
-    let observed = observe(&graph, &providers, &state).expect("readable");
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
     let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
     assert_eq!(
         plan.blast_radius().unresolved(),
@@ -392,6 +411,7 @@ fn an_unresolved_value_is_settled_from_the_stage_before_it() {
     apply(
         &plan,
         &providers,
+        &machines(),
         &observed,
         &mut state,
         secrets(),
@@ -405,8 +425,11 @@ fn an_unresolved_value_is_settled_from_the_stage_before_it() {
     );
 }
 
+/// The fake moved. A provider that only translates has no world in it to stand
+/// in for, so what a test wanting no disk touched actually wants is a far end
+/// that has no disk. That is `Held`, and this is the property it carries.
 #[test]
-fn the_fake_touches_nothing() {
+fn a_machine_in_memory_touches_nothing() {
     let providers = Providers::new().with(Box::new(Os::fake()));
     let mut state = State::new();
     let path = "/etc/definitely-not-writing-here";
@@ -416,11 +439,13 @@ fn the_fake_touches_nothing() {
             .with("content", "no\n"),
     ]);
 
-    let observed = observe(&graph, &providers, &state).expect("readable");
+    let nowhere = Machines::new().everywhere(Box::new(nerpa_transport::Held::new()));
+    let observed = observe(&graph, &providers, &nowhere, &state).expect("readable");
     let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
     let applied = apply(
         &plan,
         &providers,
+        &nowhere,
         &observed,
         &mut state,
         secrets(),
@@ -431,7 +456,7 @@ fn the_fake_touches_nothing() {
     assert_eq!(applied.changed(), 1);
     assert!(
         !std::path::Path::new(path).exists(),
-        "the fake wrote to memory, not to /etc"
+        "it wrote to memory, not to /etc"
     );
     assert_eq!(
         applied
@@ -447,12 +472,13 @@ fn a_declaration_without_a_path_is_refused_rather_than_guessed_at() {
     let mut state = State::new();
     let graph = graph_of(vec![Resource::new(address("os:file.nowhere@localhost"))]);
 
-    let observed = observe(&graph, &providers, &state).expect("readable");
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
     let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
 
     let refusal = apply(
         &plan,
         &providers,
+        &machines(),
         &observed,
         &mut state,
         secrets(),
@@ -470,8 +496,8 @@ fn a_kind_this_provider_does_not_own_is_refused() {
         Resource::new(address("os:package.nginx@localhost")).with("state", "present"),
     ]);
 
-    let refusal =
-        observe(&graph, &providers, &state).expect_err("packages arrive with the executor");
+    let refusal = observe(&graph, &providers, &machines(), &state)
+        .expect_err("packages arrive with the executor");
     assert!(
         refusal.to_string().contains("does not know how to handle"),
         "{refusal}"
@@ -514,7 +540,7 @@ fn a_file_that_was_already_there_is_adopted_rather_than_remade() {
             .with("content", "already here\n"),
     ]);
 
-    let observed = observe(&graph, &providers, &state).expect("readable");
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
     assert!(
         observed.contains(&address("os:file.existing@localhost")),
         "it was found"
@@ -552,13 +578,14 @@ fn what_was_already_made_is_recorded_before_the_next_thing_is_touched() {
 
     let providers = providers();
     let mut state = State::new();
-    let observed = observe(&graph, &providers, &state).expect("readable");
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
     let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
 
     let mut seen = Vec::new();
     let outcome = apply(
         &plan,
         &providers,
+        &machines(),
         &observed,
         &mut state,
         secrets(),
@@ -609,6 +636,7 @@ fn one_provider_serves_two_threads_at_once() {
                         &address("os:file.subject@localhost"),
                         ChangeKind::Create,
                         &wanted,
+                        &Here,
                     )
                     .expect("it writes");
             });

@@ -18,6 +18,10 @@ use nerpa_core::plan::ChangeKind;
 use nerpa_core::provider::{Attributes, Provider, Reading};
 use nerpa_core::value::Value;
 use nerpa_provider_os::Os;
+use nerpa_transport::Here;
+
+/// The executor, in this process: the same code a machine at the far end runs.
+static HERE: Here = Here;
 
 struct Scratch(PathBuf);
 
@@ -61,7 +65,7 @@ fn at(path: &Path) -> Attributes {
 fn look(path: &Path) -> Result<Option<Attributes>, String> {
     let os = Os::new();
     let target = address("os:file.subject@localhost");
-    os.read(&[Reading::new(target.clone(), at(path))])
+    os.read(&[Reading::new(target.clone(), at(path))], &HERE)
         .map(|found| found.get(&target).cloned())
         .map_err(|error| error.to_string())
 }
@@ -181,6 +185,7 @@ fn a_binary_file_converges() {
             &address("os:file.subject@localhost"),
             ChangeKind::Create,
             &wanted,
+            &HERE,
         )
         .expect("it writes");
 
@@ -215,6 +220,7 @@ fn writing_where_a_symlink_is_replaces_the_link_and_leaves_its_target_alone() {
             &address("os:file.subject@localhost"),
             ChangeKind::Update,
             &wanted,
+            &HERE,
         )
         .expect("it writes");
 
@@ -244,7 +250,11 @@ fn deleting_a_directory_does_not_take_what_nerpa_did_not_make() {
     fs::write(&stranger, "not ours").unwrap();
 
     let refusal = Os::new()
-        .delete(&address("os:directory.confd@localhost"), &at(&directory))
+        .delete(
+            &address("os:directory.confd@localhost"),
+            &at(&directory),
+            &HERE,
+        )
         .expect_err("a directory with something in it is not empty");
     assert!(
         refusal.to_string().contains("conf.d"),
@@ -264,7 +274,11 @@ fn an_empty_directory_is_still_removed() {
     fs::create_dir_all(&directory).unwrap();
 
     Os::new()
-        .delete(&address("os:directory.confd@localhost"), &at(&directory))
+        .delete(
+            &address("os:directory.confd@localhost"),
+            &at(&directory),
+            &HERE,
+        )
         .expect("an empty directory goes");
     assert!(!directory.exists());
 }

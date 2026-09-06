@@ -29,12 +29,13 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use nerpa_core::planner;
-use nerpa_core::provider::Providers;
+use nerpa_core::provider::{Machines, Providers};
 use nerpa_core::run;
 use nerpa_core::secret::{Remembered, Secrets};
 use nerpa_core::state::State;
 use nerpa_core::store::{self, Lock};
 use nerpa_provider_os::Os;
+use nerpa_transport::Piped;
 
 #[derive(Parser)]
 #[command(
@@ -78,6 +79,35 @@ fn main() -> ExitCode {
     }
 }
 
+/// How each machine in this configuration is reached.
+///
+/// Every node gets a pipe to an executor. Today that executor runs here, which
+/// is what makes the whole path — provider, wire, executor — real on one machine
+/// before there is a second one. `ssh` is the same call with a different command
+/// in front of it, which is the point of decision 0032.
+fn reachable(graph: &nerpa_core::Graph) -> Result<Machines, String> {
+    let beside = std::env::current_exe()
+        .map_err(|error| format!("this program cannot tell where it is: {error}"))?
+        .parent()
+        .map(|directory| directory.join("nerpa-executor"))
+        .ok_or_else(|| "this program appears to have no directory".to_owned())?;
+
+    if !beside.exists() {
+        return Err(format!(
+            "{} is not there; nerpa needs its executor beside it",
+            beside.display()
+        ));
+    }
+
+    let mut machines = Machines::new();
+    for node in graph.inventory().nodes() {
+        let reach = Piped::running(node, &beside.display().to_string(), &[])
+            .map_err(|error| error.to_string())?;
+        machines = machines.with(node.clone(), Box::new(reach));
+    }
+    Ok(machines)
+}
+
 fn run_task(arguments: &Arguments) -> Result<(), String> {
     let source = std::fs::read_to_string(&arguments.file)
         .map_err(|error| format!("{}: {error}", arguments.file.display()))?;
@@ -113,7 +143,13 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     let store = Remembered::new();
     let secrets = Secrets::new(&key, &store);
 
-    let observed = run::observe(&graph, &providers, &state).map_err(|error| error.to_string())?;
+    // One connection per machine, opened before anything is read and closed
+    // when the run ends. The executor is looked for beside this program: an
+    // install puts them together, and a build leaves them together too.
+    let machines = reachable(&graph)?;
+
+    let observed =
+        run::observe(&graph, &providers, &machines, &state).map_err(|error| error.to_string())?;
     let plan = planner::plan(&graph, &observed, &state, &providers.schema(), secrets)
         .map_err(|error| error.to_string())?;
 
@@ -146,6 +182,7 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     let applied = run::apply(
         &plan,
         &providers,
+        &machines,
         &observed,
         &mut state,
         secrets,

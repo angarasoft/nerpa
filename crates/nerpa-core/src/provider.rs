@@ -101,6 +101,14 @@ pub enum ProviderError {
         /// What was tried, and what came back.
         problem: String,
     },
+    /// Something reached for a machine on behalf of a resource that is not on
+    /// one.
+    ///
+    /// Without an address, because the thing that notices is the seam rather
+    /// than anything holding a resource — and inventing one to fill the field
+    /// would be a lie about what went wrong.
+    #[error("this resource is not on a machine, so there is nothing to ask of one")]
+    NotOnAMachine,
     /// The world refused.
     #[error("{address}: {problem}")]
     World {
@@ -139,7 +147,11 @@ pub trait Provider: Send + Sync {
     /// # Errors
     ///
     /// Returns [`ProviderError`] if the batch could not be read at all.
-    fn read(&self, batch: &[Reading]) -> Result<BTreeMap<Address, Attributes>, ProviderError>;
+    fn read(
+        &self,
+        batch: &[Reading],
+        reach: &dyn Reach,
+    ) -> Result<BTreeMap<Address, Attributes>, ProviderError>;
 
     /// Makes the resource match `attributes`, and reports what it became.
     ///
@@ -155,6 +167,7 @@ pub trait Provider: Send + Sync {
         address: &Address,
         kind: ChangeKind,
         attributes: &Attributes,
+        reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError>;
 
     /// Removes the resource `recorded` describes.
@@ -167,7 +180,12 @@ pub trait Provider: Send + Sync {
     ///
     /// Returns [`ProviderError`] if the resource could not be removed. Already
     /// being gone is not a failure.
-    fn delete(&self, address: &Address, recorded: &Attributes) -> Result<(), ProviderError>;
+    fn delete(
+        &self,
+        address: &Address,
+        recorded: &Attributes,
+        reach: &dyn Reach,
+    ) -> Result<(), ProviderError>;
 
     /// A version of this provider that touches nothing.
     ///
@@ -278,4 +296,77 @@ pub trait Reach: std::fmt::Debug + Send + Sync {
     /// contacted at all — the one failure a run survives — and
     /// [`ProviderError::World`] for anything else.
     fn ask(&self, ask: &nerpa_proto::Ask) -> Result<nerpa_proto::Answer, ProviderError>;
+}
+
+/// How each machine is reached, and what answers for anything not on one.
+#[derive(Debug, Default)]
+pub struct Machines {
+    reaches: BTreeMap<Target, Box<dyn Reach>>,
+    anywhere: Option<Box<dyn Reach>>,
+}
+
+impl Machines {
+    /// Reaching nothing yet.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// And now reaching this one.
+    #[must_use]
+    pub fn with(mut self, node: Target, reach: Box<dyn Reach>) -> Self {
+        self.reaches.insert(node, reach);
+        self
+    }
+
+    /// Reaching every machine the same way.
+    ///
+    /// True when every node is this one — which it is for a local run and for
+    /// most tests. Opt-in rather than the default, because without it a node
+    /// nothing knows how to reach says so, and that refusal is worth keeping.
+    #[must_use]
+    pub fn everywhere(mut self, reach: Box<dyn Reach>) -> Self {
+        self.anywhere = Some(reach);
+        self
+    }
+
+    /// What to reach this resource's machine by.
+    ///
+    /// A resource in the `control` domain has no machine, and gets something
+    /// that refuses rather than an `Option` every provider would have to unwrap.
+    /// A cloud provider never asks; one that does is told plainly why it cannot.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError::Unreachable`] for a machine nothing knows how to
+    /// reach. Deliberately the same failure as one that did not answer: from
+    /// everywhere upstream, a node with no route to it and a node that is down
+    /// are the same fact.
+    pub fn reach(&self, node: Option<&Target>) -> Result<&dyn Reach, ProviderError> {
+        let Some(node) = node else {
+            return Ok(&Nowhere);
+        };
+        self.reaches
+            .get(node)
+            .or(self.anywhere.as_ref())
+            .map(AsRef::as_ref)
+            .ok_or_else(|| ProviderError::Unreachable {
+                node: node.clone(),
+                problem: "nothing knows how to reach it".to_owned(),
+            })
+    }
+}
+
+/// What answers for a resource that is not on a machine.
+///
+/// Not a null object doing nothing quietly: it refuses, and says why. A
+/// `control` provider reaching for a machine is a provider confused about which
+/// domain its resources are in, and that is worth being told.
+#[derive(Debug)]
+struct Nowhere;
+
+impl Reach for Nowhere {
+    fn ask(&self, _ask: &nerpa_proto::Ask) -> Result<nerpa_proto::Answer, ProviderError> {
+        Err(ProviderError::NotOnAMachine)
+    }
 }

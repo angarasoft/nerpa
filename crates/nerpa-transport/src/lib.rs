@@ -144,3 +144,122 @@ impl Reach for Piped {
             .map_err(|error| out_of_reach(error.to_string()))
     }
 }
+
+/// The executor, in this process.
+///
+/// The same code the far end runs, without a pipe between. For `localhost`,
+/// where a subprocess buys nothing — nerpa is already on the machine it would be
+/// talking to — and for tests of everything above the wire.
+///
+/// It does not exercise the wire, deliberately. That is covered where the wire
+/// is what is under test: a test that goes through a pipe to prove a provider
+/// works is really testing the pipe, badly.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Here;
+
+impl Reach for Here {
+    fn ask(&self, ask: &Ask) -> Result<Answer, ProviderError> {
+        Ok(nerpa_executor::answer(ask))
+    }
+}
+
+/// A machine that exists only in memory.
+///
+/// The fake the provider used to carry itself. It moved here because that is
+/// where the world is now: a provider that only translates has nothing in it to
+/// stand in for, and a test that wants no disk touched wants a far end that has
+/// no disk.
+///
+/// It answers the same protocol and keeps what it is told, which is enough for
+/// anything above the wire. It is not the executor and does not try to be —
+/// there is no mode, no symlink, no process. A test that needs those needs
+/// [`Here`], which is the executor.
+#[derive(Debug, Default)]
+pub struct Held {
+    entries: Mutex<std::collections::BTreeMap<String, nerpa_proto::Entry>>,
+}
+
+impl Held {
+    /// A machine with nothing on it.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// What it holds now, so a test can look without going through the wire.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.entries.lock().map_or(0, |held| held.len())
+    }
+
+    /// Whether it holds nothing.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+impl Reach for Held {
+    fn ask(&self, ask: &Ask) -> Result<Answer, ProviderError> {
+        use nerpa_proto::{Observation, Operation, Seen};
+
+        let Ok(mut held) = self.entries.lock() else {
+            return Err(ProviderError::NotOnAMachine);
+        };
+
+        Ok(match ask {
+            Ask::Look { observations } => Answer::Found {
+                seen: observations
+                    .iter()
+                    .map(|observation| match observation {
+                        Observation::Path { path } => {
+                            held.get(path).cloned().map_or(Seen::Nothing, Seen::Entry)
+                        }
+                        // A machine in memory runs nothing. Saying so is better
+                        // than answering as though it had.
+                        _ => Seen::Nothing,
+                    })
+                    .collect(),
+            },
+            Ask::Perform { operations, .. } => {
+                let mut became = Vec::with_capacity(operations.len());
+                for operation in operations {
+                    match operation {
+                        Operation::Directory { path, mode } => {
+                            let entry = nerpa_proto::Entry::Directory { mode: *mode };
+                            held.insert(path.clone(), entry.clone());
+                            became.push(Seen::Entry(entry));
+                        }
+                        Operation::File {
+                            path,
+                            content,
+                            mode,
+                        } => {
+                            let entry = nerpa_proto::Entry::File {
+                                content: content.clone(),
+                                mode: *mode,
+                            };
+                            held.insert(path.clone(), entry.clone());
+                            became.push(Seen::Entry(entry));
+                        }
+                        Operation::Remove { path } => {
+                            held.remove(path);
+                            became.push(Seen::Nothing);
+                        }
+                        _ => {
+                            return Ok(Answer::Failed {
+                                at: became.len(),
+                                problem: "a machine in memory cannot run a program".to_owned(),
+                            });
+                        }
+                    }
+                }
+                Answer::Done { became }
+            }
+            _ => Answer::Failed {
+                at: 0,
+                problem: "a machine in memory does not answer that".to_owned(),
+            },
+        })
+    }
+}

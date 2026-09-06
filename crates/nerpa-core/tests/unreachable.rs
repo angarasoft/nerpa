@@ -11,12 +11,29 @@ use std::collections::BTreeSet;
 use nerpa_core::address::address;
 use nerpa_core::plan::ChangeKind;
 use nerpa_core::planner::plan_at;
-use nerpa_core::provider::{Attributes, Provider, ProviderError, Providers, Reading};
+use nerpa_core::provider::{
+    Attributes, Machines, Provider, ProviderError, Providers, Reach, Reading,
+};
 use nerpa_core::run::observe;
 use nerpa_core::schema::Schema;
 use nerpa_core::secret::{Key, Recorded, Remembered, Secrets};
 use nerpa_core::state::{Record, State, Written};
 use nerpa_core::{Address, ExecutionDomain, Graph, Observed, Reference, Resource, Target};
+
+/// A far end nobody asks. These providers decide their answers themselves; the
+/// seam is there because the trait has one, not because this uses it.
+#[derive(Debug)]
+struct Deaf;
+
+impl Reach for Deaf {
+    fn ask(&self, _ask: &nerpa_proto::Ask) -> Result<nerpa_proto::Answer, ProviderError> {
+        Err(ProviderError::NotOnAMachine)
+    }
+}
+
+fn machines() -> Machines {
+    Machines::new().everywhere(Box::new(Deaf))
+}
 
 /// A fixed key and a store holding nothing.
 ///
@@ -240,6 +257,7 @@ impl Provider for Refusing {
     fn read(
         &self,
         batch: &[Reading],
+        _reach: &dyn Reach,
     ) -> Result<std::collections::BTreeMap<Address, Attributes>, ProviderError> {
         let address = batch
             .first()
@@ -264,11 +282,17 @@ impl Provider for Refusing {
         _address: &Address,
         _kind: ChangeKind,
         _attributes: &Attributes,
+        _reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
         unreachable!("this provider is only ever read from")
     }
 
-    fn delete(&self, _address: &Address, _recorded: &Attributes) -> Result<(), ProviderError> {
+    fn delete(
+        &self,
+        _address: &Address,
+        _recorded: &Attributes,
+        _reach: &dyn Reach,
+    ) -> Result<(), ProviderError> {
         unreachable!("this provider is only ever read from")
     }
 
@@ -293,8 +317,13 @@ fn a_machine_not_answering_lets_the_reading_continue() {
         Resource::new(address("os:file.motd@web-01")).with("path", "/etc/motd"),
     ]);
 
-    let observed = observe(&graph, &refusing(Refusal::Unreachable), &State::new())
-        .expect("one machine being down is not a reason to stop");
+    let observed = observe(
+        &graph,
+        &refusing(Refusal::Unreachable),
+        &machines(),
+        &State::new(),
+    )
+    .expect("one machine being down is not a reason to stop");
 
     assert!(!observed.reached(&node("web-01")));
     assert_eq!(observed.unreachable_nodes().len(), 1);
@@ -308,8 +337,13 @@ fn any_other_refusal_still_stops_the_run() {
         Resource::new(address("os:file.motd@web-01")).with("path", "/etc/motd"),
     ]);
 
-    let refusal = observe(&graph, &refusing(Refusal::Broken), &State::new())
-        .expect_err("permission denied is not a machine being down");
+    let refusal = observe(
+        &graph,
+        &refusing(Refusal::Broken),
+        &machines(),
+        &State::new(),
+    )
+    .expect_err("permission denied is not a machine being down");
 
     assert!(
         refusal.to_string().contains("permission denied"),

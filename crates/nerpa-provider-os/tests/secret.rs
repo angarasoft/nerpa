@@ -13,12 +13,21 @@ use std::path::PathBuf;
 
 use nerpa_core::address::address;
 use nerpa_core::planner::plan;
+use nerpa_core::provider::Machines;
 use nerpa_core::provider::Providers;
 use nerpa_core::run::{apply, observe};
 use nerpa_core::secret::{Key, Recorded, Remembered, Secrets, Source};
 use nerpa_core::state::State;
 use nerpa_core::{Graph, Resource};
 use nerpa_provider_os::Os;
+use nerpa_transport::Here;
+
+/// Every machine is this one, reached by the executor in this process — the same
+/// code a far end runs. Where the pipe itself matters it is tested where the
+/// pipe is the subject.
+fn machines() -> Machines {
+    Machines::new().everywhere(Box::new(Here))
+}
 
 /// A run that does not care where state goes, only what ends up in it.
 #[allow(
@@ -90,7 +99,7 @@ fn a_password_reaches_the_file_and_nothing_else() {
     let providers = Providers::new().with(Box::new(Os::new()));
     let mut state = State::new();
 
-    let observed = observe(&graph, &providers, &state).expect("readable");
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
     let intended =
         plan(&graph, &observed, &state, &providers.schema(), secrets).expect("plannable");
 
@@ -107,7 +116,13 @@ fn a_password_reaches_the_file_and_nothing_else() {
     );
 
     apply(
-        &intended, &providers, &observed, &mut state, secrets, &mut kept,
+        &intended,
+        &providers,
+        &machines(),
+        &observed,
+        &mut state,
+        secrets,
+        &mut kept,
     )
     .expect("applies");
 
@@ -151,14 +166,20 @@ fn a_secret_that_did_not_change_converges() {
     let providers = Providers::new().with(Box::new(Os::new()));
     let mut state = State::new();
 
-    let observed = observe(&graph, &providers, &state).expect("readable");
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
     let first = plan(&graph, &observed, &state, &providers.schema(), secrets).expect("plannable");
     apply(
-        &first, &providers, &observed, &mut state, secrets, &mut kept,
+        &first,
+        &providers,
+        &machines(),
+        &observed,
+        &mut state,
+        secrets,
+        &mut kept,
     )
     .expect("applies");
 
-    let again = observe(&graph, &providers, &state).expect("readable");
+    let again = observe(&graph, &providers, &machines(), &state).expect("readable");
     let second = plan(&graph, &again, &state, &providers.schema(), secrets).expect("plannable");
     assert!(
         second.is_empty(),
@@ -179,16 +200,22 @@ fn a_rotated_secret_is_reported_as_changed() {
 
     let before = Remembered::new().holding("db/password", PASSWORD);
     let secrets = Secrets::new(&DIGEST_KEY, &before);
-    let observed = observe(&graph, &providers, &state).expect("readable");
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
     let first = plan(&graph, &observed, &state, &providers.schema(), secrets).expect("plannable");
     apply(
-        &first, &providers, &observed, &mut state, secrets, &mut kept,
+        &first,
+        &providers,
+        &machines(),
+        &observed,
+        &mut state,
+        secrets,
+        &mut kept,
     )
     .expect("applies");
 
     let after = Remembered::new().holding("db/password", "something-else-entirely");
     let rotated = Secrets::new(&DIGEST_KEY, &after);
-    let again = observe(&graph, &providers, &state).expect("readable");
+    let again = observe(&graph, &providers, &machines(), &state).expect("readable");
     let second = plan(&graph, &again, &state, &providers.schema(), rotated).expect("plannable");
 
     assert_eq!(second.changes().count(), 1, "the rotation is one change");
@@ -212,7 +239,7 @@ fn a_secret_that_cannot_be_fetched_stops_the_plan() {
     let providers = Providers::new().with(Box::new(Os::new()));
     let state = State::new();
 
-    let observed = observe(&graph, &providers, &state).expect("readable");
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
     let refusal = plan(&graph, &observed, &state, &providers.schema(), secrets)
         .expect_err("a secret that is not there is not a plan");
     assert!(

@@ -15,7 +15,7 @@ use crate::attribute::Attribute;
 use crate::graph::{Graph, GraphError};
 use crate::observed::Observed;
 use crate::plan::{Change, ChangeKind, Confidence, Plan};
-use crate::provider::{Attributes, ProviderError, Providers, Reading};
+use crate::provider::{Attributes, Machines, ProviderError, Providers, Reading};
 use crate::resource::Resource;
 use crate::secret::{FetchError, Recorded, Secrets};
 use crate::state::{Record, Recording, State};
@@ -29,7 +29,12 @@ use crate::{ensures, requires};
 /// reading is not a smaller reading: planning against it would propose
 /// creating things that are already there.
 // ENFORCES: INV-REACH-001
-pub fn observe(graph: &Graph, providers: &Providers, state: &State) -> Result<Observed, RunError> {
+pub fn observe(
+    graph: &Graph,
+    providers: &Providers,
+    machines: &Machines,
+    state: &State,
+) -> Result<Observed, RunError> {
     let mut observed = Observed::new();
 
     // ENFORCES: INV-BATCH-001
@@ -57,9 +62,21 @@ pub fn observe(graph: &Graph, providers: &Providers, state: &State) -> Result<Ob
             .push(Reading::new(address, locator));
     }
 
-    for ((provider_name, _), batch) in batches {
+    for ((provider_name, node), batch) in batches {
         let provider = providers.named(&provider_name)?;
-        match provider.read(&batch) {
+        // One journey per machine per phase, and the way there is decided here
+        // rather than by the provider: provider logic runs on this machine and
+        // the work happens on that one. See decision 0032.
+        let reach = match machines.reach(node.as_ref()) {
+            Ok(reach) => reach,
+            // ENFORCES: INV-REACH-002
+            Err(ProviderError::Unreachable { node, .. }) => {
+                observed.unreachable(node);
+                continue;
+            }
+            Err(other) => return Err(other.into()),
+        };
+        match provider.read(&batch, reach) {
             Ok(found) => {
                 for (address, attributes) in found {
                     observed.record(address, attributes);
@@ -157,6 +174,7 @@ impl Applied {
 pub fn apply(
     plan: &Plan,
     providers: &Providers,
+    machines: &Machines,
     known: &Observed,
     state: &mut State,
     secrets: Secrets<'_>,
@@ -169,10 +187,11 @@ pub fn apply(
         for change in stage.changes() {
             let address = change.address();
             let provider = providers.for_address(address)?;
+            let reach = machines.reach(address.target())?;
 
             if change.kind() == ChangeKind::Delete {
                 if let Some(record) = state.get(address) {
-                    provider.delete(address, &record.locator())?;
+                    provider.delete(address, &record.locator(), reach)?;
                 }
                 state.forget(address);
                 record(state).map_err(RunError::Record)?;
@@ -186,11 +205,11 @@ pub fn apply(
             if change.kind() == ChangeKind::Replace
                 && let Some(record) = state.get(address)
             {
-                provider.delete(address, &record.locator())?;
+                provider.delete(address, &record.locator(), reach)?;
             }
 
             let attributes = settle(change, &observed, secrets)?;
-            let result = provider.apply(address, change.kind(), &attributes)?;
+            let result = provider.apply(address, change.kind(), &attributes, reach)?;
 
             state.record(
                 address.clone(),

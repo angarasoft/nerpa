@@ -13,12 +13,29 @@ use std::collections::BTreeMap;
 
 use nerpa_core::address::address;
 use nerpa_core::plan::ChangeKind;
-use nerpa_core::provider::{Attributes, Provider, ProviderError, Providers, Reading};
+use nerpa_core::provider::{
+    Attributes, Machines, Provider, ProviderError, Providers, Reach, Reading,
+};
 use nerpa_core::run::observe;
 use nerpa_core::schema::Schema;
 use nerpa_core::secret::Recorded;
 use nerpa_core::state::{Record, State};
 use nerpa_core::{Address, ExecutionDomain, Graph, Resource, Value};
+
+/// A far end nobody asks. These providers decide their answers themselves; the
+/// seam is there because the trait has one, not because this uses it.
+#[derive(Debug)]
+struct Deaf;
+
+impl Reach for Deaf {
+    fn ask(&self, _ask: &nerpa_proto::Ask) -> Result<nerpa_proto::Answer, ProviderError> {
+        Err(ProviderError::NotOnAMachine)
+    }
+}
+
+fn machines() -> Machines {
+    Machines::new().everywhere(Box::new(Deaf))
+}
 
 thread_local! {
     /// Every batch the provider was handed, in order. A thread local rather than
@@ -50,7 +67,11 @@ impl Provider for Watching {
         Schema::new()
     }
 
-    fn read(&self, batch: &[Reading]) -> Result<BTreeMap<Address, Attributes>, ProviderError> {
+    fn read(
+        &self,
+        batch: &[Reading],
+        _reach: &dyn Reach,
+    ) -> Result<BTreeMap<Address, Attributes>, ProviderError> {
         ASKED.with_borrow_mut(|seen| seen.push(batch.to_vec()));
         Ok(BTreeMap::new())
     }
@@ -60,11 +81,17 @@ impl Provider for Watching {
         _address: &Address,
         _kind: ChangeKind,
         _attributes: &Attributes,
+        _reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
         unreachable!("this provider is only ever read from")
     }
 
-    fn delete(&self, _address: &Address, _recorded: &Attributes) -> Result<(), ProviderError> {
+    fn delete(
+        &self,
+        _address: &Address,
+        _recorded: &Attributes,
+        _reach: &dyn Reach,
+    ) -> Result<(), ProviderError> {
         unreachable!("this provider is only ever read from")
     }
 
@@ -97,7 +124,7 @@ fn every_resource_on_one_machine_is_asked_for_at_once() {
     ]);
     let providers = watch();
 
-    observe(&graph, &providers, &State::new()).unwrap();
+    observe(&graph, &providers, &machines(), &State::new()).unwrap();
 
     let calls = asked();
     assert_eq!(
@@ -117,7 +144,7 @@ fn separate_machines_are_separate_journeys() {
     ]);
     let providers = watch();
 
-    observe(&graph, &providers, &State::new()).unwrap();
+    observe(&graph, &providers, &machines(), &State::new()).unwrap();
 
     let sizes: Vec<usize> = asked().iter().map(Vec::len).collect();
     assert_eq!(
@@ -132,7 +159,7 @@ fn the_batch_carries_where_to_look() {
     let graph = graph_of(vec![file("motd", "web-01")]);
     let providers = watch();
 
-    observe(&graph, &providers, &State::new()).unwrap();
+    observe(&graph, &providers, &machines(), &State::new()).unwrap();
 
     let calls = asked();
     assert_eq!(
@@ -159,7 +186,7 @@ fn what_state_remembers_beats_what_the_declaration_says() {
     );
 
     let providers = watch();
-    observe(&graph, &providers, &state).unwrap();
+    observe(&graph, &providers, &machines(), &state).unwrap();
 
     assert_eq!(
         asked()[0][0].locator().get("path"),
@@ -184,7 +211,7 @@ fn something_only_state_remembers_travels_with_the_rest() {
     );
 
     let providers = watch();
-    observe(&graph, &providers, &state).unwrap();
+    observe(&graph, &providers, &machines(), &state).unwrap();
 
     let calls = asked();
     assert_eq!(calls.len(), 1, "still one journey to that machine");
@@ -216,7 +243,7 @@ fn a_graph_that_cannot_be_ordered_stops_the_run_rather_than_reading_as_empty() {
             .expect("distinct addresses");
     }
 
-    let refusal = observe(&graph, &watch(), &State::new())
+    let refusal = observe(&graph, &watch(), &machines(), &State::new())
         .expect_err("a cycle is not a configuration that declares nothing");
     assert!(
         refusal.to_string().contains("os:file.a@web-01"),

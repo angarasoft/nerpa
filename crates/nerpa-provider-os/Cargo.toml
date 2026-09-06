@@ -14,9 +14,11 @@ categories.workspace = true
 
 [dependencies]
 nerpa-core = { workspace = true }
+nerpa-proto = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+nerpa-transport = { workspace = true }
 # So a test can look for a credential in the plan as a machine would receive it,
 # not only as `Debug` prints it.
 serde_json = { workspace = true }

@@ -614,7 +614,7 @@ Bytes that are not text were briefly refused here and are now simply read, \
 because `Value::Bytes` can hold them. The refusal was the right answer while the \
 model could not describe the file; reading it is the right answer now."""
 bypass = "Any filesystem call whose error is discarded — `.ok()?` on a read, a metadata call, a `read_link` — turns a failure back into absence, and nothing in the type of `read` prevents it. A provider tested only against its own fake would never notice: an in-memory backend has no permissions to deny and no bytes that are not text."
-enforced_by = ["crates/nerpa-provider-os/src/lib.rs"]
+enforced_by = ["crates/nerpa-executor/src/lib.rs"]
 tests = [
   "a_file_is_written_and_the_second_run_has_nothing_to_do",
   "a_file_edited_by_hand_is_brought_back",
@@ -639,7 +639,7 @@ and the file on the other side of a pointer is not that path. A directory with \
 something in it fails the removal and says so, which is a person's decision to \
 make rather than the tool's."""
 bypass = "A removal that reaches for `remove_dir_all` because a non-empty directory is inconvenient, or a write that lands on a symlink and follows it into a file the declaration never named. Both read as correct against the in-memory fake, which has no directory that can be non-empty and no link to follow."
-enforced_by = ["crates/nerpa-provider-os/src/lib.rs"]
+enforced_by = ["crates/nerpa-executor/src/lib.rs"]
 tests = [
   "an_empty_directory_is_still_removed",
   "a_resource_removed_from_the_configuration_is_removed_from_the_machine",

@@ -13,7 +13,9 @@ use std::collections::BTreeMap;
 use nerpa_core::address::address;
 use nerpa_core::plan::ChangeKind;
 use nerpa_core::planner::plan;
-use nerpa_core::provider::{Attributes, Provider, ProviderError, Providers, Reading};
+use nerpa_core::provider::{
+    Attributes, Machines, Provider, ProviderError, Providers, Reach, Reading,
+};
 use nerpa_core::run::{RunError, apply, observe};
 use nerpa_core::schema::Schema;
 use nerpa_core::secret::{Key, Remembered, Secrets};
@@ -52,7 +54,11 @@ impl Provider for Selective {
         Schema::new()
     }
 
-    fn read(&self, _batch: &[Reading]) -> Result<BTreeMap<Address, Attributes>, ProviderError> {
+    fn read(
+        &self,
+        _batch: &[Reading],
+        _reach: &dyn Reach,
+    ) -> Result<BTreeMap<Address, Attributes>, ProviderError> {
         Ok(BTreeMap::new())
     }
 
@@ -61,6 +67,7 @@ impl Provider for Selective {
         _address: &Address,
         _kind: ChangeKind,
         attributes: &Attributes,
+        _reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
         Ok(attributes
             .iter()
@@ -69,7 +76,12 @@ impl Provider for Selective {
             .collect())
     }
 
-    fn delete(&self, _address: &Address, _recorded: &Attributes) -> Result<(), ProviderError> {
+    fn delete(
+        &self,
+        _address: &Address,
+        _recorded: &Attributes,
+        _reach: &dyn Reach,
+    ) -> Result<(), ProviderError> {
         Ok(())
     }
 
@@ -79,6 +91,21 @@ impl Provider for Selective {
 }
 
 use nerpa_core::Address;
+
+/// A far end nobody asks. These providers decide their answers themselves; the
+/// seam is there because the trait has one, not because this uses it.
+#[derive(Debug)]
+struct Deaf;
+
+impl Reach for Deaf {
+    fn ask(&self, _ask: &nerpa_proto::Ask) -> Result<nerpa_proto::Answer, ProviderError> {
+        Err(ProviderError::NotOnAMachine)
+    }
+}
+
+fn machines() -> Machines {
+    Machines::new().everywhere(Box::new(Deaf))
+}
 
 fn graph_of(attributes: &[(&str, &str)]) -> Graph {
     let mut graph = Graph::new();
@@ -94,12 +121,13 @@ fn graph_of(attributes: &[(&str, &str)]) -> Graph {
 fn run(graph: &Graph, provider: Selective) -> (Result<(), RunError>, State) {
     let providers = Providers::new().with(Box::new(provider));
     let mut state = State::new();
-    let observed = observe(graph, &providers, &state).expect("readable");
+    let observed = observe(graph, &providers, &machines(), &state).expect("readable");
     let intended =
         plan(graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
     let outcome = apply(
         &intended,
         &providers,
+        &machines(),
         &observed,
         &mut state,
         secrets(),

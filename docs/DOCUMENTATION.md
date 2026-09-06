@@ -69,11 +69,27 @@ noticing.
 
 ## The site
 
-Not built yet, and deliberately last. When it is: mdBook, one tool, no JavaScript
-toolchain, built by CI and published as a static site. It carries getting
-started, concepts, the command reference, package repository instructions, and
-migration notes from Terraform and Ansible. It sources from this repository so
-that it cannot describe a version that does not exist.
+Not built yet, and deliberately last. When it is: **Sphinx**, assembled from
+sources that already exist and are already checked —
+[0036](decisions/0036-assemble-the-book-and-let-prose-explain-not-promise.md).
+
+* **Order** comes from `ARCHITECTURE.md`. Its sections are a sequence somebody
+  curated and a gate keeps honest; the book does not need a second one.
+* **Explanation** comes from module `//!` documentation, read at build time.
+* **Promises** come from `docs/invariants.toml`, and from nowhere else. Prose may
+  explain anything and may assert a guarantee only by naming an invariant, so the
+  book cannot promise more than the registry — which is itself checked against
+  the code in both directions.
+* **Examples** are executed during the build rather than pasted, because
+  evaluation is hermetic and a second run has to be empty.
+* **Russian** is a `gettext` catalogue keyed to the English source. An
+  independently written translation is not expressible, which is what makes the
+  rule below a rule rather than a hope.
+
+Every page says whether it was derived or written. What cannot be derived is
+known in advance: the reading order, the comparison with Terraform and Ansible,
+and the reason anybody should care — judgements about the world outside this
+repository, which nothing in the source knows.
 
 Reference material that belongs to the code — the address grammar, the resource
 kinds a provider offers — is generated, not retyped. Anything retyped is a second

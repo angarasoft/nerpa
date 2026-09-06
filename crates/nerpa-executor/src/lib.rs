@@ -95,6 +95,7 @@ fn perform(premise: &[Premise], operations: &[Operation]) -> Answer {
     Answer::Done { became }
 }
 
+// ENFORCES: INV-READ-001
 /// What is at a path, or what a program says.
 ///
 /// Three answers about a path and never two: what is there, that nothing is
@@ -186,6 +187,7 @@ fn act(operation: &Operation) -> Result<Seen, String> {
                     return Ok(Seen::Nothing);
                 }
                 Err(error) => return Err(format!("{}: {error}", path.display())),
+                // ENFORCES: INV-DELETE-001
                 // Never recursive. A directory this made may since have been
                 // filled by somebody else, and removing what nothing recorded is
                 // a second, unannounced change.

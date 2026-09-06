@@ -1,96 +1,58 @@
 //! Files and directories on a machine.
 //!
 //! The first provider, and deliberately the smallest useful one. It owns two
-//! kinds — `os:file` and `os:directory` — and it runs where Nerpa runs, with no
-//! transport in between. Packages, services, users and sysctls need privileges
-//! and a real system underneath, so they arrive with the executor rather than
-//! here.
+//! kinds — `os:file` and `os:directory` — and it does not touch a disk.
 //!
-//! # How the pieces fit
+//! Provider logic runs where the engine runs and the work happens where the
+//! resource is ([0032](../../../docs/decisions)), so this is a **translator**:
+//! it turns readings into things to look at, turns a change into things to do,
+//! and turns the answers back into attributes. What actually opens a file is the
+//! executor at the other end of a [`Reach`], and that is true whether the far
+//! end is a pipe on this machine or `ssh` to another one.
 //!
 //! ```text
-//!   Os ─── read  ─── what is on disk now, nothing, or a refusal to guess
-//!      └── apply ─── writes it, and reports back what it became
-//!            │
-//!            └── Backend ─── Disk, or Memory for the fake
+//!   Reading ──▶ Observation ──┐                 ┌──▶ Seen ──▶ Attributes
+//!                             │  one journey    │
+//!   Change  ──▶ Operation ────┴─── Reach ───────┘
 //! ```
 //!
 //! # Correctness
 //!
-//! `apply` reports what the resource *became* by reading it back, not by
-//! repeating what it was told. A provider that echoes its input cannot notice
-//! that it wrote nothing, and the next plan would be empty for the wrong reason.
-//!
-//! Reading answers one of **three** things, never two: what is there, that
-//! nothing is there, or that it could not tell. The third is the one that
-//! matters. A provider that reports a file it may not open as absent makes the
-//! plan propose creating it and the apply overwrite it — losing the contents and
-//! resetting the mode — which is the silent wrongness this project exists to
-//! avoid, committed by the tool itself. `ProviderError::Unreachable` says the
-//! same thing about machines and says why.
+//! Everything is read back rather than echoed: `apply` reports what the resource
+//! *became*, from what the far end saw after writing it. A provider that repeats
+//! its input cannot notice that it wrote nothing, and the next plan would be
+//! empty for the wrong reason.
 //!
 //! Unix only, and not apologetically: file modes are the whole point of the
 //! `mode` attribute, and a portable abstraction over them would describe
 //! something nobody runs.
 
 use std::collections::BTreeMap;
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
-use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 use nerpa_core::address::{Address, Kind, Provider as ProviderName};
 use nerpa_core::plan::ChangeKind;
-use nerpa_core::provider::{Attributes, Provider, ProviderError, Reading};
+use nerpa_core::provider::{Attributes, Provider, ProviderError, Reach, Reading};
 use nerpa_core::schema::Schema;
 use nerpa_core::value::Value;
+use nerpa_proto::{Answer, Ask, Entry, Observation, Operation, Seen};
 
 /// Files and directories.
 #[derive(Debug)]
 pub struct Os {
     name: ProviderName,
-    backend: Backend,
 }
 
-/// Where the provider does its work.
-#[derive(Debug)]
-enum Backend {
-    /// The machine this is running on.
-    Disk,
-    /// Nothing at all, for tests.
-    ///
-    /// A `Mutex` rather than a `RefCell` because a provider is `Sync`: machines
-    /// are visited in parallel, so one provider is shared across threads. See
-    /// decision 0031.
-    Memory(Mutex<BTreeMap<PathBuf, Entry>>),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Entry {
-    Directory {
-        mode: u32,
-    },
-    File {
-        /// Bytes rather than text: a certificate, a keytab or a file in an
-        /// encoding that is not UTF-8 is a file somebody manages, and a `String`
-        /// cannot hold one. `Value::bytes` puts anything readable back into text
-        /// on the way out, so nothing legible stops being legible.
-        content: Vec<u8>,
-        mode: u32,
-    },
-    /// A pointer to somewhere else. Not a kind this provider manages, and
-    /// reported rather than followed: reading through it would describe one
-    /// object and writing through it would change another.
-    Symlink {
-        target: String,
-    },
+impl Default for Os {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 const DEFAULT_FILE_MODE: u32 = 0o644;
 const DEFAULT_DIRECTORY_MODE: u32 = 0o755;
 
 impl Os {
-    /// A provider that works on the machine it is running on.
+    /// A provider that translates for the `os` kinds.
     ///
     /// # Panics
     ///
@@ -104,123 +66,82 @@ impl Os {
     pub fn new() -> Self {
         Self {
             name: ProviderName::new("os").expect("`os` is a valid provider name"),
-            backend: Backend::Disk,
         }
     }
+}
 
-    /// What is at a path: something, nothing, or a refusal to say.
-    fn entry(&self, path: &Path) -> Result<Option<Entry>, String> {
-        match &self.backend {
-            Backend::Memory(entries) => Ok(held(entries)?.get(path).cloned()),
-            Backend::Disk => read_from_disk(path),
-        }
-    }
-
-    /// The same, with the address attached so a failure names the resource.
-    fn entry_for(&self, address: &Address, path: &Path) -> Result<Option<Entry>, ProviderError> {
-        self.entry(path).map_err(|problem| ProviderError::World {
+/// What the far end saw, or a refusal that carries its reason rather than
+/// replacing it.
+///
+/// The first version answered "the far end did not answer a look with what it
+/// found" for every shape it did not expect, which threw away the one thing
+/// worth having — that a file could not be read, and why. A translator losing
+/// the reason is the silent wrongness this project is about, committed by the
+/// part meant to prevent it.
+fn all(answer: Answer, address: &Address) -> Result<Vec<Seen>, ProviderError> {
+    match answer {
+        Answer::Found { seen } | Answer::Done { became: seen } => Ok(seen),
+        Answer::Moved { at } => Err(ProviderError::World {
             address: address.clone(),
-            problem,
+            problem: format!("the machine is not what the plan was computed from, at premise {at}"),
+        }),
+        Answer::Failed { at, problem } => Err(ProviderError::World {
+            address: address.clone(),
+            problem: format!("at {at}: {problem}"),
+        }),
+        other => Err(ProviderError::World {
+            address: address.clone(),
+            problem: format!("the far end said something unexpected: {other:?}"),
+        }),
+    }
+}
+
+/// The same, for an ask about exactly one thing.
+fn one(answer: Answer, address: &Address) -> Result<Seen, ProviderError> {
+    all(answer, address)?
+        .into_iter()
+        .next()
+        .ok_or_else(|| ProviderError::World {
+            address: address.clone(),
+            problem: "the far end answered about nothing at all".to_owned(),
         })
-    }
+}
 
-    fn store(&self, path: &Path, entry: Entry) -> Result<(), std::io::Error> {
-        match &self.backend {
-            Backend::Memory(entries) => {
-                let mut held = entries
-                    .lock()
-                    .map_err(|_| std::io::Error::other("the in-memory backend was poisoned"))?;
-                held.insert(path.to_owned(), entry);
-                Ok(())
-            }
-            Backend::Disk => write_to_disk(path, &entry),
+/// What a reading of a path amounts to, as attributes.
+///
+/// `Ok(None)` is "there is nothing at that path", which is an answer. An error
+/// is "the far end answered about something this never asked about", which is
+/// the two ends having lost step — a different thing, and not one to report as
+/// an absent resource.
+fn as_attributes(
+    path: &str,
+    seen: &Seen,
+    address: &Address,
+) -> Result<Option<Attributes>, ProviderError> {
+    let mut attributes = Attributes::new();
+    attributes.insert("path".to_owned(), Value::Text(path.to_owned()));
+    match seen {
+        Seen::Nothing => return Ok(None),
+        Seen::Entry(Entry::Directory { mode }) => {
+            attributes.insert("mode".to_owned(), Value::Text(format!("{mode:04o}")));
+        }
+        Seen::Entry(Entry::File { content, mode }) => {
+            attributes.insert("content".to_owned(), Value::bytes(content.clone()));
+            attributes.insert("mode".to_owned(), Value::Text(format!("{mode:04o}")));
+        }
+        Seen::Entry(Entry::Symlink { target }) => {
+            attributes.insert("symlink_to".to_owned(), Value::Text(target.clone()));
+        }
+        // This provider only ever asks about paths, so anything else means the
+        // two ends disagree about what was asked.
+        other => {
+            return Err(ProviderError::World {
+                address: address.clone(),
+                problem: format!("asked about {path}, and was answered {other:?}"),
+            });
         }
     }
-}
-
-/// The in-memory backend, or a message rather than a panic if a thread died
-/// holding it.
-fn held(
-    entries: &Mutex<BTreeMap<PathBuf, Entry>>,
-) -> Result<std::sync::MutexGuard<'_, BTreeMap<PathBuf, Entry>>, String> {
-    entries
-        .lock()
-        .map_err(|_| "the in-memory backend was poisoned".to_owned())
-}
-
-impl Default for Os {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-// ENFORCES: INV-READ-001
-fn read_from_disk(path: &Path) -> Result<Option<Entry>, String> {
-    let shown = path.display();
-    let metadata = match fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
-        // The one error that means what it says.
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(format!("{shown}: {error}")),
-    };
-
-    let kind = metadata.file_type();
-    // Asked before anything else, because `symlink_metadata` describes the link
-    // and reading the path describes its target. Answering with the mode of one
-    // and the contents of the other would be a record of an object that does not
-    // exist.
-    if kind.is_symlink() {
-        let target = fs::read_link(path).map_err(|error| format!("{shown}: {error}"))?;
-        return Ok(Some(Entry::Symlink {
-            target: target.display().to_string(),
-        }));
-    }
-
-    let mode = metadata.permissions().mode() & 0o7777;
-    if kind.is_dir() {
-        return Ok(Some(Entry::Directory { mode }));
-    }
-    if !kind.is_file() {
-        return Err(format!(
-            "{shown} is neither a file nor a directory, and this provider has no \
-             way to describe what it is"
-        ));
-    }
-
-    // Bytes, not text. `Value::bytes` puts anything that is text back into text,
-    // so nothing readable stops being readable, and a certificate stops being
-    // unrepresentable.
-    match fs::read(path) {
-        Ok(content) => Ok(Some(Entry::File { content, mode })),
-        Err(error) => Err(format!("{shown}: {error}")),
-    }
-}
-
-fn write_to_disk(path: &Path, entry: &Entry) -> Result<(), std::io::Error> {
-    match entry {
-        Entry::Directory { mode } => {
-            fs::create_dir_all(path)?;
-            fs::set_permissions(path, fs::Permissions::from_mode(*mode))
-        }
-        Entry::File { content, mode } => {
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            // A symlink here points at a file the declaration does not name, and
-            // writing through it would change that one instead. Removing a
-            // pointer destroys nothing; the plan showed this path becoming a
-            // file, and this is that.
-            if fs::symlink_metadata(path).is_ok_and(|found| found.file_type().is_symlink()) {
-                fs::remove_file(path)?;
-            }
-            fs::write(path, content)?;
-            fs::set_permissions(path, fs::Permissions::from_mode(*mode))
-        }
-        Entry::Symlink { target } => Err(std::io::Error::other(format!(
-            "{} is a symlink to {target}, and this provider does not make symlinks",
-            path.display()
-        ))),
-    }
+    Ok(Some(attributes))
 }
 
 fn text(attributes: &Attributes, name: &str) -> Option<String> {
@@ -231,9 +152,6 @@ fn text(attributes: &Attributes, name: &str) -> Option<String> {
 }
 
 /// What a file is to hold, from text or from bytes.
-///
-/// A declaration writes text almost always and bytes when it has to; both end up
-/// as the same thing on disk, which is what the provider needs.
 fn content_of(attributes: &Attributes, address: &Address) -> Result<Vec<u8>, ProviderError> {
     match attributes.get("content") {
         None => Ok(Vec::new()),
@@ -262,31 +180,11 @@ fn mode(attributes: &Attributes, address: &Address, default: u32) -> Result<u32,
     })
 }
 
-fn required_path(attributes: &Attributes, address: &Address) -> Result<PathBuf, ProviderError> {
-    text(attributes, "path")
-        .map(PathBuf::from)
-        .ok_or_else(|| ProviderError::Declaration {
-            address: address.clone(),
-            problem: "needs a `path`".to_owned(),
-        })
-}
-
-fn as_attributes(path: &Path, entry: &Entry) -> Attributes {
-    let mut attributes = Attributes::new();
-    attributes.insert("path".to_owned(), Value::Text(path.display().to_string()));
-    match entry {
-        Entry::Directory { mode } => {
-            attributes.insert("mode".to_owned(), Value::Text(format!("{mode:04o}")));
-        }
-        Entry::File { content, mode } => {
-            attributes.insert("content".to_owned(), Value::bytes(content.clone()));
-            attributes.insert("mode".to_owned(), Value::Text(format!("{mode:04o}")));
-        }
-        Entry::Symlink { target } => {
-            attributes.insert("symlink_to".to_owned(), Value::Text(target.clone()));
-        }
-    }
-    attributes
+fn required_path(attributes: &Attributes, address: &Address) -> Result<String, ProviderError> {
+    text(attributes, "path").ok_or_else(|| ProviderError::Declaration {
+        address: address.clone(),
+        problem: "needs a `path`".to_owned(),
+    })
 }
 
 impl Provider for Os {
@@ -307,12 +205,15 @@ impl Provider for Os {
             .immutable(self.name.clone(), kind("directory"), "path")
     }
 
-    /// Reads the batch one path at a time, because on this machine there is
-    /// nothing to save: `stat` is `stat` whether it is asked for once or ten
-    /// times. The batch exists for the version that has to cross a network, and
-    /// this one keeps the shape so that version can slot underneath unchanged.
-    fn read(&self, batch: &[Reading]) -> Result<BTreeMap<Address, Attributes>, ProviderError> {
-        let mut found = BTreeMap::new();
+    /// One journey for the whole batch, which is the only reason the batch is
+    /// the unit. See `INV-BATCH-001`.
+    fn read(
+        &self,
+        batch: &[Reading],
+        reach: &dyn Reach,
+    ) -> Result<BTreeMap<Address, Attributes>, ProviderError> {
+        let mut asking = Vec::new();
+        let mut about = Vec::new();
 
         for reading in batch {
             let address = reading.address();
@@ -328,15 +229,32 @@ impl Provider for Os {
 
             // No settled path means the declaration is waiting on something that
             // has not happened. Nothing to look at, and nothing to guess.
-            let Some(path) = text(reading.locator(), "path").map(PathBuf::from) else {
+            let Some(path) = text(reading.locator(), "path") else {
                 continue;
             };
-
-            if let Some(entry) = self.entry_for(address, &path)? {
-                found.insert(address.clone(), as_attributes(&path, &entry));
-            }
+            asking.push(Observation::Path { path: path.clone() });
+            about.push((address.clone(), path));
         }
 
+        // Taken before the ask, so that a complaint about the answer has a real
+        // resource to be about rather than one made up to fill the field.
+        let Some((first, _)) = about.first().cloned() else {
+            return Ok(BTreeMap::new());
+        };
+
+        let seen = all(
+            reach.ask(&Ask::Look {
+                observations: asking,
+            })?,
+            &first,
+        )?;
+
+        let mut found = BTreeMap::new();
+        for ((address, path), answer) in about.into_iter().zip(seen) {
+            if let Some(attributes) = as_attributes(&path, &answer, &address)? {
+                found.insert(address, attributes);
+            }
+        }
         Ok(found)
     }
 
@@ -345,13 +263,16 @@ impl Provider for Os {
         address: &Address,
         _kind: ChangeKind,
         attributes: &Attributes,
+        reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
         let path = required_path(attributes, address)?;
-        let entry = match address.kind().as_str() {
-            "directory" => Entry::Directory {
+        let operation = match address.kind().as_str() {
+            "directory" => Operation::Directory {
+                path: path.clone(),
                 mode: mode(attributes, address, DEFAULT_DIRECTORY_MODE)?,
             },
-            "file" => Entry::File {
+            "file" => Operation::File {
+                path: path.clone(),
                 content: content_of(attributes, address)?,
                 mode: mode(attributes, address, DEFAULT_FILE_MODE)?,
             },
@@ -363,68 +284,42 @@ impl Provider for Os {
             }
         };
 
-        self.store(&path, entry)
-            .map_err(|error| ProviderError::World {
-                address: address.clone(),
-                problem: format!("{}: {error}", path.display()),
-            })?;
+        let answer = reach.ask(&Ask::Perform {
+            plan: None,
+            premise: Vec::new(),
+            operations: vec![operation],
+        })?;
 
-        // Read back rather than echo: a provider that repeats its input cannot
-        // notice that it wrote nothing.
-        self.entry_for(address, &path)?
-            .map(|written| as_attributes(&path, &written))
-            .ok_or_else(|| ProviderError::World {
-                address: address.clone(),
-                problem: format!("{} was not there after writing it", path.display()),
-            })
-    }
-
-    fn delete(&self, address: &Address, recorded: &Attributes) -> Result<(), ProviderError> {
-        let path = required_path(recorded, address)?;
-
-        let removed = match &self.backend {
-            Backend::Memory(entries) => {
-                match entries.lock() {
-                    Ok(mut held) => {
-                        held.remove(&path);
-                    }
-                    Err(_) => {
-                        return Err(ProviderError::World {
-                            address: address.clone(),
-                            problem: "the in-memory backend was poisoned".to_owned(),
-                        });
-                    }
-                }
-                Ok(())
-            }
-            Backend::Disk => match self.entry_for(address, &path)? {
-                // Already gone is the state that was asked for, not a failure.
-                None => Ok(()),
-                // ENFORCES: INV-DELETE-001
-                // `remove_dir`, never `remove_dir_all`: a directory nerpa made
-                // may since have been filled by somebody else, and recursively
-                // deleting what it never created is not a removal, it is a
-                // second, unannounced change. A non-empty directory fails here
-                // and says so.
-                Some(Entry::Directory { .. }) => fs::remove_dir(&path),
-                Some(Entry::File { .. } | Entry::Symlink { .. }) => fs::remove_file(&path),
-            },
-        };
-
-        removed.map_err(|error| ProviderError::World {
+        // Read back rather than echoed: the far end reports what the path became
+        // after it wrote, so writing nothing is noticed.
+        let seen = one(answer, address)?;
+        as_attributes(&path, &seen, address)?.ok_or_else(|| ProviderError::World {
             address: address.clone(),
-            problem: format!("{}: {error}", path.display()),
+            problem: format!("{path} was not there after writing it"),
         })
     }
 
+    fn delete(
+        &self,
+        address: &Address,
+        recorded: &Attributes,
+        reach: &dyn Reach,
+    ) -> Result<(), ProviderError> {
+        let path = required_path(recorded, address)?;
+        let answer = reach.ask(&Ask::Perform {
+            plan: None,
+            premise: Vec::new(),
+            operations: vec![Operation::Remove { path }],
+        })?;
+        one(answer, address).map(|_| ())
+    }
+
+    /// Nothing to fake.
+    ///
+    /// This provider decides things and touches nothing, so there is no world in
+    /// it to stand in for. What a test wants instead is a [`Reach`] that answers
+    /// without a machine — the fakery moved to the boundary that has one.
     fn fake() -> Self {
-        #[allow(
-            clippy::expect_used,
-            reason = "a literal that stopped parsing is a bug here"
-        )]
-        Self {
-            name: ProviderName::new("os").expect("`os` is a valid provider name"),
-            backend: Backend::Memory(Mutex::new(BTreeMap::new())),
-        }
+        Self::new()
     }
 }

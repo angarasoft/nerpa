@@ -51,6 +51,14 @@ impl Inventory {
         self.nodes.insert(target, Provenance::Preexisting);
     }
 
+    /// Every node this inventory knows, in a stable order.
+    ///
+    /// Stable because a run that reaches machines in an order nobody can predict
+    /// is a run nobody can compare against the last one.
+    pub fn nodes(&self) -> impl Iterator<Item = &Target> {
+        self.nodes.keys()
+    }
+
     /// Where a node comes from, if the inventory has been told.
     #[must_use]
     pub fn provenance(&self, target: &Target) -> Option<&Provenance> {
