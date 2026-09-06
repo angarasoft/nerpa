@@ -150,9 +150,15 @@ was written by, because an executor installed once outlives the engine that put
 it there, and an unknown version is refused rather than read as a subset. The
 length is checked before a byte is allocated: it is an instruction to allocate
 arriving from the far end of a pipe.
-The transport carries bytes and knows nothing about them: `teleport`, `ssh`,
-`local`, `container`. The executor holds no secrets and no state beyond its
-fingerprint, and is signed and verified in both directions.
+The transport carries bytes and knows nothing about them, and is a command that
+produces a pipe: the executor here, or `ssh` to run it there. One connection
+carries a whole run.
+
+Built and shown against a machine reached through a bastion: read, plan, write,
+and a second run with nothing to do. Not built: `teleport`, getting the executor
+onto a machine — today it is copied by hand — and the fingerprint, which the
+executor refuses to invent rather than answering with a number nothing stands
+behind.
 
 ## Where provider logic runs — [0032](decisions/0032-provider-logic-stays-on-the-control-machine.md) · built
 
@@ -203,7 +209,7 @@ cannot be checked is signing *do this, whatever is there*.
 The protocol carries it and the executor checks it; the planner does not yet
 produce one.
 
-## Privilege — [0035](decisions/0035-privilege-belongs-to-the-transport.md) · planned
+## Privilege — [0035](decisions/0035-privilege-belongs-to-the-transport.md) · built
 
 Escalation is the transport's business, because the executor is a filter that
 knows nothing about how it was reached:
@@ -217,7 +223,17 @@ Ansible's `become` is a matrix because escalation lives inside the task layer;
 here it is an argument, and arguments do not freeze. No password travels: a sudo
 password is a key, and the record about keys says not to carry them.
 
-Nothing escalates yet, because nothing has reached a second machine.
+A node says how it is reached and what it runs under, and nothing else does:
+
+```toml
+[nodes.web-01]
+ssh = "10.0.61.34"
+executor = "/home/zevs/.cache/nerpa/nerpa-executor"
+become = "sudo -n"
+```
+
+Demonstrated on a machine through a bastion: a file written as root with mode
+`0600`, no password anywhere, no pty and no prompt to match.
 
 ## Configuration files — [0023](decisions/0023-templates-that-look-like-the-file.md) · partly built
 

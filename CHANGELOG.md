@@ -205,6 +205,17 @@ without ceremony until the first stage is complete.
   branched on, while `host.os_family` may not. That difference is the whole reason
   a group can decide which resources exist and a fact cannot.
 
+- `ssh`, and the first machine that was not this one. A node says how it is
+  reached — `ssh`, where the executor is, and what to run it under — and nothing
+  else does. Shown end to end against a Rocky Linux machine through a bastion:
+  a group iterated, a template rendered, a plan showing the file's contents, CBOR
+  over one connection, the file written, a second run with nothing to do, a
+  hand-edited file reported as drift, and `os_family` read from the machine
+  choosing the path. Then the same with `become = "sudo -n"`, writing a file as
+  root with mode 0600 — no password anywhere, no pty, no prompt to match.
+
+  Not built: getting the executor onto a machine, which today is a copy by hand.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

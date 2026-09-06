@@ -28,6 +28,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
+use nerpa_config::fleet::{Fleet, Route};
 use nerpa_core::planner;
 use nerpa_core::provider::{Machines, Providers};
 use nerpa_core::run;
@@ -89,7 +90,7 @@ fn main() -> ExitCode {
 /// is what makes the whole path — provider, wire, executor — real on one machine
 /// before there is a second one. `ssh` is the same call with a different command
 /// in front of it, which is the point of decision 0032.
-fn reachable(graph: &nerpa_core::Graph) -> Result<Machines, String> {
+fn reachable(graph: &nerpa_core::Graph, fleet: &Fleet) -> Result<Machines, String> {
     let beside = std::env::current_exe()
         .map_err(|error| format!("this program cannot tell where it is: {error}"))?
         .parent()
@@ -105,8 +106,27 @@ fn reachable(graph: &nerpa_core::Graph) -> Result<Machines, String> {
 
     let mut machines = Machines::new();
     for node in graph.inventory().nodes() {
-        let reach = Piped::running(node, &beside.display().to_string(), &[])
-            .map_err(|error| error.to_string())?;
+        let (program, arguments) = match fleet.route(node) {
+            Route::Here => (beside.display().to_string(), Vec::new()),
+            Route::Ssh {
+                host,
+                executor,
+                escalate,
+            } => {
+                // `BatchMode` because a run that hangs waiting for a prompt
+                // nobody will see is worse than one that fails: a fleet stops
+                // half way and nothing says why. Everything else about how this
+                // host is reached — the port, the jump host, the key — belongs
+                // to ssh's own configuration and is deliberately not repeated
+                // here.
+                let mut arguments = vec!["-o".to_owned(), "BatchMode=yes".to_owned(), host];
+                arguments.extend(escalate);
+                arguments.push(executor);
+                ("ssh".to_owned(), arguments)
+            }
+        };
+        let reach =
+            Piped::running(node, &program, &arguments).map_err(|error| error.to_string())?;
         machines = machines.with(node.clone(), Box::new(reach));
     }
     Ok(machines)
@@ -133,17 +153,16 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
         Some(path) => {
             let text = std::fs::read_to_string(path)
                 .map_err(|error| format!("{}: {error}", path.display()))?;
-            nerpa_config::fleet::Fleet::read(&text)
-                .map_err(|problem| format!("{}: {problem}", path.display()))?
+            Fleet::read(&text).map_err(|problem| format!("{}: {problem}", path.display()))?
         }
-        None => nerpa_config::fleet::Fleet::empty(),
+        None => Fleet::empty(),
     };
 
     let graph = nerpa_config::evaluate(
         &arguments.file.display().to_string(),
         &source,
         Box::new(nerpa_config::template::Directory::at(root)),
-        fleet,
+        fleet.clone(),
     )
     .map_err(|error| error.to_string())?;
 
@@ -165,7 +184,7 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     // One connection per machine, opened before anything is read and closed
     // when the run ends. The executor is looked for beside this program: an
     // install puts them together, and a build leaves them together too.
-    let machines = reachable(&graph)?;
+    let machines = reachable(&graph, &fleet)?;
 
     let observed =
         run::observe(&graph, &providers, &machines, &state).map_err(|error| error.to_string())?;

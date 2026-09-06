@@ -161,3 +161,58 @@ for host in group("web"):
     assert_eq!(graph.len(), 1, "only web-02 has sixteen");
     assert!(graph.get(&address("os:file.big@web-02")).is_some());
 }
+
+/// How a machine is reached is a property of the node, not of the protocol.
+/// Escalation is an argument and appears nowhere on the wire — decision 0035.
+#[test]
+fn a_node_says_how_it_is_reached_and_what_it_runs_under() {
+    use nerpa_config::fleet::Route;
+
+    let fleet = Fleet::read(
+        r#"
+[groups.test]
+kept = 1
+
+[nodes.here]
+groups = ["test"]
+
+[nodes.plain]
+groups = ["test"]
+ssh = "10.0.61.34"
+
+[nodes.privileged]
+groups = ["test"]
+ssh = "web-01"
+executor = "/opt/nerpa/nerpa-executor"
+become = "sudo -n"
+"#,
+    )
+    .expect("a fleet");
+
+    let node = |name: &str| nerpa_core::Target::new(name).expect("a node name");
+
+    assert_eq!(
+        fleet.route(&node("here")),
+        Route::Here,
+        "a machine the document says nothing about is this one"
+    );
+    assert_eq!(
+        fleet.route(&node("plain")),
+        Route::Ssh {
+            host: "10.0.61.34".to_owned(),
+            executor: "nerpa-executor".to_owned(),
+            escalate: Vec::new(),
+        },
+        "and one that names no executor expects it on the path"
+    );
+    assert_eq!(
+        fleet.route(&node("privileged")),
+        Route::Ssh {
+            host: "web-01".to_owned(),
+            executor: "/opt/nerpa/nerpa-executor".to_owned(),
+            escalate: vec!["sudo".to_owned(), "-n".to_owned()],
+        },
+        "escalation is words, because a shell string is where somebody else's \
+         quoting becomes somebody else's command"
+    );
+}

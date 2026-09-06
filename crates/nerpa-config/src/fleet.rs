@@ -40,6 +40,29 @@ pub struct Fleet {
 struct Machine {
     groups: Vec<String>,
     values: BTreeMap<String, CoreValue>,
+    route: Route,
+}
+
+/// How a machine is reached.
+///
+/// A property of the node rather than of the protocol, which is decision 0035:
+/// the executor is a filter that knows nothing about how it was reached, so
+/// where it runs and what it runs under are settled before the first byte of
+/// wire. Escalation is an argument here and appears nowhere else.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub enum Route {
+    /// It is the machine the engine is running on.
+    #[default]
+    Here,
+    /// Reached by running `ssh`.
+    Ssh {
+        /// What to give `ssh` — a host, or an alias its own configuration knows.
+        host: String,
+        /// Where the executor is over there.
+        executor: String,
+        /// What to run it under, one word to an entry: `["sudo", "-n"]`.
+        escalate: Vec<String>,
+    },
 }
 
 impl Fleet {
@@ -126,6 +149,7 @@ impl Fleet {
                 Machine {
                     groups: belongs,
                     values,
+                    route: read_route(name, described)?,
                 },
             );
         }
@@ -154,6 +178,18 @@ impl Fleet {
         )
     }
 
+    /// How to reach a machine.
+    ///
+    /// A machine the document does not describe is this one, which is what a
+    /// configuration naming its own nodes means by `node("localhost")`.
+    #[must_use]
+    pub fn route(&self, node: &Target) -> Route {
+        self.nodes
+            .get(node)
+            .map(|machine| machine.route.clone())
+            .unwrap_or_default()
+    }
+
     /// Everything written down about a machine.
     #[must_use]
     pub(crate) fn values_of(&self, node: &Target) -> BTreeMap<String, CoreValue> {
@@ -174,6 +210,41 @@ impl Fleet {
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty()
     }
+}
+
+/// How a machine says it is reached.
+fn read_route(name: &str, described: &toml::Value) -> Result<Route, String> {
+    let Some(host) = described.get("ssh") else {
+        return Ok(Route::Here);
+    };
+    let host = host
+        .as_str()
+        .ok_or_else(|| format!("{name}: `ssh` has to be a host or an alias"))?
+        .to_owned();
+
+    let executor = described
+        .get("executor")
+        .map_or(Ok("nerpa-executor"), |given| {
+            given
+                .as_str()
+                .ok_or_else(|| format!("{name}: `executor` has to be a path"))
+        })?
+        .to_owned();
+
+    // Split rather than passed as one string, because a shell string is where
+    // somebody else's quoting becomes somebody else's command.
+    let escalate = described.get("become").map_or(Ok(Vec::new()), |given| {
+        given
+            .as_str()
+            .map(|written| written.split_whitespace().map(ToOwned::to_owned).collect())
+            .ok_or_else(|| format!("{name}: `become` has to be a command such as \"sudo -n\""))
+    })?;
+
+    Ok(Route::Ssh {
+        host,
+        executor,
+        escalate,
+    })
 }
 
 /// A table of values, in the vocabulary a resource can carry.
