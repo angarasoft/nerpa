@@ -49,6 +49,8 @@ enum Rejected {
     NotOptions(String),
     #[error("select() was given nothing to choose between")]
     NoOptions,
+    #[error("the fleet describes no group called {0:?}")]
+    NoSuchGroup(String),
     #[error("{0}")]
     Template(String),
 }
@@ -60,6 +62,11 @@ fn declarations<'a>(evaluator: &Evaluator<'_, 'a, '_>) -> starlark::Result<&'a D
         .ok_or_else(|| {
             starlark::Error::new_other(std::io::Error::other("evaluation has no declaration store"))
         })
+}
+
+/// A machine, carrying what the fleet says about it.
+fn node_ref(store: &Declarations, node: &Target) -> NodeRef {
+    NodeRef::new(node.clone(), store.fleet().values_of(node))
 }
 
 /// Turns one Starlark value into something a resource can carry.
@@ -280,7 +287,7 @@ pub(crate) fn nerpa(builder: &mut GlobalsBuilder) {
 
         if provided_by.is_none() {
             store.add_node(target.clone(), None);
-            return Ok(NodeRef::new(target));
+            return Ok(node_ref(store, &target));
         }
 
         let Some(resource) = ResourceRef::from_value(provided_by) else {
@@ -289,6 +296,36 @@ pub(crate) fn nerpa(builder: &mut GlobalsBuilder) {
             )));
         };
         store.add_node(target.clone(), Some(resource.address().clone()));
-        Ok(NodeRef::new(target))
+        Ok(node_ref(store, &target))
+    }
+
+    /// Every machine in a group, as the fleet document has it.
+    ///
+    /// Iterable, because the inventory is data by the time the program sees it:
+    /// which machines exist is decided by a person or by the cloud stage and is
+    /// knowable before evaluation, while what a machine turned out to be is not.
+    /// That line is the whole of decision 0025, and it is why a hundred machines
+    /// need not be a hundred declarations.
+    fn group<'v>(
+        #[starlark(require = pos)] name: &str,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<Vec<NodeRef>> {
+        let store = declarations(eval)?;
+        let Some(members) = store.fleet().group(name) else {
+            return Err(starlark::Error::new_value(Rejected::NoSuchGroup(
+                name.to_owned(),
+            )));
+        };
+
+        // Registered as they are handed out rather than all at once when the
+        // fleet is read: a document describing two hundred machines should not
+        // make a run that touches three open two hundred connections.
+        Ok(members
+            .into_iter()
+            .map(|node| {
+                store.add_node(node.clone(), None);
+                node_ref(store, &node)
+            })
+            .collect())
     }
 }

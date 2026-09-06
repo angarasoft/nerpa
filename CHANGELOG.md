@@ -193,6 +193,18 @@ without ceremony until the first stage is complete.
   `arch` and `os_family` today — so what gathering costs is the length of that
   list rather than the length of what a machine could be asked.
 
+- A fleet, as a document: `--fleet fleet.toml` says which machines there are and
+  what is written down about them, and `for host in group("web")` builds a graph
+  for all of them from one declaration. Values come from groups and a node may
+  override them; two groups giving one node the same key is an error naming both
+  rather than a precedence resolution, because "where did this value come from"
+  should have one answer per value instead of a table of twenty-two levels.
+
+  Brackets for what somebody wrote down and a dot for what the machine will say:
+  `host["workers"]` is settled before evaluation and may be compared, iterated and
+  branched on, while `host.os_family` may not. That difference is the whole reason
+  a group can decide which resources exist and a fact cannot.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

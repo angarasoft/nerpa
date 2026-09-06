@@ -9,6 +9,7 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
 use nerpa_config::evaluate;
+use nerpa_config::fleet::Fleet;
 use nerpa_config::template::Held;
 use nerpa_core::Attribute;
 use nerpa_core::address::address;
@@ -31,6 +32,7 @@ resource("os:file.subject@web-01", {
         "main.star",
         source,
         Box::new(Held::new().holding("t.j2", template)),
+        Fleet::empty(),
     )
     .map_err(|error| error.to_string())?;
 
@@ -99,6 +101,7 @@ port = 8080
 resource("os:file.a@web-01", {"content": template("t.j2", {})})
 "#,
         Box::new(Held::new().holding("t.j2", "listen {{ port }};")),
+        Fleet::empty(),
     )
     .expect_err("a variable beside the call is not a variable in the template");
     assert!(refusal.to_string().contains("undefined"), "{refusal}");
@@ -131,6 +134,7 @@ fn a_template_that_is_not_there_says_so() {
         "main.star",
         r#"resource("os:file.a@web-01", {"content": template("absent.j2", {})})"#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("there is no such template");
     assert!(refusal.to_string().contains("absent.j2"), "{refusal}");

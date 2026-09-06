@@ -6,13 +6,15 @@
 // Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
+use nerpa_config::fleet::Fleet;
 use nerpa_config::template::Held;
 use nerpa_config::{ConfigError, evaluate};
 use nerpa_core::Attribute;
 use nerpa_core::address::address;
 
 fn graph_of(source: &str) -> nerpa_core::Graph {
-    evaluate("main.star", source, Box::new(Held::new())).expect("the configuration should evaluate")
+    evaluate("main.star", source, Box::new(Held::new()), Fleet::empty())
+        .expect("the configuration should evaluate")
 }
 
 #[test]
@@ -69,7 +71,7 @@ fn comparing_a_value_that_does_not_exist_yet_is_refused_before_anything_runs() {
         r#"x = db.ip not in ["10.0.0.1"]"#,
     ] {
         let source = format!("db = resource(\"yandex:instance.db\")\n{body}\n");
-        let refusal = evaluate("main.star", &source, Box::new(Held::new()))
+        let refusal = evaluate("main.star", &source, Box::new(Held::new()), Fleet::empty())
             .expect_err("this comparison should have been refused");
 
         let message = refusal.to_string();
@@ -107,6 +109,7 @@ for disk in db.disks:
     resource("yandex:disk." + disk)
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("iteration over an unresolved value must fail");
 
@@ -122,6 +125,7 @@ db = resource("yandex:instance.db")
 x = db.addresses[0]
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("indexing an unresolved value must fail");
 
@@ -141,6 +145,7 @@ if db.ready:
     resource("yandex:instance.web")
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("branching on an unresolved value must not produce a graph");
 
@@ -197,6 +202,7 @@ fn an_address_the_model_refuses_is_reported_rather_than_guessed_at() {
         "main.star",
         r#"resource("not-an-address")"#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("a malformed address must fail");
 
@@ -209,6 +215,7 @@ fn an_attribute_holding_something_a_resource_cannot_carry_is_reported() {
         "main.star",
         r#"resource("yandex:instance.db", {"f": len})"#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("a function is not a value a resource can carry");
 
@@ -252,7 +259,7 @@ fn a_comparison_hidden_behind_a_function_is_refused_by_the_value_itself() {
              if same({arguments}):\n    resource(\"yandex:instance.web\")\n"
         );
 
-        let refusal = evaluate("main.star", &source, Box::new(Held::new()))
+        let refusal = evaluate("main.star", &source, Box::new(Held::new()), Fleet::empty())
             .expect_err("a comparison the syntax pass cannot see must still be refused");
         let message = refusal.to_string();
         assert!(
@@ -277,7 +284,8 @@ fn the_refusal_names_the_operator_that_was_used() {
         (r#"x = db.ip not in ["a"]"#, "with not in is"),
     ] {
         let source = format!("db = resource(\"yandex:instance.db\")\n{body}\n");
-        let refusal = evaluate("main.star", &source, Box::new(Held::new())).expect_err("refused");
+        let refusal = evaluate("main.star", &source, Box::new(Held::new()), Fleet::empty())
+            .expect_err("refused");
         assert!(
             refusal.to_string().contains(operator),
             "{operator}: {refusal}"
@@ -294,6 +302,7 @@ db = resource("yandex:instance.db")
 x = db.network.address == "10.0.0.1"
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("a nested attribute access is still an attribute access");
 
@@ -331,7 +340,7 @@ db = resource("yandex:instance.db")
 if db.ready:
     resource("yandex:instance.web")
 "#;
-    assert!(evaluate("main.star", poisoned, Box::new(Held::new())).is_err());
+    assert!(evaluate("main.star", poisoned, Box::new(Held::new()), Fleet::empty()).is_err());
 
     let clean = graph_of(r#"resource("yandex:instance.db")"#);
     assert_eq!(
@@ -394,6 +403,7 @@ if secret("lockbox", "prod/db/password") == "admin":
     resource("os:file.a@web-01", {})
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("comparing a secret is not a configuration")
     .to_string();
@@ -414,6 +424,7 @@ if password == "admin":
     resource("os:file.a@web-01", {})
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("comparing a secret is not a configuration")
     .to_string();
@@ -432,6 +443,7 @@ if secret("lockbox", "prod/db/password"):
     resource("os:file.a@web-01", {})
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("a secret is not a condition")
     .to_string();
@@ -459,6 +471,7 @@ if same(secret("lockbox", "prod/db/password"), secret("lockbox", "other")):
     resource("os:file.a@web-01", {})
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("comparing two secrets is not a configuration")
     .to_string();
@@ -474,6 +487,7 @@ fn a_secret_refuses_to_be_indexed() {
         "main.star",
         r#"resource("os:file.a@web-01", {"content": secret("lockbox", "db")[0]})"#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("a secret has no first character to take")
     .to_string();
@@ -492,6 +506,7 @@ for part in secret("lockbox", "db"):
     resource("os:file.a@web-01", {"content": part})
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("a secret is not a sequence")
     .to_string();
@@ -513,6 +528,7 @@ if held() < held():
     resource("os:file.a@web-01", {})
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("secrets have no order")
     .to_string();
@@ -540,6 +556,7 @@ else:
     resource("yandex:instance.no", {})
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("a dictionary is not a way around it");
     let ConfigError::ComparedUnresolved(message) = refusal else {
@@ -560,6 +577,7 @@ for address in addresses:
         resource("yandex:instance.yes", {})
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("iterating a list of them is not a way around it either");
     assert!(
@@ -578,6 +596,7 @@ if held["password"] == "changeme":
     resource("os:file.weak@web-01", {"path": "/tmp/weak"})
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("a dictionary is not a way around it");
     let ConfigError::ComparedUnresolved(message) = refusal else {
@@ -600,6 +619,7 @@ if address() == "10.0.0.1":
     resource("yandex:instance.yes", {})
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("a function is not a way around it");
     let ConfigError::ComparedUnresolved(message) = refusal else {
@@ -619,6 +639,7 @@ if db.ip in ["10.0.0.1", "10.0.0.2"]:
     resource("yandex:instance.yes", {})
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("membership is a comparison");
     assert!(
@@ -639,6 +660,7 @@ matching = [a for a in addresses if a == "10.0.0.1"]
 resource("yandex:instance.web", {"count": len(matching)})
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("a comprehension is a loop");
     assert!(
@@ -707,6 +729,7 @@ if web.os_family == "debian":
     resource("os:file.a@web-01", {})
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("a fact is not a condition");
     assert!(
@@ -729,6 +752,7 @@ if held():
     resource("os:file.a@web-01", {})
 "#,
         Box::new(Held::new()),
+        Fleet::empty(),
     )
     .expect_err("a fact is not a condition");
     assert!(
@@ -759,7 +783,7 @@ resource("os:file.a@web-01", {"path": select(web.os_family, "debian")})
             "needs a dictionary",
         ),
     ] {
-        let refusal = evaluate("main.star", source, Box::new(Held::new()))
+        let refusal = evaluate("main.star", source, Box::new(Held::new()), Fleet::empty())
             .expect_err("this is not a choice")
             .to_string();
         assert!(refusal.contains(expected), "{refusal}");

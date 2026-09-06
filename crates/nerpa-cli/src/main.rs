@@ -54,6 +54,10 @@ struct Arguments {
     /// Where the record of what was made is kept.
     #[arg(long, default_value = "nerpa.state.json", global = true)]
     state: PathBuf,
+
+    /// Which machines there are, and what is written down about them.
+    #[arg(long, global = true)]
+    fleet: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -121,10 +125,25 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
         .filter(|parent| !parent.as_os_str().is_empty())
         .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
 
+    // The fleet is a document rather than part of the program, because the
+    // machines change without the configuration changing and one configuration
+    // runs against several fleets. Absent is a fleet with nothing in it, which
+    // is what a configuration naming its own machines wants.
+    let fleet = match &arguments.fleet {
+        Some(path) => {
+            let text = std::fs::read_to_string(path)
+                .map_err(|error| format!("{}: {error}", path.display()))?;
+            nerpa_config::fleet::Fleet::read(&text)
+                .map_err(|problem| format!("{}: {problem}", path.display()))?
+        }
+        None => nerpa_config::fleet::Fleet::empty(),
+    };
+
     let graph = nerpa_config::evaluate(
         &arguments.file.display().to_string(),
         &source,
         Box::new(nerpa_config::template::Directory::at(root)),
+        fleet,
     )
     .map_err(|error| error.to_string())?;
 

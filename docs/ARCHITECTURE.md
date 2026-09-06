@@ -67,6 +67,15 @@ dynamic inventory is a `control` read, materialised into the plan and covered by
 its hash, so a plan is reproducible against a recorded fleet rather than against
 whatever the cloud says next.
 
+It is a document rather than part of the program — `--fleet` — because the
+machines change without the configuration changing and one configuration runs
+against several fleets. A machine joins the run's inventory when a group hands it
+out, not when the document is read: two hundred described machines should not make
+a run that touches three open two hundred connections.
+
+Not built: the dynamic half. Nothing asks a cloud who exists, so nothing is
+materialised yet.
+
 ## Renaming — [0028](decisions/0028-a-rename-is-a-migration-that-can-be-deleted.md) · planned
 
 Because the address is the identity, a rename needs a declaration:

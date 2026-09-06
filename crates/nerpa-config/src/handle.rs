@@ -213,11 +213,18 @@ impl<'v> StarlarkValue<'v> for SecretRef {
 pub(crate) struct NodeRef {
     #[allocative(skip)]
     node: Target,
+    /// What the fleet document says about it, carried rather than looked up so
+    /// that a reference is answerable on its own.
+    #[allocative(skip)]
+    values: std::collections::BTreeMap<String, nerpa_core::Value>,
 }
 
 impl NodeRef {
-    pub(crate) fn new(node: Target) -> Self {
-        Self { node }
+    pub(crate) fn new(
+        node: Target,
+        values: std::collections::BTreeMap<String, nerpa_core::Value>,
+    ) -> Self {
+        Self { node, values }
     }
 }
 
@@ -245,6 +252,40 @@ impl<'v> StarlarkValue<'v> for NodeRef {
         // is known here.
         true
     }
+
+    /// `web["workers"]` is what the fleet document says about it.
+    ///
+    /// Brackets for what somebody wrote down and a dot for what the machine will
+    /// say: the two are different kinds of knowledge and the difference is worth
+    /// a keystroke. One is settled before evaluation and may be iterated,
+    /// compared and branched on; the other may not, and decision 0025 is about
+    /// exactly that line.
+    fn at(&self, index: Value<'v>, heap: Heap<'v>) -> starlark::Result<Value<'v>> {
+        let Some(key) = index.unpack_str() else {
+            return refuse(self.to_string(), "an index that is not text");
+        };
+        match self.values.get(key) {
+            Some(nerpa_core::Value::Text(text)) => Ok(heap.alloc(text.as_str())),
+            Some(nerpa_core::Value::Integer(number)) => Ok(heap.alloc(*number)),
+            Some(nerpa_core::Value::Boolean(flag)) => Ok(Value::new_bool(*flag)),
+            Some(other) => Ok(heap.alloc(format!("{other}"))),
+            None => Err(starlark::Error::new_value(Missing {
+                node: self.node.to_string(),
+                key: key.to_owned(),
+            })),
+        }
+    }
+}
+
+/// What a node says when it is asked for something the fleet does not give it.
+#[derive(Debug, thiserror::Error)]
+#[error(
+    "the fleet says nothing about {node}'s {key:?}; a value that is not written \
+     down is not a value with a default"
+)]
+struct Missing {
+    node: String,
+    key: String,
 }
 
 /// Something a machine will turn out to be.
