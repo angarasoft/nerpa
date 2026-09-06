@@ -5,6 +5,9 @@
 - Corrected: 2026-09-06 — a miscount of the architecture markers, and two
   invariants named here as promoted that had to go back. Facts only; the
   reasoning is as it was written.
+- Corrected: 2026-09-06 — the codebase this rule was learned in was named. It
+  belongs to somebody who did not agree to appear here, and the argument never
+  rested on which codebase it was.
 
 ## Context
 
@@ -42,10 +45,10 @@ None of these was found by the gate, because the gate checks that the links
 between the registry, the code and the tests have not rotted. It never asked
 whether the tests were about the guarantee.
 
-`AngaraBase` had already met both problems at fifty times the size and written
-down the rule that came out of it: an obligation with no gate behind it is
-skipped, and nobody notices. That project's answer is proportionate to a
-half-million lines. The rule underneath it is not.
+A codebase fifty times the size had already met both problems and written down
+the rule that came out of it: an obligation with no gate behind it is skipped,
+and nobody notices. Its answer is proportionate to its size. The rule underneath
+it is not.
 
 ## Decision
 

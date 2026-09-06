@@ -5,10 +5,10 @@
 //! is what stops that from becoming a document nobody maintains: a renamed test,
 //! a deleted anchor or an invented identifier fails the gate.
 //!
-//! The idea, and the `// ENFORCES:` anchor in the spirit of `// SAFETY:`, are
-//! taken from `AngaraBase`'s invariant registry — without the generated regions,
-//! matrices and baselines that a project with several hundred invariants needs
-//! and one with eleven does not.
+//! The idea, and the `// ENFORCES:` anchor in the spirit of `// SAFETY:`, come
+//! from a much larger codebase's invariant registry — without the generated
+//! regions, matrices and baselines that a project with several hundred
+//! invariants needs and one with eleven does not.
 
 use std::collections::BTreeSet;
 use std::fs;

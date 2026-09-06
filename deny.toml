@@ -1,4 +1,4 @@
-# Taken from AngaraBase, cut down to what a project with one dependency needs.
+# Cut down to what a project with one dependency needs.
 # The allowlist is the point: a licence that is not on it stops the build rather
 # than being noticed during an audit two years later.
 
