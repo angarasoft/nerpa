@@ -244,6 +244,17 @@ fn read_route(name: &str, described: &toml::Value) -> Result<Route, String> {
         .as_str()
         .ok_or_else(|| format!("{name}: `ssh` has to be a host or an alias"))?
         .to_owned();
+    // `ssh` reads a leading `-` as another option rather than as a host, and
+    // `-oProxyCommand=…` runs a command on *this* machine before any other is
+    // contacted. A fleet is a document that gets swapped, shared, and one day
+    // generated from a cloud inventory, so a name out of one must not be able
+    // to reach the machine doing the planning.
+    if host.starts_with('-') {
+        return Err(format!(
+            "{name}: `ssh` is {host:?}, which `ssh` would read as an option \
+             rather than as a host"
+        ));
+    }
 
     let config = described
         .get("ssh_config")
@@ -258,21 +269,29 @@ fn read_route(name: &str, described: &toml::Value) -> Result<Route, String> {
     let executor = described
         .get("executor")
         .map(|given| {
-            given
+            let path = given
                 .as_str()
-                .map(ToOwned::to_owned)
-                .ok_or_else(|| format!("{name}: `executor` has to be a path"))
+                .ok_or_else(|| format!("{name}: `executor` has to be a path"))?;
+            plainly(name, "executor", path)?;
+            Ok::<String, String>(path.to_owned())
         })
         .transpose()?;
 
     // Split rather than passed as one string, because a shell string is where
     // somebody else's quoting becomes somebody else's command.
-    let escalate = described.get("become").map_or(Ok(Vec::new()), |given| {
-        given
-            .as_str()
-            .map(|written| written.split_whitespace().map(ToOwned::to_owned).collect())
-            .ok_or_else(|| format!("{name}: `become` has to be a command such as \"sudo -n\""))
-    })?;
+    let escalate = described.get("become").map_or_else(
+        || Ok::<Vec<String>, String>(Vec::new()),
+        |given| {
+            let written = given.as_str().ok_or_else(|| {
+                format!("{name}: `become` has to be a command such as \"sudo -n\"")
+            })?;
+            let words: Vec<String> = written.split_whitespace().map(ToOwned::to_owned).collect();
+            for word in &words {
+                plainly(name, "become", word)?;
+            }
+            Ok(words)
+        },
+    )?;
 
     Ok(Route::Ssh {
         host,
@@ -280,6 +299,27 @@ fn read_route(name: &str, described: &toml::Value) -> Result<Route, String> {
         executor,
         escalate,
     })
+}
+
+/// Refuses anything a remote shell would read as more than one word.
+///
+/// `ssh` joins whatever trails the host into one string and hands it to a shell
+/// on the far side — its own doc comment in the transport says so — so a path
+/// holding a `;` is two commands there, and quoting here would only look like
+/// protection. Rather than quote, refuse: everything these fields legitimately
+/// hold is a path or a program name, and neither needs a character a shell
+/// treats as punctuation.
+fn plainly(whose: &str, field: &str, word: &str) -> Result<(), String> {
+    const PLAIN: fn(char) -> bool = |character: char| {
+        character.is_ascii_alphanumeric() || matches!(character, '/' | '.' | '-' | '_' | '~' | '=')
+    };
+    if word.is_empty() || !word.chars().all(PLAIN) {
+        return Err(format!(
+            "{whose}: `{field}` is {word:?}, and a remote shell would read that \
+             as more than the one word it is meant to be"
+        ));
+    }
+    Ok(())
 }
 
 /// A table of values, in the vocabulary a resource can carry.

@@ -319,6 +319,25 @@ without ceremony until the first stage is complete.
   become a derivative work.
 
 
+- A fleet document could run a command on the machine doing the planning. Its
+  `ssh` field went to the local `ssh` as a positional argument, and `ssh` reads a
+  leading `-` as another option — `-oProxyCommand=…` runs before any machine is
+  contacted, with no network and no authentication. `executor` and `become` had
+  the mirror of it on the far side: `ssh` joins what trails the host into one
+  string for a remote shell, so a "path" holding a `;` was two commands there.
+  All three are checked where the document is read. A fleet is the artefact that
+  gets swapped, shared, and one day generated from a cloud inventory.
+
+- A process handed more input than a pipe buffer holds deadlocked the executor
+  if the program said anything before it finished reading. All of it was written
+  before anything drained the child. Fed from a thread now, and a program that
+  exits without reading is not a failure — that is what a shell pipeline does.
+
+- A machine that answered and then went away held a run until the operating
+  system gave up. `ssh` keepalives bound that; a deadline on reading would not,
+  because a batch may legitimately take minutes. What is still unbounded is a
+  far end that is alive and never finishes — `W-015`.
+
 - A replacement destroyed the old resource and could then stop without writing
   that down. `Replace` deletes before it creates; if creating failed — no quota,
   no address, no image — the run returned with state still saying where the old

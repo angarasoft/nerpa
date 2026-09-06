@@ -269,3 +269,49 @@ fn a_path_that_holds_nothing_because_it_is_not_there_says_so() {
     };
     assert_eq!(seen[0], Seen::Nothing);
 }
+
+/// Input larger than a pipe buffer, to a program that says something before it
+/// has finished reading. Writing it all first and only then draining the child
+/// deadlocked: it blocked on a full stdout nobody was emptying, and this blocked
+/// on a stdin it was not reading. A few megabytes of certificate is enough, and
+/// `stdin` is where a secret goes.
+#[test]
+fn input_larger_than_a_pipe_buffer_does_not_hold_both_ends() {
+    let bytes = vec![b'x'; 4 * 1024 * 1024];
+    let Answer::Done { became } = perform(
+        Vec::new(),
+        vec![Operation::Process {
+            program: "cat".to_owned(),
+            arguments: Vec::new(),
+            stdin: bytes.clone(),
+            private: false,
+            expect: vec![0],
+        }],
+    ) else {
+        panic!("cat reads its input and writes it back")
+    };
+    let Seen::Said { status, out, .. } = &became[0] else {
+        panic!("a process says what it said")
+    };
+    assert_eq!(*status, 0);
+    assert_eq!(out.len(), bytes.len(), "all of it came back");
+}
+
+/// A program that exits without reading is not a failure — that is what a shell
+/// pipeline does too, and the closed pipe is its choice rather than a fault.
+#[test]
+fn a_program_that_does_not_read_its_input_is_not_a_failure() {
+    let Answer::Done { became } = perform(
+        Vec::new(),
+        vec![Operation::Process {
+            program: "true".to_owned(),
+            arguments: Vec::new(),
+            stdin: vec![b'y'; 1024 * 1024],
+            private: false,
+            expect: vec![0],
+        }],
+    ) else {
+        panic!("true succeeds whatever it is handed")
+    };
+    assert!(matches!(became[0], Seen::Said { status: 0, .. }));
+}

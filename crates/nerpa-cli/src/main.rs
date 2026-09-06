@@ -202,6 +202,9 @@ fn speaking(node: &Target, fleet: &Fleet, beside: &Path) -> Result<Box<dyn Reach
             // will see is worse than one that fails: a fleet stops half way and
             // nothing says why. `ConnectTimeout` for the same reason, against a
             // machine that is switched off rather than one that asks a question.
+            // `ServerAlive*` for the third shape of the same failure: a machine
+            // that answered and then went away mid-run, which neither of the
+            // other two sees.
             // Everything else about how this host is reached — the port, the
             // jump host, the key — belongs to ssh's own configuration and is
             // deliberately not repeated here.
@@ -210,6 +213,10 @@ fn speaking(node: &Target, fleet: &Fleet, beside: &Path) -> Result<Box<dyn Reach
                 "BatchMode=yes".to_owned(),
                 "-o".to_owned(),
                 format!("ConnectTimeout={}", nerpa_transport::ANSWERS_WITHIN),
+                "-o".to_owned(),
+                format!("ServerAliveInterval={}", nerpa_transport::ALIVE_EVERY),
+                "-o".to_owned(),
+                format!("ServerAliveCountMax={}", nerpa_transport::ALIVE_MISSES),
             ];
             if let Some(named) = config {
                 arguments.push("-F".to_owned());

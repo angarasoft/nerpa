@@ -40,6 +40,20 @@ use nerpa_proto::{Answer, Ask, Request};
 /// produced no output at all until this existed.
 pub const ANSWERS_WITHIN: &str = "10";
 
+/// How often a connection that has gone quiet is asked whether it is still
+/// there, and how many times in a row it may not answer.
+///
+/// Not a timeout on the conversation. A batch may legitimately take minutes —
+/// installing a package is not misbehaviour — so a deadline on reading would
+/// kill the work it was meant to protect. What can be bounded is whether the
+/// path is still alive, and `ssh` is the thing that knows: thirty seconds, three
+/// times, so a machine whose network went away is reported inside two minutes
+/// instead of holding the run until the operating system gives up.
+pub const ALIVE_EVERY: &str = "30";
+
+/// How many unanswered checks end it. See [`ALIVE_EVERY`].
+pub const ALIVE_MISSES: &str = "3";
+
 /// A machine reached by running a command that speaks the wire on its pipes.
 #[derive(Debug)]
 pub struct Piped {
