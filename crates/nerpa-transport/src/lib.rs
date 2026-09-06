@@ -31,6 +31,15 @@ use std::sync::Mutex;
 use nerpa_core::provider::{ProviderError, Reach};
 use nerpa_proto::{Answer, Ask, Request};
 
+/// How long a machine has to answer before it counts as not answering.
+///
+/// `ssh` waits for the operating system's TCP timeout by default, which is two
+/// minutes of a run doing nothing. A fleet with one machine switched off then
+/// stalls rather than reporting it, which is the failure decision 0020 exists to
+/// prevent — measured, not supposed: a plan against a machine that was not there
+/// produced no output at all until this existed.
+pub const ANSWERS_WITHIN: &str = "10";
+
 /// A machine reached by running a command that speaks the wire on its pipes.
 #[derive(Debug)]
 pub struct Piped {

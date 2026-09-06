@@ -62,16 +62,22 @@ pub fn deliver(
 
     // Already there is the common case, and it costs one round trip rather than
     // eight hundred kilobytes.
-    if run(node, host, &format!("test -x {path}"), &[])?.0 {
+    let said = run(node, host, &format!("test -x {path}"), &[])?;
+    if said.answered {
         return Ok(path);
     }
 
     // Asked over ssh rather than through the wire, because the wire needs the
     // thing that is not there yet. This is the chicken-and-egg the architecture
     // note mentions, and asking directly is the honest way out of it.
-    let (ok, said) = run(node, host, "uname -m", &[])?;
-    let found = said.trim();
-    if !ok || found != architecture {
+    let said = run(node, host, "uname -m", &[])?;
+    let found = said.text.trim();
+    if !said.answered {
+        return Err(out_of_reach(format!(
+            "it said nothing about itself: {found}"
+        )));
+    }
+    if found != architecture {
         return Err(out_of_reach(format!(
             "it is {found:?} and this nerpa carries an executor for {architecture:?} only"
         )));
@@ -84,13 +90,24 @@ pub fn deliver(
     let script = format!(
         "mkdir -p .cache/nerpa && cat > {partial} && chmod +x {partial} && mv {partial} {path}"
     );
-    let (ok, said) = run(node, host, &script, &bytes)?;
-    if !ok {
+    let said = run(node, host, &script, &bytes)?;
+    if !said.answered {
         return Err(out_of_reach(format!(
-            "the executor could not be put there: {said}"
+            "the executor could not be put there: {}",
+            said.text
         )));
     }
     Ok(path)
+}
+
+/// What one `ssh` came back with.
+struct Said {
+    /// Whether the command on the far side succeeded. False also when nothing
+    /// ran because the machine could not be reached — [`Said::text`] is then
+    /// `ssh`'s own account, and it is quoted rather than interpreted.
+    answered: bool,
+    /// What was said, on either stream.
+    text: String,
 }
 
 /// One `ssh`, and what it said.
@@ -100,12 +117,7 @@ pub fn deliver(
 /// a shell on the far side, so passing words only creates the illusion of
 /// quoting. Everything in these commands is written here — a fixed shape and a
 /// digest — and nothing in them comes from a configuration.
-fn run(
-    node: &Target,
-    host: &str,
-    command: &str,
-    stdin: &[u8],
-) -> Result<(bool, String), ProviderError> {
+fn run(node: &Target, host: &str, command: &str, stdin: &[u8]) -> Result<Said, ProviderError> {
     let out_of_reach = |problem: String| ProviderError::Unreachable {
         node: node.clone(),
         problem: format!("{host}: {problem}"),
@@ -114,6 +126,8 @@ fn run(
     let mut child = Command::new("ssh")
         .arg("-o")
         .arg("BatchMode=yes")
+        .arg("-o")
+        .arg(format!("ConnectTimeout={}", crate::ANSWERS_WITHIN))
         .arg(host)
         .arg(command)
         .stdin(Stdio::piped())
@@ -130,10 +144,23 @@ fn run(
         .wait_with_output()
         .map_err(|error| out_of_reach(error.to_string()))?;
 
-    let said = if done.stdout.is_empty() {
+    // 255 is `ssh` failing rather than the far side answering: it could not
+    // connect, could not authenticate, was refused. The three commands here
+    // return 0 or 1 and never 255, so the code says which of the two happened,
+    // and a machine that was never reached is not asked again.
+    if done.status.code() == Some(255) {
+        return Err(out_of_reach(
+            String::from_utf8_lossy(&done.stderr).trim().to_owned(),
+        ));
+    }
+
+    let text = if done.stdout.is_empty() {
         String::from_utf8_lossy(&done.stderr).into_owned()
     } else {
         String::from_utf8_lossy(&done.stdout).into_owned()
     };
-    Ok((done.status.success(), said))
+    Ok(Said {
+        answered: done.status.success(),
+        text,
+    })
 }

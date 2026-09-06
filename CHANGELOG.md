@@ -286,6 +286,22 @@ without ceremony until the first stage is complete.
 
 ### Fixed
 
+- A fleet holding one machine that was switched off stopped the whole run, and
+  stopped it by hanging: `ssh` was given no connect timeout, so it waited out the
+  operating system's TCP timeout, and the failure ended the run before the
+  planner could report the machine as out of reach. `INV-REACH-001` says a
+  machine that did not answer is refused per resource rather than per run, and it
+  was being enforced one step too late — everything the planner does was correct,
+  and nothing reached it. Found by switching a machine off rather than by reading
+  the code. Both halves now hold: connections are opened with a timeout, and a
+  machine that cannot be opened is left out of the registry and reported by name.
+
+- A machine that did not answer at all was told it was of the wrong
+  architecture — the reason was assembled from an empty reply rather than read
+  from one. `ssh` distinguishes its own failure from the far side's answer by
+  exiting 255, which also means a machine that was never reached is not asked a
+  second question.
+
 - A file the `os` provider could not read was reported as a file that was not
   there, so the plan proposed creating it and the apply overwrote it — losing its
   contents and resetting its mode. Absence and failure are different answers. In

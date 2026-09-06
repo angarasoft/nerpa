@@ -437,7 +437,11 @@ Refusing the whole run because one machine is down blocks changes to every other
 machine, which is how people learn to work around a tool. Everything readable is \
 planned; what could not be read appears saying so, with the machine and the age \
 of the newest knowledge, and nothing is claimed about it. See 0020."""
-enforced_by = ["crates/nerpa-core/src/planner.rs", "crates/nerpa-core/src/run.rs"]
+enforced_by = [
+  "crates/nerpa-core/src/planner.rs",
+  "crates/nerpa-core/src/run.rs",
+  "crates/nerpa-cli/src/main.rs",
+]
 tests = [
   "a_resource_on_a_machine_that_did_not_answer_is_not_planned",
   "nothing_at_all_is_said_about_what_could_not_be_read",

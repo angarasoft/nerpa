@@ -29,8 +29,9 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use nerpa_config::fleet::{Fleet, Route};
+use nerpa_core::address::Target;
 use nerpa_core::planner;
-use nerpa_core::provider::{Machines, Providers};
+use nerpa_core::provider::{Machines, Providers, Reach};
 use nerpa_core::run;
 use nerpa_core::secret::{Remembered, Secrets};
 use nerpa_core::state::State;
@@ -130,41 +131,64 @@ fn reachable(graph: &nerpa_core::Graph, fleet: &Fleet) -> Result<Machines, Strin
 
     let mut machines = Machines::new();
     for node in graph.inventory().nodes() {
-        let (program, arguments) = match fleet.route(node) {
-            Route::Here => (beside.display().to_string(), Vec::new()),
-            Route::Ssh {
-                host,
-                executor,
-                escalate,
-            } => {
-                // Named by the fleet, or put there. A path somebody wrote down
-                // is used as written: they know something about that machine
-                // that this does not.
-                let executor = if let Some(named) = executor {
-                    named
-                } else {
-                    let carried = portable(&beside)?;
-                    nerpa_transport::delivery::deliver(node, &host, &carried, PORTABLE_ARCHITECTURE)
-                        .map_err(|error| error.to_string())?
-                };
-
-                // `BatchMode` because a run that hangs waiting for a prompt
-                // nobody will see is worse than one that fails: a fleet stops
-                // half way and nothing says why. Everything else about how this
-                // host is reached — the port, the jump host, the key — belongs
-                // to ssh's own configuration and is deliberately not repeated
-                // here.
-                let mut arguments = vec!["-o".to_owned(), "BatchMode=yes".to_owned(), host];
-                arguments.extend(escalate);
-                arguments.push(executor);
-                ("ssh".to_owned(), arguments)
-            }
-        };
-        let reach =
-            Piped::running(node, &program, &arguments).map_err(|error| error.to_string())?;
-        machines = machines.with(node.clone(), Box::new(reach));
+        // ENFORCES: INV-REACH-001
+        // A machine that does not answer is left out of the registry, and the
+        // planner reports it as out of reach. Every connection is opened before
+        // anything is read, so a failure here happens before the planner could
+        // say so on its own — and one machine switched off must not stop a
+        // fleet. See decision 0020.
+        match speaking(node, fleet, &beside) {
+            Ok(reach) => machines = machines.with(node.clone(), reach),
+            Err(problem) => eprintln!("nerpa: {problem}"),
+        }
     }
     Ok(machines)
+}
+
+/// Opens the connection to one machine.
+///
+/// Everything that can fail because that machine is not there fails here, so
+/// the caller has one place to decide what an absent machine means.
+fn speaking(node: &Target, fleet: &Fleet, beside: &Path) -> Result<Box<dyn Reach>, String> {
+    let (program, arguments) = match fleet.route(node) {
+        Route::Here => (beside.display().to_string(), Vec::new()),
+        Route::Ssh {
+            host,
+            executor,
+            escalate,
+        } => {
+            // Named by the fleet, or put there. A path somebody wrote down is
+            // used as written: they know something about that machine that this
+            // does not.
+            let executor = if let Some(named) = executor {
+                named
+            } else {
+                let carried = portable(beside)?;
+                nerpa_transport::delivery::deliver(node, &host, &carried, PORTABLE_ARCHITECTURE)
+                    .map_err(|error| error.to_string())?
+            };
+
+            // `BatchMode` because a run that hangs waiting for a prompt nobody
+            // will see is worse than one that fails: a fleet stops half way and
+            // nothing says why. `ConnectTimeout` for the same reason, against a
+            // machine that is switched off rather than one that asks a question.
+            // Everything else about how this host is reached — the port, the
+            // jump host, the key — belongs to ssh's own configuration and is
+            // deliberately not repeated here.
+            let mut arguments = vec![
+                "-o".to_owned(),
+                "BatchMode=yes".to_owned(),
+                "-o".to_owned(),
+                format!("ConnectTimeout={}", nerpa_transport::ANSWERS_WITHIN),
+                host,
+            ];
+            arguments.extend(escalate);
+            arguments.push(executor);
+            ("ssh".to_owned(), arguments)
+        }
+    };
+    let reach = Piped::running(node, &program, &arguments).map_err(|error| error.to_string())?;
+    Ok(Box::new(reach))
 }
 
 fn run_task(arguments: &Arguments) -> Result<(), String> {
