@@ -17,11 +17,13 @@ edition = "2024"
 rust-version = "1.98"
 license = "Apache-2.0"
 authors = ["Anishchuk Sergei <anishukserg@gmail.com>"]
-# GitLab, because that is where the gate runs and where the code actually lives.
-# The GitHub repository is a mirror, and naming a mirror here would send anybody
-# who follows the link to a copy rather than to the branch a release came from.
-repository = "https://gitlab.com/anishukserg/nerpa"
-homepage = "https://gitlab.com/anishukserg/nerpa"
+# The public home, under the project's own organisation rather than a personal
+# account: a crate outlives whoever published it, and a link through one person's
+# username is a link that breaks the day the project stops being one person's.
+# The gate still runs on GitLab, which is a fact about this repository's plumbing
+# and not about where anybody should be sent to read it.
+repository = "https://github.com/nerpa-run/nerpa"
+homepage = "https://github.com/nerpa-run/nerpa"
 documentation = "https://docs.rs/nerpa-core"
 readme = "README.md"
 keywords = ["infrastructure", "configuration", "iac", "provisioning"]
