@@ -58,8 +58,11 @@ pub enum Route {
     Ssh {
         /// What to give `ssh` — a host, or an alias its own configuration knows.
         host: String,
-        /// Where the executor is over there.
-        executor: String,
+        /// Where the executor is over there, if somebody wrote it down.
+        ///
+        /// `None` means put one there: a path in the document is a statement
+        /// about that machine which this has no business overriding.
+        executor: Option<String>,
         /// What to run it under, one word to an entry: `["sudo", "-n"]`.
         escalate: Vec<String>,
     },
@@ -224,12 +227,13 @@ fn read_route(name: &str, described: &toml::Value) -> Result<Route, String> {
 
     let executor = described
         .get("executor")
-        .map_or(Ok("nerpa-executor"), |given| {
+        .map(|given| {
             given
                 .as_str()
+                .map(ToOwned::to_owned)
                 .ok_or_else(|| format!("{name}: `executor` has to be a path"))
-        })?
-        .to_owned();
+        })
+        .transpose()?;
 
     // Split rather than passed as one string, because a shell string is where
     // somebody else's quoting becomes somebody else's command.

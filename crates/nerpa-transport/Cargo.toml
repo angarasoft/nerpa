@@ -13,6 +13,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+blake3.workspace = true
 nerpa-core = { workspace = true }
 nerpa-executor = { workspace = true }
 nerpa-proto = { workspace = true }

@@ -22,6 +22,8 @@
 //! or six connections *per task*; pipelining brings that to one per task. This
 //! is one per machine per run.
 
+pub mod delivery;
+
 use std::io::Write as _;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Mutex;

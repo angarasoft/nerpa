@@ -214,7 +214,12 @@ without ceremony until the first stage is complete.
   choosing the path. Then the same with `become = "sudo -n"`, writing a file as
   root with mode 0600 — no password anywhere, no pty, no prompt to match.
 
-  Not built: getting the executor onto a machine, which today is a copy by hand.
+- The executor gets itself onto a machine. It is copied under a name carrying a
+  digest of the binary, so a machine holding a different build holds it under a
+  different name and the two do not fight, and "is the right one there" is a file
+  test rather than a version negotiation. Written beside and moved into place,
+  because a half-copied file that is executable is worse than no file. Measured
+  against two machines behind a bastion: 25 s the first time, 10 s the second.
 
 ### Changed
 

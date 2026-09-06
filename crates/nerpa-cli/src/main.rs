@@ -84,6 +84,30 @@ fn main() -> ExitCode {
     }
 }
 
+/// What this build carries an executor for.
+///
+/// One target. A machine that is not this one is told so by name rather than
+/// handed something it cannot run — building for several and choosing between
+/// them is `W-008`.
+const PORTABLE_ARCHITECTURE: &str = "x86_64";
+
+/// The executor built to run somewhere that is not here.
+///
+/// A separate file from the one used locally, because a machine reached over
+/// `ssh` is not this machine: the local build links against what is here, and a
+/// static one is what travels.
+fn portable(beside: &Path) -> Result<PathBuf, String> {
+    let carried = beside.with_file_name("nerpa-executor.static");
+    if carried.exists() {
+        return Ok(carried);
+    }
+    Err(format!(
+        "{} is not there. A machine reached over ssh needs an executor that runs \
+         where it is going, and nothing names one for this node",
+        carried.display()
+    ))
+}
+
 /// How each machine in this configuration is reached.
 ///
 /// Every node gets a pipe to an executor. Today that executor runs here, which
@@ -113,6 +137,17 @@ fn reachable(graph: &nerpa_core::Graph, fleet: &Fleet) -> Result<Machines, Strin
                 executor,
                 escalate,
             } => {
+                // Named by the fleet, or put there. A path somebody wrote down
+                // is used as written: they know something about that machine
+                // that this does not.
+                let executor = if let Some(named) = executor {
+                    named
+                } else {
+                    let carried = portable(&beside)?;
+                    nerpa_transport::delivery::deliver(node, &host, &carried, PORTABLE_ARCHITECTURE)
+                        .map_err(|error| error.to_string())?
+                };
+
                 // `BatchMode` because a run that hangs waiting for a prompt
                 // nobody will see is worse than one that fails: a fleet stops
                 // half way and nothing says why. Everything else about how this

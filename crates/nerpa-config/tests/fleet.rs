@@ -200,16 +200,16 @@ become = "sudo -n"
         fleet.route(&node("plain")),
         Route::Ssh {
             host: "10.0.61.34".to_owned(),
-            executor: "nerpa-executor".to_owned(),
+            executor: None,
             escalate: Vec::new(),
         },
-        "and one that names no executor expects it on the path"
+        "and one that names no executor gets one put there"
     );
     assert_eq!(
         fleet.route(&node("privileged")),
         Route::Ssh {
             host: "web-01".to_owned(),
-            executor: "/opt/nerpa/nerpa-executor".to_owned(),
+            executor: Some("/opt/nerpa/nerpa-executor".to_owned()),
             escalate: vec!["sudo".to_owned(), "-n".to_owned()],
         },
         "escalation is words, because a shell string is where somebody else's \
