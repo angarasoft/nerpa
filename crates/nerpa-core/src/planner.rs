@@ -186,7 +186,18 @@ fn removals(graph: &Graph, state: &State) -> Vec<PlanStage> {
         .map(|level| {
             let changes = level
                 .into_iter()
-                .map(|address| Change::new(address, ChangeKind::Delete, Vec::new(), Vec::new()))
+                .map(|address| {
+                    // Nothing was looked at: this resource is no longer
+                    // declared, so the plan reasoned from state rather than
+                    // from a reading, and there is nothing to have moved.
+                    Change::new(
+                        address,
+                        ChangeKind::Delete,
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                    )
+                })
                 .collect();
             PlanStage::new(StageKind::Mixed, changes)
         })
@@ -247,11 +258,13 @@ fn change_for(
 
     Ok(match existing {
         // Not there at all: it has to be made, whatever its attributes say.
+        // Nothing is there, so nothing was looked at that could move.
         None => Some(Change::new(
             address.clone(),
             ChangeKind::Create,
             deltas,
             desired,
+            Vec::new(),
         )),
         Some(_) if deltas.is_empty() => None,
         Some(_) => {
@@ -260,7 +273,13 @@ fn change_for(
             } else {
                 ChangeKind::Update
             };
-            Some(Change::new(address.clone(), kind, deltas, desired))
+            Some(Change::new(
+                address.clone(),
+                kind,
+                deltas,
+                desired,
+                observed.premise(address).to_vec(),
+            ))
         }
     })
 }

@@ -276,6 +276,16 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A plan carries what it was computed from, and a machine that moved underneath
+  it stops the batch instead of being written over. The protocol has carried a
+  premise and the executor has checked one since both were built; nothing
+  produced one, so every run sent an empty list and the check covered nothing.
+  `Provider::read` now says what it looked at as well as what it found — the
+  only place that can, since the engine never sees a `Seen` — and it travels
+  through the plan to the batch that acts. Shown end to end: a file edited
+  between the plan and the apply is not written over, and the edit is still
+  there afterwards. `INV-PREMISE-001` is `enforced` again.
+
 - One gate rather than two. The gate is `cargo xtask ci`; a CI file is a wrapper
   around it, and there were two wrappers describing each other as the mirror. It
   runs on GitHub Actions, which is where the repository lives; GitLab holds a

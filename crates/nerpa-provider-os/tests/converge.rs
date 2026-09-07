@@ -642,6 +642,7 @@ fn one_provider_serves_two_threads_at_once() {
                         &address("os:file.subject@localhost"),
                         ChangeKind::Create,
                         &wanted,
+                        &[],
                         &Here,
                     )
                     .expect("it writes");
@@ -742,5 +743,62 @@ fn a_machine_that_says_something_unaccounted_for_is_refused() {
     assert!(
         refusal.to_string().contains("arch"),
         "the refusal should name the fact and what the machine said: {refusal}"
+    );
+}
+
+/// Between the looking and the doing, the machine can change.
+///
+/// Reading everything once and applying once makes that window the whole run,
+/// where Ansible's is one task — so the batch carries what the plan was computed
+/// from and the far end looks again before it does anything. Here somebody edits
+/// the file after the plan is made and before it is applied: the change must not
+/// happen, and what they wrote must still be there. See decision 0034.
+#[test]
+fn a_file_that_moved_after_the_plan_was_made_is_not_written_over() {
+    let scratch = Scratch::new("premise");
+    let path = scratch.join("motd");
+    fs::write(&path, "as it was\n").expect("a file to plan against");
+
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.motd@localhost"))
+            .with("path", path.clone())
+            .with("content", "as declared\n"),
+    ]);
+
+    let providers = providers();
+    let mut state = State::new();
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
+    let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    assert_eq!(
+        plan.blast_radius().updates(),
+        1,
+        "there is a change to make"
+    );
+
+    // Somebody else, between the two.
+    fs::write(&path, "somebody else was here\n").expect("their edit");
+
+    let refusal = apply(
+        &plan,
+        &providers,
+        &machines(),
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect_err("the world is not what the plan was computed from");
+
+    assert!(
+        refusal
+            .to_string()
+            .contains("not what the plan was computed from"),
+        "the refusal says the plan is stale rather than that something broke: {refusal}"
+    );
+    assert_eq!(
+        fs::read_to_string(&path).expect("still there"),
+        "somebody else was here\n",
+        "and their edit is untouched: a batch acting on half a stale reading is \
+         worse than one that did not act"
     );
 }

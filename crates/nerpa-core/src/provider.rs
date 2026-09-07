@@ -26,6 +26,7 @@ use crate::address::{Address, Provider as ProviderName, Target};
 use crate::plan::ChangeKind;
 use crate::schema::Schema;
 use crate::value::Value;
+use nerpa_proto::Premise;
 
 /// What a provider carries a resource's state as.
 pub type Attributes = BTreeMap<String, Value>;
@@ -38,6 +39,52 @@ pub type Attributes = BTreeMap<String, Value>;
 pub struct Reading {
     address: Address,
     locator: Attributes,
+}
+
+/// What reading a batch came back with.
+///
+/// Two things rather than one, because a provider is the only place that knows
+/// both. It read a machine to decide what is there, and what it looked at is
+/// what the plan will be computed *from* — so it says which observations those
+/// were and what they hashed to, and the batch that acts carries them back.
+/// Nothing else can produce this: the engine never sees a `Seen`, and a
+/// provider rebuilding the observation later would be two guesses that have to
+/// agree with nothing checking that they do. See decision 0034.
+#[derive(Debug, Default)]
+pub struct Read {
+    attributes: BTreeMap<Address, Attributes>,
+    premise: BTreeMap<Address, Vec<Premise>>,
+}
+
+impl Read {
+    /// Nothing read yet.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// What one resource turned out to be, and what was looked at to find out.
+    #[must_use]
+    pub fn with(mut self, address: Address, attributes: Attributes, premise: Vec<Premise>) -> Self {
+        self.attributes.insert(address.clone(), attributes);
+        if !premise.is_empty() {
+            self.premise.insert(address, premise);
+        }
+        self
+    }
+
+    /// What each resource turned out to be.
+    #[must_use]
+    pub fn attributes(&self) -> &BTreeMap<Address, Attributes> {
+        &self.attributes
+    }
+
+    /// What was looked at to decide, for each resource that anything was looked
+    /// at for.
+    #[must_use]
+    pub fn premise(&self) -> &BTreeMap<Address, Vec<Premise>> {
+        &self.premise
+    }
 }
 
 impl Reading {
@@ -149,11 +196,7 @@ pub trait Provider: Send + Sync {
     /// # Errors
     ///
     /// Returns [`ProviderError`] if the batch could not be read at all.
-    fn read(
-        &self,
-        batch: &[Reading],
-        reach: &dyn Reach,
-    ) -> Result<BTreeMap<Address, Attributes>, ProviderError>;
+    fn read(&self, batch: &[Reading], reach: &dyn Reach) -> Result<Read, ProviderError>;
 
     /// Makes the resource match `attributes`, and reports what it became.
     ///
@@ -169,6 +212,7 @@ pub trait Provider: Send + Sync {
         address: &Address,
         kind: ChangeKind,
         attributes: &Attributes,
+        premise: &[Premise],
         reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError>;
 
@@ -186,6 +230,7 @@ pub trait Provider: Send + Sync {
         &self,
         address: &Address,
         recorded: &Attributes,
+        premise: &[Premise],
         reach: &dyn Reach,
     ) -> Result<(), ProviderError>;
 

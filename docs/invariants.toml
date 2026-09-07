@@ -859,7 +859,7 @@ adversarial = [
 
 [[invariant]]
 id = "INV-PREMISE-001"
-status = "claimed"
+status = "enforced"
 statement = "A batch does nothing at all when what the plan was computed from has moved."
 rationale = """
 Reading everything once, planning once and applying once is what makes central \
@@ -876,10 +876,16 @@ encoding written out in the protocol rather than borrowed from CBOR.
 A premise that no longer holds is answered with `Moved`, not `Failed`. "Look \
 again and plan again" is different advice to "something went wrong", and a person \
 woken at three in the morning should be told which."""
-bypass = "An operation whose effect was not derived from anything in the premise — a provider that emits a process without recording what it read to decide on it. The check is only as wide as what the plan admits it looked at, and nothing forces a provider to admit everything. Taken today by every run there is: the executor holds this and the planner does not produce a premise, so `os` sends an empty one from `apply` and `delete` alike and the guarantee covers nothing that actually happens. `claimed` rather than `enforced` until a planner fills it."
-enforced_by = ["crates/nerpa-executor/src/lib.rs"]
+bypass = "An operation whose effect was not derived from anything in the premise — a provider that emits a process without recording what it read to decide on it. The check is only as wide as what the plan admits it looked at, and nothing forces a provider to admit everything, so this bounds how much the guarantee covers rather than offering a way through it. It was once wider than that: the executor held this and nothing produced a premise for it to hold, so every run sent an empty one and the check covered nothing at all. A review found that, and it is why `Provider::read` returns what it looked at rather than only what it found."
+enforced_by = [
+  "crates/nerpa-executor/src/lib.rs",
+  "crates/nerpa-provider-os/src/lib.rs",
+]
 tests = ["what_it_did_is_read_back_rather_than_echoed"]
-adversarial = ["a_batch_whose_premise_moved_does_nothing_and_says_which"]
+adversarial = [
+  "a_batch_whose_premise_moved_does_nothing_and_says_which",
+  "a_file_that_moved_after_the_plan_was_made_is_not_written_over",
+]
 
 [[invariant]]
 id = "INV-FACT-001"

@@ -147,6 +147,13 @@ pub struct Change {
     kind: ChangeKind,
     deltas: Vec<AttributeDelta>,
     desired: Vec<(String, Confidence)>,
+    /// What the machine looked like when this was decided, and what that hashed
+    /// to. Deliberately outside the plan's number: the number covers what the
+    /// plan intends to do, and this covers what it reasoned from, which is a
+    /// different question and belongs to a different check. See `INV-PLAN-006`
+    /// and decision 0034.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    premise: Vec<nerpa_proto::Premise>,
 }
 
 impl Change {
@@ -155,13 +162,24 @@ impl Change {
         kind: ChangeKind,
         deltas: Vec<AttributeDelta>,
         desired: Vec<(String, Confidence)>,
+        premise: Vec<nerpa_proto::Premise>,
     ) -> Self {
         Self {
             address,
             kind,
             deltas,
             desired,
+            premise,
         }
+    }
+
+    /// What the machine looked like when this was decided.
+    ///
+    /// Empty for a resource nothing was looked at for — a creation has nothing
+    /// to have moved.
+    #[must_use]
+    pub fn premise(&self) -> &[nerpa_proto::Premise] {
+        &self.premise
     }
 
     // ENFORCES: INV-PLAN-004

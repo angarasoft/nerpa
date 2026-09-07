@@ -12,7 +12,7 @@ use nerpa_core::address::address;
 use nerpa_core::plan::ChangeKind;
 use nerpa_core::planner::plan_at;
 use nerpa_core::provider::{
-    Attributes, Machines, Provider, ProviderError, Providers, Reach, Reading,
+    Attributes, Machines, Provider, ProviderError, Providers, Reach, Read, Reading,
 };
 use nerpa_core::run::observe;
 use nerpa_core::schema::Schema;
@@ -266,11 +266,7 @@ impl Provider for Refusing {
         Schema::new()
     }
 
-    fn read(
-        &self,
-        batch: &[Reading],
-        _reach: &dyn Reach,
-    ) -> Result<std::collections::BTreeMap<Address, Attributes>, ProviderError> {
+    fn read(&self, batch: &[Reading], _reach: &dyn Reach) -> Result<Read, ProviderError> {
         let address = batch
             .first()
             .map(Reading::address)
@@ -294,6 +290,7 @@ impl Provider for Refusing {
         _address: &Address,
         _kind: ChangeKind,
         _attributes: &Attributes,
+        _premise: &[nerpa_proto::Premise],
         _reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
         unreachable!("this provider is only ever read from")
@@ -303,6 +300,7 @@ impl Provider for Refusing {
         &self,
         _address: &Address,
         _recorded: &Attributes,
+        _premise: &[nerpa_proto::Premise],
         _reach: &dyn Reach,
     ) -> Result<(), ProviderError> {
         unreachable!("this provider is only ever read from")

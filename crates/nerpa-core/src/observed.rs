@@ -22,6 +22,11 @@ use crate::value::Value;
 pub struct Observed {
     facts: BTreeMap<Target, BTreeMap<String, String>>,
     resources: BTreeMap<Address, BTreeMap<String, Value>>,
+    /// What was looked at to decide what each resource is, and what it hashed
+    /// to. Kept beside the values rather than inside them because it is not a
+    /// value: nothing plans from it, and the only thing that reads it is the
+    /// batch that goes back to the machine. See decision 0034.
+    premise: BTreeMap<Address, Vec<nerpa_proto::Premise>>,
     unreachable: BTreeSet<Target>,
 }
 
@@ -48,6 +53,21 @@ impl Observed {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// What was looked at to decide about a resource.
+    pub fn looked_at(&mut self, address: Address, premise: Vec<nerpa_proto::Premise>) {
+        if premise.is_empty() {
+            return;
+        }
+        self.premise.insert(address, premise);
+    }
+
+    /// What was looked at to decide about a resource, or nothing if it was not
+    /// there to look at.
+    #[must_use]
+    pub fn premise(&self, address: &Address) -> &[nerpa_proto::Premise] {
+        self.premise.get(address).map_or(&[], Vec::as_slice)
     }
 
     /// Records what one resource currently looks like.

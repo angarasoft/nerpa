@@ -227,8 +227,15 @@ advice.
 It is also what makes a signature mean something. Signing a plan whose premise
 cannot be checked is signing *do this, whatever is there*.
 
-The protocol carries it and the executor checks it; the planner does not yet
-produce one.
+A provider is the only place that can produce one, because the engine never sees
+a `Seen` and a provider rebuilding the observation later would be two guesses
+with nothing checking that they agree. So `Provider::read` says both what it
+found and what it looked at to find it; the plan carries that, and the batch
+carries it back.
+
+What bounds this is how much a provider admits to having read. The check is
+exactly as wide as that and no wider, which is a limit on the guarantee rather
+than a way through it.
 
 ## Privilege — [0035](decisions/0035-privilege-belongs-to-the-transport.md) · built
 

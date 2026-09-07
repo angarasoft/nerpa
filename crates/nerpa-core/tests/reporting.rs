@@ -8,13 +8,11 @@
 // Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
-use std::collections::BTreeMap;
-
 use nerpa_core::address::address;
 use nerpa_core::plan::ChangeKind;
 use nerpa_core::planner::plan;
 use nerpa_core::provider::{
-    Attributes, Machines, Provider, ProviderError, Providers, Reach, Reading,
+    Attributes, Machines, Provider, ProviderError, Providers, Reach, Read, Reading,
 };
 use nerpa_core::run::{RunError, apply, observe};
 use nerpa_core::schema::Schema;
@@ -54,12 +52,8 @@ impl Provider for Selective {
         Schema::new()
     }
 
-    fn read(
-        &self,
-        _batch: &[Reading],
-        _reach: &dyn Reach,
-    ) -> Result<BTreeMap<Address, Attributes>, ProviderError> {
-        Ok(BTreeMap::new())
+    fn read(&self, _batch: &[Reading], _reach: &dyn Reach) -> Result<Read, ProviderError> {
+        Ok(Read::new())
     }
 
     fn apply(
@@ -67,6 +61,7 @@ impl Provider for Selective {
         _address: &Address,
         _kind: ChangeKind,
         attributes: &Attributes,
+        _premise: &[nerpa_proto::Premise],
         _reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
         Ok(attributes
@@ -80,6 +75,7 @@ impl Provider for Selective {
         &self,
         _address: &Address,
         _recorded: &Attributes,
+        _premise: &[nerpa_proto::Premise],
         _reach: &dyn Reach,
     ) -> Result<(), ProviderError> {
         Ok(())

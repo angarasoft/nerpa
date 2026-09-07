@@ -27,14 +27,12 @@
 //! `mode` attribute, and a portable abstraction over them would describe
 //! something nobody runs.
 
-use std::collections::BTreeMap;
-
 use nerpa_core::address::{Address, Kind, Provider as ProviderName};
 use nerpa_core::plan::ChangeKind;
-use nerpa_core::provider::{Attributes, Provider, ProviderError, Reach, Reading};
+use nerpa_core::provider::{Attributes, Provider, ProviderError, Reach, Read, Reading};
 use nerpa_core::schema::Schema;
 use nerpa_core::value::Value;
-use nerpa_proto::{Answer, Ask, Entry, Observation, Operation, Seen};
+use nerpa_proto::{Answer, Ask, Entry, Observation, Operation, Premise, Seen};
 
 /// Files and directories.
 #[derive(Debug)]
@@ -207,11 +205,7 @@ impl Provider for Os {
 
     /// One journey for the whole batch, which is the only reason the batch is
     /// the unit. See `INV-BATCH-001`.
-    fn read(
-        &self,
-        batch: &[Reading],
-        reach: &dyn Reach,
-    ) -> Result<BTreeMap<Address, Attributes>, ProviderError> {
+    fn read(&self, batch: &[Reading], reach: &dyn Reach) -> Result<Read, ProviderError> {
         let mut asking = Vec::new();
         let mut about = Vec::new();
 
@@ -239,7 +233,7 @@ impl Provider for Os {
         // Taken before the ask, so that a complaint about the answer has a real
         // resource to be about rather than one made up to fill the field.
         let Some((first, _)) = about.first().cloned() else {
-            return Ok(BTreeMap::new());
+            return Ok(Read::new());
         };
 
         let seen = all(
@@ -249,10 +243,20 @@ impl Provider for Os {
             &first,
         )?;
 
-        let mut found = BTreeMap::new();
+        let mut found = Read::new();
         for ((address, path), answer) in about.into_iter().zip(seen) {
+            // ENFORCES: INV-PREMISE-001
+            // What was looked at, and what it was when it was. The batch that
+            // acts carries this back and the far end looks again before doing
+            // anything — so a file that moved between the looking and the doing
+            // stops the whole batch rather than being written over. Decision
+            // 0034.
+            let premise = vec![Premise {
+                digest: nerpa_proto::digest(&answer),
+                observation: Observation::Path { path: path.clone() },
+            }];
             if let Some(attributes) = as_attributes(&path, &answer, &address)? {
-                found.insert(address, attributes);
+                found = found.with(address, attributes, premise);
             }
         }
         Ok(found)
@@ -263,6 +267,7 @@ impl Provider for Os {
         address: &Address,
         _kind: ChangeKind,
         attributes: &Attributes,
+        premise: &[Premise],
         reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
         let path = required_path(attributes, address)?;
@@ -286,7 +291,7 @@ impl Provider for Os {
 
         let answer = reach.ask(&Ask::Perform {
             plan: None,
-            premise: Vec::new(),
+            premise: premise.to_vec(),
             operations: vec![operation],
         })?;
 
@@ -303,12 +308,13 @@ impl Provider for Os {
         &self,
         address: &Address,
         recorded: &Attributes,
+        premise: &[Premise],
         reach: &dyn Reach,
     ) -> Result<(), ProviderError> {
         let path = required_path(recorded, address)?;
         let answer = reach.ask(&Ask::Perform {
             plan: None,
-            premise: Vec::new(),
+            premise: premise.to_vec(),
             operations: vec![Operation::Remove { path }],
         })?;
         one(answer, address).map(|_| ())

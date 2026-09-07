@@ -78,7 +78,10 @@ pub fn observe(
         };
         match provider.read(&batch, reach) {
             Ok(found) => {
-                for (address, attributes) in found {
+                for (address, premise) in found.premise().clone() {
+                    observed.looked_at(address, premise);
+                }
+                for (address, attributes) in found.attributes().clone() {
                     observed.record(address, attributes);
                 }
             }
@@ -229,7 +232,7 @@ pub fn apply(
 
             if change.kind() == ChangeKind::Delete {
                 if let Some(record) = state.get(address) {
-                    provider.delete(address, &record.locator(), reach)?;
+                    provider.delete(address, &record.locator(), change.premise(), reach)?;
                 }
                 state.forget(address);
                 record(state).map_err(RunError::Record)?;
@@ -251,16 +254,22 @@ pub fn apply(
             // The locator is taken out first because `record` here is the
             // callback that writes state down, and a `Record` borrowed from
             // state would shadow it — which is how the write came to be missing.
+            let mut premise = change.premise();
             if change.kind() == ChangeKind::Replace
                 && let Some(locator) = state.get(address).map(Record::locator)
             {
-                provider.delete(address, &locator, reach)?;
+                provider.delete(address, &locator, premise, reach)?;
                 state.forget(address);
                 record(state).map_err(RunError::Record)?;
+                // The premise describes the world before this change, and this
+                // change has just altered it: the thing it names is the thing
+                // that was deleted a line ago. Checking it again would refuse
+                // the run for a difference this run made on purpose.
+                premise = &[];
             }
 
             let attributes = settle(change, &observed, secrets)?;
-            let result = provider.apply(address, change.kind(), &attributes, reach)?;
+            let result = provider.apply(address, change.kind(), &attributes, premise, reach)?;
 
             state.record(
                 address.clone(),

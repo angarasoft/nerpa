@@ -9,13 +9,11 @@
 // Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
-use std::collections::BTreeMap;
-
 use nerpa_core::address::address;
 use nerpa_core::attribute::{Attribute, Reference};
 use nerpa_core::plan::PlanDigest;
 use nerpa_core::planner::plan_at;
-use nerpa_core::provider::{Attributes, Provider, ProviderError, Providers, Reach, Reading};
+use nerpa_core::provider::{Attributes, Provider, ProviderError, Providers, Reach, Read, Reading};
 use nerpa_core::schema::Schema;
 use nerpa_core::secret::{Key, Remembered, Secrets};
 use nerpa_core::state::{State, Written};
@@ -40,18 +38,15 @@ impl Provider for Empty {
     fn schema(&self) -> Schema {
         Schema::new()
     }
-    fn read(
-        &self,
-        _batch: &[Reading],
-        _reach: &dyn Reach,
-    ) -> Result<BTreeMap<Address, Attributes>, ProviderError> {
-        Ok(BTreeMap::new())
+    fn read(&self, _batch: &[Reading], _reach: &dyn Reach) -> Result<Read, ProviderError> {
+        Ok(Read::new())
     }
     fn apply(
         &self,
         _address: &Address,
         _kind: nerpa_core::ChangeKind,
         attributes: &Attributes,
+        _premise: &[nerpa_proto::Premise],
         _reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
         Ok(attributes.clone())
@@ -60,6 +55,7 @@ impl Provider for Empty {
         &self,
         _address: &Address,
         _recorded: &Attributes,
+        _premise: &[nerpa_proto::Premise],
         _reach: &dyn Reach,
     ) -> Result<(), ProviderError> {
         Ok(())

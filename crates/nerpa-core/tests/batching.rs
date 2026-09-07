@@ -9,12 +9,11 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
 use std::cell::RefCell;
-use std::collections::BTreeMap;
 
 use nerpa_core::address::address;
 use nerpa_core::plan::ChangeKind;
 use nerpa_core::provider::{
-    Attributes, Machines, Provider, ProviderError, Providers, Reach, Reading,
+    Attributes, Machines, Provider, ProviderError, Providers, Reach, Read, Reading,
 };
 use nerpa_core::run::observe;
 use nerpa_core::schema::Schema;
@@ -79,13 +78,9 @@ impl Provider for Watching {
         Schema::new()
     }
 
-    fn read(
-        &self,
-        batch: &[Reading],
-        _reach: &dyn Reach,
-    ) -> Result<BTreeMap<Address, Attributes>, ProviderError> {
+    fn read(&self, batch: &[Reading], _reach: &dyn Reach) -> Result<Read, ProviderError> {
         ASKED.with_borrow_mut(|seen| seen.push(batch.to_vec()));
-        Ok(BTreeMap::new())
+        Ok(Read::new())
     }
 
     fn apply(
@@ -93,6 +88,7 @@ impl Provider for Watching {
         _address: &Address,
         _kind: ChangeKind,
         _attributes: &Attributes,
+        _premise: &[nerpa_proto::Premise],
         _reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
         unreachable!("this provider is only ever read from")
@@ -102,6 +98,7 @@ impl Provider for Watching {
         &self,
         _address: &Address,
         _recorded: &Attributes,
+        _premise: &[nerpa_proto::Premise],
         _reach: &dyn Reach,
     ) -> Result<(), ProviderError> {
         unreachable!("this provider is only ever read from")

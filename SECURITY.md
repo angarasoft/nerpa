@@ -70,7 +70,7 @@ has written a test that carries that bypass out. An entry marked `enforced` has
 been attacked; one marked `claimed` is believed and undemonstrated, and its
 `bypass` field says exactly where it is thin.
 
-Six entries are `claimed` as this is written, and the ways around them are
+Five entries are `claimed` as this is written, and the ways around them are
 published rather than hidden:
 
 * `INV-PLAN-001` and `INV-SECRET-004` — an opaque value or a secret reaching a
@@ -80,9 +80,6 @@ published rather than hidden:
   compared inside a function decides whether a resource exists. This entry said
   `enforced` while its own `bypass` field described the hole, which is worse
   than the hole.
-* `INV-PREMISE-001` — the executor refuses a batch whose premise has moved, and
-  nothing yet produces a premise for it to refuse. Every run today sends an
-  empty one, so between looking and acting there is no check at all.
 * `INV-PLAN-003` — an attribute a provider does not report back never settles.
 * `INV-STATE-004` — the state file's rename is atomic against a stopped process,
   not against a stopped machine.
