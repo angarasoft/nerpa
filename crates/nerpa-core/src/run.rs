@@ -115,7 +115,7 @@ pub fn observe(
             }
             Err(other) => return Err(other.into()),
         };
-        match provider.read(&batch, &facts, reach) {
+        match provider.read(&batch, facts, reach) {
             Ok(found) => {
                 for (address, premise) in found.premise().clone() {
                     observed.looked_at(address, premise);
@@ -233,10 +233,13 @@ pub fn apply(
             let address = change.address();
             let provider = providers.for_address(address)?;
             let reach = machines.reach(address.target())?;
+            // What the machine turned out to be, for a provider whose command
+            // depends on it. Read in the same run, before anything was applied.
+            let facts = observed.facts_of(address.target());
 
             if change.kind() == ChangeKind::Delete {
                 if let Some(record) = state.get(address) {
-                    provider.delete(address, &record.locator(), change.premise(), reach)?;
+                    provider.delete(address, &record.locator(), change.premise(), facts, reach)?;
                 }
                 state.forget(address);
                 record(state).map_err(RunError::Record)?;
@@ -262,7 +265,7 @@ pub fn apply(
             if change.kind() == ChangeKind::Replace
                 && let Some(locator) = state.get(address).map(Record::locator)
             {
-                provider.delete(address, &locator, premise, reach)?;
+                provider.delete(address, &locator, premise, facts, reach)?;
                 state.forget(address);
                 record(state).map_err(RunError::Record)?;
                 // The premise describes the world before this change, and this
@@ -273,7 +276,8 @@ pub fn apply(
             }
 
             let attributes = settle(change, &observed, secrets)?;
-            let result = provider.apply(address, change.kind(), &attributes, premise, reach)?;
+            let result =
+                provider.apply(address, change.kind(), &attributes, premise, facts, reach)?;
 
             state.record(
                 address.clone(),

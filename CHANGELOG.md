@@ -276,6 +276,21 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- `os:package` reads. Two families, `rpm` with `dnf` and `portage` with
+  `emerge`, chosen to stand as far apart as the space allows; a machine calling
+  itself anything else is refused by name at plan time rather than sent a
+  command on the chance that it works. Every command was measured against a real
+  machine before it was written down — `qlist` was rejected as the wrong
+  instrument, because it matches by substring and answers `dev-lang/python-exec`
+  when asked about `dev-lang/python`. See
+  [0038](docs/decisions/0038-two-package-families-and-a-refusal-for-the-rest.md).
+
+- `os-release` values in single quotes were read with the quotes attached, so a
+  Gentoo machine reported a family called `'gentoo'` and was refused as unknown.
+  Rocky writes `ID="rocky"` and Gentoo writes `ID='gentoo'`; the specification
+  permits both. Found by reading a second distribution, which is the whole reason
+  there are two, and by nothing else — the parser had no test at all.
+
 - A name and a slot may hold a `/`, and a machine may not. In portage the
   identity of a package is `category/name` — three different packages are called
   `nginx` on a stock tree, and `portageq` refuses a bare name as an invalid atom

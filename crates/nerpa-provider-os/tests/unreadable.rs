@@ -68,7 +68,7 @@ fn look(path: &Path) -> Result<Option<Attributes>, String> {
     let target = address("os:file.subject@localhost");
     os.read(
         &[Reading::new(target.clone(), at(path))],
-        &Observed::new().facts_of(None),
+        Observed::new().facts_of(None),
         &HERE,
     )
     .map(|found| found.attributes().get(&target).cloned())
@@ -191,6 +191,7 @@ fn a_binary_file_converges() {
             ChangeKind::Create,
             &wanted,
             &[],
+            Observed::new().facts_of(None),
             &HERE,
         )
         .expect("it writes");
@@ -227,6 +228,7 @@ fn writing_where_a_symlink_is_replaces_the_link_and_leaves_its_target_alone() {
             ChangeKind::Update,
             &wanted,
             &[],
+            Observed::new().facts_of(None),
             &HERE,
         )
         .expect("it writes");
@@ -261,6 +263,7 @@ fn deleting_a_directory_does_not_take_what_nerpa_did_not_make() {
             &address("os:directory.confd@localhost"),
             &at(&directory),
             &[],
+            Observed::new().facts_of(None),
             &HERE,
         )
         .expect_err("a directory with something in it is not empty");
@@ -286,6 +289,7 @@ fn an_empty_directory_is_still_removed() {
             &address("os:directory.confd@localhost"),
             &at(&directory),
             &[],
+            Observed::new().facts_of(None),
             &HERE,
         )
         .expect("an empty directory goes");
@@ -314,6 +318,7 @@ fn making_a_directory_where_a_symlink_is_leaves_what_it_pointed_at_alone() {
             ChangeKind::Create,
             &wanted,
             &[],
+            Observed::new().facts_of(None),
             &HERE,
         )
         .expect("it makes the directory");
@@ -359,6 +364,7 @@ fn a_file_ends_up_with_the_mode_it_was_declared() {
             ChangeKind::Create,
             &wanted,
             &[],
+            Observed::new().facts_of(None),
             &HERE,
         )
         .expect("it writes");

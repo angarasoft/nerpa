@@ -200,7 +200,7 @@ pub trait Provider: Send + Sync {
     fn read(
         &self,
         batch: &[Reading],
-        facts: &Facts<'_>,
+        facts: Facts<'_>,
         reach: &dyn Reach,
     ) -> Result<Read, ProviderError>;
 
@@ -219,6 +219,7 @@ pub trait Provider: Send + Sync {
         kind: ChangeKind,
         attributes: &Attributes,
         premise: &[Premise],
+        facts: Facts<'_>,
         reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError>;
 
@@ -237,6 +238,7 @@ pub trait Provider: Send + Sync {
         address: &Address,
         recorded: &Attributes,
         premise: &[Premise],
+        facts: Facts<'_>,
         reach: &dyn Reach,
     ) -> Result<(), ProviderError>;
 

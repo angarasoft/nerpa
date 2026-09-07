@@ -52,7 +52,7 @@ impl Provider for DeletesButCannotCreate {
     fn read(
         &self,
         _batch: &[Reading],
-        _facts: &nerpa_core::observed::Facts<'_>,
+        _facts: nerpa_core::observed::Facts<'_>,
         _reach: &dyn Reach,
     ) -> Result<Read, ProviderError> {
         Ok(Read::new())
@@ -64,6 +64,7 @@ impl Provider for DeletesButCannotCreate {
         _kind: ChangeKind,
         _attributes: &Attributes,
         _premise: &[nerpa_proto::Premise],
+        _facts: nerpa_core::observed::Facts<'_>,
         _reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
         Err(ProviderError::World {
@@ -77,6 +78,7 @@ impl Provider for DeletesButCannotCreate {
         _address: &Address,
         _recorded: &Attributes,
         _premise: &[nerpa_proto::Premise],
+        _facts: nerpa_core::observed::Facts<'_>,
         _reach: &dyn Reach,
     ) -> Result<(), ProviderError> {
         Ok(())

@@ -81,7 +81,7 @@ impl Provider for Watching {
     fn read(
         &self,
         batch: &[Reading],
-        _facts: &nerpa_core::observed::Facts<'_>,
+        _facts: nerpa_core::observed::Facts<'_>,
         _reach: &dyn Reach,
     ) -> Result<Read, ProviderError> {
         ASKED.with_borrow_mut(|seen| seen.push(batch.to_vec()));
@@ -94,6 +94,7 @@ impl Provider for Watching {
         _kind: ChangeKind,
         _attributes: &Attributes,
         _premise: &[nerpa_proto::Premise],
+        _facts: nerpa_core::observed::Facts<'_>,
         _reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
         unreachable!("this provider is only ever read from")
@@ -104,6 +105,7 @@ impl Provider for Watching {
         _address: &Address,
         _recorded: &Attributes,
         _premise: &[nerpa_proto::Premise],
+        _facts: nerpa_core::observed::Facts<'_>,
         _reach: &dyn Reach,
     ) -> Result<(), ProviderError> {
         unreachable!("this provider is only ever read from")

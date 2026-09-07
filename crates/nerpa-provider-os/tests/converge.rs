@@ -6,6 +6,7 @@
 use std::fs;
 use std::path::PathBuf;
 
+use nerpa_core::Observed;
 use nerpa_core::address::address;
 use nerpa_core::attribute::{Choice, Fact};
 use nerpa_core::planner::plan;
@@ -498,17 +499,46 @@ fn a_declaration_without_a_path_is_refused_rather_than_guessed_at() {
 fn a_kind_this_provider_does_not_own_is_refused() {
     let providers = providers();
     let state = State::new();
-    let graph = graph_of(vec![
-        Resource::new(address("os:package.nginx@localhost")).with("state", "present"),
-    ]);
+    let graph = graph_of(vec![Resource::new(address("os:service.nginx@localhost"))]);
 
-    let refusal = observe(&graph, &providers, &machines(), &state)
-        .expect_err("packages arrive with the executor");
+    let refusal =
+        observe(&graph, &providers, &machines(), &state).expect_err("services arrive later");
     assert!(
         refusal.to_string().contains("does not know how to handle"),
         "{refusal}"
     );
     let _ = Target::new("localhost").expect("a valid target");
+}
+
+/// Read against whatever this actually runs on. Only reading: nothing here
+/// installs or removes anything, and the machine a test runs on is not a machine
+/// anybody agreed to have changed.
+#[test]
+fn a_package_that_is_installed_is_read_back_with_its_version() {
+    let providers = providers();
+    let state = State::new();
+    // `bash` under two names, because the two families spell it differently and
+    // only one of them will be the family of the machine this runs on.
+    let atom = if std::path::Path::new("/usr/bin/portageq").exists() {
+        "app-shells/bash"
+    } else if std::path::Path::new("/usr/bin/rpm").exists() {
+        "bash"
+    } else {
+        return;
+    };
+    let graph = graph_of(vec![
+        Resource::new(address(&format!("os:package.{atom}@localhost"))).with("version", "0"),
+    ]);
+
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
+    let found = observed
+        .get(&address(&format!("os:package.{atom}@localhost")))
+        .expect("bash is installed on anything that can run this test");
+    let version = found.get("version").expect("and it has a version");
+    assert!(
+        matches!(version, Value::Text(text) if !text.is_empty()),
+        "the version comes off the machine rather than out of the declaration: {version:?}"
+    );
 }
 
 #[test]
@@ -643,6 +673,7 @@ fn one_provider_serves_two_threads_at_once() {
                         ChangeKind::Create,
                         &wanted,
                         &[],
+                        Observed::new().facts_of(None),
                         &Here,
                     )
                     .expect("it writes");

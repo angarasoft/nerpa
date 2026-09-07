@@ -410,6 +410,28 @@ on something no longer declared is a fact somebody is handed rather than one the
 discover. Moving onto a new image is a deliberate act: replacement on demand, or
 two slots side by side until the new one has shown itself.
 
+## Packages — [0038](decisions/0038-two-package-families-and-a-refusal-for-the-rest.md) · partly built
+
+Two families and a refusal by name for the rest. `rpm` with `dnf` installs
+prebuilt packages inside a transaction; `portage` with `emerge` builds from
+source, keeps versions side by side in slots, and spells a name as
+`category/name`. They are far enough apart that a shape surviving both will
+survive `apt`, and a third family added now would prove nothing.
+
+What a family is comes off the machine, in the fact journey that now runs before
+any provider is asked. A machine calling itself something this does not know is
+refused at plan time, naming the machine and what it said — no command is sent on
+the chance that it works.
+
+Presence is the declaration and there is no `state:`. `latest` is refused,
+because what it does depends on when it runs and no plan can carry a number over
+that. Version comparison is asked of the machine, never implemented here: `rpm`,
+`portage` and `dpkg` disagree, and a comparator written on the control machine is
+what `W-010` describes.
+
+Reading is built and shown against both families. Installing and removing are
+written and not yet run against a machine anybody agreed to have changed.
+
 ## Drift, and the rest from Portage — [0013](decisions/0013-borrow-from-portage.md) · partly built
 
 A resource may be marked so that drift stops the stage and produces a three-way

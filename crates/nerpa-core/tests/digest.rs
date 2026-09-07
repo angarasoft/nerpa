@@ -41,7 +41,7 @@ impl Provider for Empty {
     fn read(
         &self,
         _batch: &[Reading],
-        _facts: &nerpa_core::observed::Facts<'_>,
+        _facts: nerpa_core::observed::Facts<'_>,
         _reach: &dyn Reach,
     ) -> Result<Read, ProviderError> {
         Ok(Read::new())
@@ -52,6 +52,7 @@ impl Provider for Empty {
         _kind: nerpa_core::ChangeKind,
         attributes: &Attributes,
         _premise: &[nerpa_proto::Premise],
+        _facts: nerpa_core::observed::Facts<'_>,
         _reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
         Ok(attributes.clone())
@@ -61,6 +62,7 @@ impl Provider for Empty {
         _address: &Address,
         _recorded: &Attributes,
         _premise: &[nerpa_proto::Premise],
+        _facts: nerpa_core::observed::Facts<'_>,
         _reach: &dyn Reach,
     ) -> Result<(), ProviderError> {
         Ok(())

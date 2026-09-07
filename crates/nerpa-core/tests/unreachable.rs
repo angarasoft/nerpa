@@ -269,7 +269,7 @@ impl Provider for Refusing {
     fn read(
         &self,
         batch: &[Reading],
-        _facts: &nerpa_core::observed::Facts<'_>,
+        _facts: nerpa_core::observed::Facts<'_>,
         _reach: &dyn Reach,
     ) -> Result<Read, ProviderError> {
         let address = batch
@@ -296,6 +296,7 @@ impl Provider for Refusing {
         _kind: ChangeKind,
         _attributes: &Attributes,
         _premise: &[nerpa_proto::Premise],
+        _facts: nerpa_core::observed::Facts<'_>,
         _reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
         unreachable!("this provider is only ever read from")
@@ -306,6 +307,7 @@ impl Provider for Refusing {
         _address: &Address,
         _recorded: &Attributes,
         _premise: &[nerpa_proto::Premise],
+        _facts: nerpa_core::observed::Facts<'_>,
         _reach: &dyn Reach,
     ) -> Result<(), ProviderError> {
         unreachable!("this provider is only ever read from")

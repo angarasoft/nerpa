@@ -1,7 +1,7 @@
-//! Files and directories on a machine.
+//! Files, directories and packages on a machine.
 //!
-//! The first provider, and deliberately the smallest useful one. It owns two
-//! kinds — `os:file` and `os:directory` — and it does not touch a disk.
+//! The first provider. It owns `os:file`, `os:directory` and `os:package`, and
+//! it does not touch a disk or run a program itself.
 //!
 //! Provider logic runs where the engine runs and the work happens where the
 //! resource is ([0032](../../../docs/decisions)), so this is a **translator**:
@@ -28,6 +28,10 @@
 //! something nobody runs.
 
 use nerpa_core::address::{Address, Kind, Provider as ProviderName};
+mod package;
+
+use package::Family;
+
 use nerpa_core::observed::Facts;
 use nerpa_core::plan::ChangeKind;
 use nerpa_core::provider::{Attributes, Provider, ProviderError, Reach, Read, Reading};
@@ -112,6 +116,112 @@ fn one(answer: Answer, address: &Address) -> Result<Seen, ProviderError> {
 /// is "the far end answered about something this never asked about", which is
 /// the two ends having lost step — a different thing, and not one to report as
 /// an absent resource.
+/// One thing this batch is looking at, and what its answer will mean.
+///
+/// A batch may hold both kinds at once — the engine groups by provider and
+/// machine, not by kind — so each entry carries how to ask and how to read,
+/// rather than the loop assuming every entry is the same shape.
+#[derive(Debug)]
+enum Asked {
+    Path {
+        address: Address,
+        path: String,
+    },
+    Package {
+        address: Address,
+        atom: String,
+        family: Family,
+    },
+}
+
+impl Asked {
+    fn address(&self) -> &Address {
+        match self {
+            Self::Path { address, .. } | Self::Package { address, .. } => address,
+        }
+    }
+
+    fn observation(&self) -> Observation {
+        match self {
+            Self::Path { path, .. } => Observation::Path { path: path.clone() },
+            Self::Package { atom, family, .. } => family.query(atom),
+        }
+    }
+
+    fn understood(&self, seen: &Seen) -> Result<Option<Attributes>, ProviderError> {
+        match self {
+            Self::Path { address, path } => as_attributes(path, seen, address),
+            Self::Package {
+                address,
+                atom,
+                family,
+            } => {
+                let installed =
+                    family
+                        .installed(atom, seen)
+                        .map_err(|problem| ProviderError::World {
+                            address: address.clone(),
+                            problem,
+                        })?;
+                Ok(installed.map(|version| package::as_attributes(&version).into_iter().collect()))
+            }
+        }
+    }
+}
+
+/// The read's own question, asked again as an operation so that a batch can
+/// both act and see what it did.
+///
+/// Its exit code is not checked: the answer is what it printed, and "not
+/// installed" is a legitimate answer that `rpm` reports by exiting 1.
+fn look_again(family: Family, atom: &str) -> Operation {
+    let Observation::Output { program, arguments } = family.query(atom) else {
+        unreachable!("a package is asked about by running a program")
+    };
+    Operation::Process {
+        program,
+        arguments,
+        stdin: Vec::new(),
+        private: false,
+        expect: vec![0, 1],
+    }
+}
+
+/// What a package is called where it lives.
+///
+/// The name and, where the declaration gave one, the slot — which in portage is
+/// how `python:3.13` and `python:3.14` are two installed packages rather than a
+/// conflict. See 0002 and 0038.
+fn atom(address: &Address) -> String {
+    match address.slot() {
+        Some(slot) => format!("{}:{}", address.name().as_str(), slot.as_str()),
+        None => address.name().as_str().to_owned(),
+    }
+}
+
+/// Which family manages packages on the machine this resource lives on.
+///
+/// Refused by name rather than guessed at: a machine calling itself something
+/// this provider has not been taught gets an error saying so, and no command is
+/// sent on the chance that it works. See 0038.
+fn family(address: &Address, facts: Facts<'_>) -> Result<Family, ProviderError> {
+    let Some(said) = facts.said("os_family") else {
+        return Err(ProviderError::World {
+            address: address.clone(),
+            problem: "the machine did not say what it is, so nothing knows how packages \
+                      arrive there"
+                .to_owned(),
+        });
+    };
+    Family::of(said).ok_or_else(|| ProviderError::World {
+        address: address.clone(),
+        problem: format!(
+            "the machine says it is {said:?}, and nerpa manages packages on rhel-like \
+             and gentoo machines only"
+        ),
+    })
+}
+
 fn as_attributes(
     path: &str,
     seen: &Seen,
@@ -186,6 +296,104 @@ fn required_path(attributes: &Attributes, address: &Address) -> Result<String, P
     })
 }
 
+/// Makes a package present at the version the declaration names.
+///
+/// Two operations in one batch rather than one and a guess: the install, and
+/// then the same question the read asked, so what the machine ended up with
+/// is read back rather than echoed from the declaration. `dnf` and `emerge`
+/// both report success for work they did not do, and a version that did not
+/// change would otherwise be recorded as though it had.
+fn install(
+    address: &Address,
+    attributes: &Attributes,
+    facts: Facts<'_>,
+    premise: &[Premise],
+    reach: &dyn Reach,
+) -> Result<Attributes, ProviderError> {
+    let atom = atom(address);
+    let family = family(address, facts)?;
+    // Required, because "whatever is newest" is not a state a plan can
+    // describe: what it does depends on when it runs. See 0038.
+    let Some(version) = text(attributes, "version") else {
+        return Err(ProviderError::World {
+            address: address.clone(),
+            problem: "a package says which version it is, because \"the newest \
+                          there is\" depends on when a run happens and no plan can \
+                          carry a number over that"
+                .to_owned(),
+        });
+    };
+
+    let became = all(
+        reach.ask(&Ask::Perform {
+            plan: None,
+            premise: premise.to_vec(),
+            operations: vec![family.install(&atom, &version), look_again(family, &atom)],
+        })?,
+        address,
+    )?;
+    let Some(afterwards) = became.last() else {
+        return Err(ProviderError::World {
+            address: address.clone(),
+            problem: "the far end did not say what the package became".to_owned(),
+        });
+    };
+
+    match family.installed(&atom, afterwards) {
+        Ok(Some(became)) => Ok(package::as_attributes(&became).into_iter().collect()),
+        Ok(None) => Err(ProviderError::World {
+            address: address.clone(),
+            problem: format!("{atom} is still not installed after installing it"),
+        }),
+        Err(problem) => Err(ProviderError::World {
+            address: address.clone(),
+            problem,
+        }),
+    }
+}
+
+/// Makes a package absent, and reads back that it is.
+///
+/// The same two operations as installing, for the same reason: a removal
+/// that reported success and left the package there would be recorded as
+/// gone.
+fn uninstall(
+    address: &Address,
+    facts: Facts<'_>,
+    premise: &[Premise],
+    reach: &dyn Reach,
+) -> Result<(), ProviderError> {
+    let atom = atom(address);
+    let family = family(address, facts)?;
+
+    let became = all(
+        reach.ask(&Ask::Perform {
+            plan: None,
+            premise: premise.to_vec(),
+            operations: vec![family.remove(&atom), look_again(family, &atom)],
+        })?,
+        address,
+    )?;
+    let Some(afterwards) = became.last() else {
+        return Err(ProviderError::World {
+            address: address.clone(),
+            problem: "the far end did not say what the package became".to_owned(),
+        });
+    };
+
+    match family.installed(&atom, afterwards) {
+        Ok(None) => Ok(()),
+        Ok(Some(still)) => Err(ProviderError::World {
+            address: address.clone(),
+            problem: format!("{atom} is still installed, at {still}, after removing it"),
+        }),
+        Err(problem) => Err(ProviderError::World {
+            address: address.clone(),
+            problem,
+        }),
+    }
+}
+
 impl Provider for Os {
     fn name(&self) -> &ProviderName {
         &self.name
@@ -209,16 +417,31 @@ impl Provider for Os {
     fn read(
         &self,
         batch: &[Reading],
-        _facts: &Facts<'_>,
+        facts: Facts<'_>,
         reach: &dyn Reach,
     ) -> Result<Read, ProviderError> {
-        let mut asking = Vec::new();
         let mut about = Vec::new();
 
         for reading in batch {
             let address = reading.address();
             match address.kind().as_str() {
-                "file" | "directory" => {}
+                "file" | "directory" => {
+                    // No settled path means the declaration is waiting on
+                    // something that has not happened. Nothing to look at, and
+                    // nothing to guess.
+                    let Some(path) = text(reading.locator(), "path") else {
+                        continue;
+                    };
+                    about.push(Asked::Path {
+                        address: address.clone(),
+                        path,
+                    });
+                }
+                "package" => about.push(Asked::Package {
+                    address: address.clone(),
+                    atom: atom(address),
+                    family: family(address, facts)?,
+                }),
                 _ => {
                     return Err(ProviderError::UnknownKind {
                         provider: self.name.clone(),
@@ -226,31 +449,23 @@ impl Provider for Os {
                     });
                 }
             }
-
-            // No settled path means the declaration is waiting on something that
-            // has not happened. Nothing to look at, and nothing to guess.
-            let Some(path) = text(reading.locator(), "path") else {
-                continue;
-            };
-            asking.push(Observation::Path { path: path.clone() });
-            about.push((address.clone(), path));
         }
 
         // Taken before the ask, so that a complaint about the answer has a real
         // resource to be about rather than one made up to fill the field.
-        let Some((first, _)) = about.first().cloned() else {
+        let Some(first) = about.first().map(|asked| asked.address().clone()) else {
             return Ok(Read::new());
         };
 
         let seen = all(
             reach.ask(&Ask::Look {
-                observations: asking,
+                observations: about.iter().map(Asked::observation).collect(),
             })?,
             &first,
         )?;
 
         let mut found = Read::new();
-        for ((address, path), answer) in about.into_iter().zip(seen) {
+        for (asked, answer) in about.into_iter().zip(seen) {
             // ENFORCES: INV-PREMISE-001
             // What was looked at, and what it was when it was. The batch that
             // acts carries this back and the far end looks again before doing
@@ -259,10 +474,10 @@ impl Provider for Os {
             // 0034.
             let premise = vec![Premise {
                 digest: nerpa_proto::digest(&answer),
-                observation: Observation::Path { path: path.clone() },
+                observation: asked.observation(),
             }];
-            if let Some(attributes) = as_attributes(&path, &answer, &address)? {
-                found = found.with(address, attributes, premise);
+            if let Some(attributes) = asked.understood(&answer)? {
+                found = found.with(asked.address().clone(), attributes, premise);
             }
         }
         Ok(found)
@@ -274,8 +489,13 @@ impl Provider for Os {
         _kind: ChangeKind,
         attributes: &Attributes,
         premise: &[Premise],
+        facts: Facts<'_>,
         reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
+        if address.kind().as_str() == "package" {
+            return install(address, attributes, facts, premise, reach);
+        }
+
         let path = required_path(attributes, address)?;
         let operation = match address.kind().as_str() {
             "directory" => Operation::Directory {
@@ -315,8 +535,13 @@ impl Provider for Os {
         address: &Address,
         recorded: &Attributes,
         premise: &[Premise],
+        facts: Facts<'_>,
         reach: &dyn Reach,
     ) -> Result<(), ProviderError> {
+        if address.kind().as_str() == "package" {
+            return uninstall(address, facts, premise, reach);
+        }
+
         let path = required_path(recorded, address)?;
         let answer = reach.ask(&Ask::Perform {
             plan: None,
