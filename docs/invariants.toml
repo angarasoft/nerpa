@@ -67,9 +67,10 @@ from the way it parsed would produce two hashes for one plan and invalidate a \
 signature that was given in good faith."""
 enforced_by = ["crates/nerpa-core/src/address.rs"]
 tests = ["every_shape_round_trips"]
-bypass = "A shape that prints differently from the way it parsed: a name holding a separator, a component the grammar admits but Display does not reproduce."
+bypass = "A shape that prints differently from the way it parsed: a name holding a separator, a component the grammar admits but Display does not reproduce. A name now holds `/` on purpose, because in portage a package is `category/name` — so the shape the bypass names is a real shape rather than a hypothetical one."
 adversarial = [
   "every_shape_round_trips",
+  "a_name_and_a_slot_may_hold_a_slash_because_somebody_elses_namespace_does",
 ]
 
 [[invariant]]

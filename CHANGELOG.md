@@ -276,6 +276,13 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A name and a slot may hold a `/`, and a machine may not. In portage the
+  identity of a package is `category/name` — three different packages are called
+  `nginx` on a stock tree, and `portageq` refuses a bare name as an invalid atom
+  — so an address that could not hold the separator could not name the thing,
+  and two declarations would have collided in the graph over a name neither of
+  them owns. A widening, so nothing that parsed before stops parsing.
+
 - A machine's facts are gathered before its resources are read, and handed to
   the provider that reads them. A provider deciding how to ask a machine needs
   to know what the machine is — whether packages arrive by `dnf` or by `emerge`

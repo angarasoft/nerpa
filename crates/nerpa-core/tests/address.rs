@@ -172,10 +172,59 @@ fn chosen_components_accept_every_character_the_grammar_allows() {
         assert!(Name::new(text).is_ok(), "{text} should be a valid name");
         assert!(Target::new(text).is_ok(), "{text} should be a valid target");
     }
+
+    // A name and a slot reach into somebody else's namespace and a machine does
+    // not, so the two sets are not the same one. See decision 0038.
+    for text in ["www-servers/nginx", "dev-libs/openssl"] {
+        assert!(Name::new(text).is_ok(), "{text} should be a valid name");
+        assert!(Slot::new(text).is_ok(), "{text} should be a valid slot");
+        assert!(
+            Target::new(text).is_err(),
+            "{text} should not be a valid machine"
+        );
+    }
 }
 
 #[test]
 fn a_control_resource_says_so_when_asked() {
     assert!(address("yandex:instance.db").domain().is_control());
     assert!(!address("os:package.nginx@web-01").domain().is_control());
+}
+
+/// In portage the identity of a package is `category/name`, and three different
+/// packages are called `nginx` — `acct-group/`, `acct-user/` and `www-servers/`
+/// on a stock tree. An address that could not tell them apart would let two
+/// declarations collide in the graph over a name neither of them owns. So a name
+/// may hold a slash, and so may a slot, where `dev-libs/openssl:0/3` is a
+/// subslot. See decision 0038.
+#[test]
+fn a_name_and_a_slot_may_hold_a_slash_because_somebody_elses_namespace_does() {
+    let package = address("os:package.www-servers/nginx@web-01");
+    assert_eq!(package.kind().as_str(), "package");
+    assert_eq!(package.name().as_str(), "www-servers/nginx");
+    assert_eq!(package.target().map(Target::as_str), Some("web-01"));
+
+    let subslot = address("os:package.dev-libs/openssl:0/3@web-01");
+    assert_eq!(subslot.name().as_str(), "dev-libs/openssl");
+    assert_eq!(subslot.slot().map(Slot::as_str), Some("0/3"));
+
+    for text in [
+        "os:package.www-servers/nginx@web-01",
+        "os:package.dev-libs/openssl:0/3@web-01",
+    ] {
+        let parsed: Address = text.parse().expect("valid address");
+        assert_eq!(parsed.to_string(), text, "and it prints as it parsed");
+    }
+}
+
+/// A machine is not in somebody else's namespace. A slash there would be a
+/// character the thing being named cannot contain, and letting it through would
+/// be the type saying something untrue.
+#[test]
+fn a_machine_may_not_hold_a_slash() {
+    let refused: Result<Address, _> = "os:file.motd@web/01".parse();
+    assert!(
+        matches!(refused, Err(AddressError::BadCharacter { .. })),
+        "{refused:?}"
+    );
 }

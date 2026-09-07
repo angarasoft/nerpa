@@ -53,6 +53,14 @@ No index anywhere. Two instances of one declaration are told apart by a slot.
 Frozen the moment a state file exists outside this machine, which is why it was
 built first.
 
+A name and a slot may hold a `/`; a machine may not. The two sets are not the
+same one because a name reaches into a namespace somebody else owns — in portage
+a package is `category/name`, three of them are called `nginx`, and a subslot is
+`0/3` — while a machine is named here. An address that could not hold the
+separator could not name the thing, and two declarations would collide over a
+name neither of them owns
+([0038](decisions/0038-two-package-families-and-a-refusal-for-the-rest.md)).
+
 ## The inventory — [0025](decisions/0025-the-inventory-is-known-facts-are-not.md) · partly built
 
 The inventory is data, settled before the configuration is evaluated, and it may

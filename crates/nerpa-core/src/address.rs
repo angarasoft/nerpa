@@ -83,6 +83,15 @@ enum Charset {
     Vocabulary,
     /// Names chosen by whoever writes the configuration.
     Chosen,
+    /// Names of things in a namespace somebody else owns.
+    ///
+    /// The same as [`Charset::Chosen`] and a slash, because in portage the
+    /// identity of a package is `category/name` — three different packages are
+    /// called `nginx` — and a subslot is spelled `0/3`. An address that could
+    /// not hold the separator could not name the thing, and two declarations
+    /// would collide in the graph over a name neither of them owns. A machine
+    /// is not in that category, and keeps the narrower set. See decision 0038.
+    Foreign,
 }
 
 impl Charset {
@@ -90,6 +99,7 @@ impl Charset {
         match self {
             Charset::Vocabulary => ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_',
             Charset::Chosen => ch.is_ascii_alphanumeric() || ch == '_' || ch == '-' || ch == '.',
+            Charset::Foreign => Charset::Chosen.permits(ch) || ch == '/',
         }
     }
 }
@@ -174,13 +184,13 @@ segment!(
 segment!(
     Name,
     "name",
-    Charset::Chosen,
+    Charset::Foreign,
     "What the configuration calls this one."
 );
 segment!(
     Slot,
     "slot",
-    Charset::Chosen,
+    Charset::Foreign,
     "The stable key that lets two instances of one declaration coexist.\n\n\
      Borrowed from Portage, where it is the reason `python:3.11` and `python:3.12`\n\
      are two installed packages rather than a conflict. Here it plays the same part\n\
