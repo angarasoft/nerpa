@@ -38,6 +38,7 @@ pub struct Resource {
     address: Address,
     attributes: BTreeMap<String, Attribute>,
     depends_on: BTreeSet<Address>,
+    reacts_to: BTreeSet<Address>,
     protection: Protection,
 }
 
@@ -48,6 +49,7 @@ impl Resource {
             address,
             attributes: BTreeMap::new(),
             depends_on: BTreeSet::new(),
+            reacts_to: BTreeSet::new(),
             protection: Protection::default(),
         }
     }
@@ -102,6 +104,29 @@ impl Resource {
         self
     }
 
+    /// Declares that this resource must act again when `other` changes.
+    ///
+    /// An edge, not a name in a global table: a typo is an evaluation error with
+    /// a line number, two modules cannot collide over "restart nginx", and the
+    /// restart is ordered after the file rather than piled at the end of a run.
+    /// Ordering follows, because acting before the thing that caused it would be
+    /// acting on the old world. See decision 0026.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `other` is this resource's own address. See [`crate::contract`].
+    #[must_use]
+    pub fn reacting_to(mut self, other: Address) -> Self {
+        requires!(
+            other != self.address,
+            "{} was declared to react to itself",
+            self.address
+        );
+        self.depends_on.insert(other.clone());
+        self.reacts_to.insert(other);
+        self
+    }
+
     /// Marks the resource as one that must not be silently overwritten.
     #[must_use]
     pub fn merge_on_drift(mut self) -> Self {
@@ -127,6 +152,11 @@ impl Resource {
     /// What this resource must be applied after.
     pub fn depends_on(&self) -> &BTreeSet<Address> {
         &self.depends_on
+    }
+
+    /// What this resource must act again for, when that changes.
+    pub fn reacts_to(&self) -> &BTreeSet<Address> {
+        &self.reacts_to
     }
 
     /// What Nerpa may do when the machine disagrees with the declaration.

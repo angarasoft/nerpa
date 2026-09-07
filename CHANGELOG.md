@@ -276,6 +276,15 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A resource can say what it reacts to, and the plan says what will be roused and
+  by what before anything happens. `reacts_to = [conf]` is an edge declared by
+  reference: a typo is an evaluation error naming the line rather than the
+  silence a global handler table gives, the restart is ordered after the file
+  rather than piled at the end of a run, and a reader scanning a fleet-wide
+  change sees the bounce coming. Not built yet: the debt an incomplete reaction
+  should leave in state, and a provider for which being roused means more than
+  applying again.
+
 - A plan carries what it was computed from, and a machine that moved underneath
   it stops the batch instead of being written over. The protocol has carried a
   premise and the executor has checked one since both were built; nothing

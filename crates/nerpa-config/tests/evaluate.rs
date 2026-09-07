@@ -899,3 +899,40 @@ if names.get("kind") == "web" and "WEB".lower() == "web":
         "the branch was taken and the resource exists"
     );
 }
+
+/// A reaction is declared by reference, so a typo is this error with a line
+/// number rather than the silence a global handler name gives.
+#[test]
+fn a_reaction_to_something_that_is_not_a_resource_is_refused() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+resource("os:service.nginx@web-01", {}, reacts_to = ["restart nginx"])
+"#,
+        Box::new(Held::new()),
+        Fleet::empty(),
+    )
+    .expect_err("a name is not a reference");
+    assert!(
+        refusal.to_string().contains("reacts_to"),
+        "the refusal should name the field: {refusal}"
+    );
+}
+
+#[test]
+fn a_resource_cannot_react_to_itself() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+svc = resource("os:service.nginx@web-01", {})
+resource("os:service.nginx@web-01", {}, reacts_to = [svc])
+"#,
+        Box::new(Held::new()),
+        Fleet::empty(),
+    )
+    .expect_err("that is a cycle of one");
+    assert!(
+        refusal.to_string().contains("itself"),
+        "the refusal should say so: {refusal}"
+    );
+}

@@ -110,6 +110,10 @@ pub fn plan_at(
     // dependencies have already been decided by the time it is reached, and
     // unreachability travels forward along the edges in a single pass.
     let mut unplannable: BTreeSet<Address> = BTreeSet::new();
+    // What this plan is changing, so that a resource reacting to one of them
+    // knows. Filled stage by stage, and a stage is only reached after every
+    // stage its members depend on.
+    let mut changing: BTreeSet<Address> = BTreeSet::new();
 
     // One walk of the graph, in the order the work will happen. Stages are the
     // order of execution; there is no second pass over any of them.
@@ -141,7 +145,25 @@ pub fn plan_at(
                 continue;
             }
 
-            if let Some(change) = change_for(resource, observed, schema, secrets, &mut outdated)? {
+            // A reaction's trigger is always in an earlier stage, because
+            // reacting to something implies coming after it — so by the time
+            // this resource is planned, whether its cause is changing is known.
+            let roused_by: Vec<Address> = resource
+                .reacts_to()
+                .iter()
+                .filter(|cause| changing.contains(*cause))
+                .cloned()
+                .collect();
+
+            if let Some(change) = change_for(
+                resource,
+                observed,
+                schema,
+                secrets,
+                &mut outdated,
+                roused_by,
+            )? {
+                changing.insert(address.clone());
                 changes.push(change);
             }
         }
@@ -196,6 +218,7 @@ fn removals(graph: &Graph, state: &State) -> Vec<PlanStage> {
                         Vec::new(),
                         Vec::new(),
                         Vec::new(),
+                        Vec::new(),
                     )
                 })
                 .collect();
@@ -211,6 +234,7 @@ fn change_for(
     schema: &Schema,
     secrets: Secrets<'_>,
     outdated: &mut Vec<Outdated>,
+    roused_by: Vec<Address>,
 ) -> Result<Option<Change>, PlanError> {
     let address = resource.address();
     let existing = observed.get(address);
@@ -265,6 +289,18 @@ fn change_for(
             deltas,
             desired,
             Vec::new(),
+            roused_by,
+        )),
+        // It matches its declaration, and something it reacts to does not — so
+        // it has to act anyway. The desired values go with it because the
+        // provider still needs to be told which service this is.
+        Some(_) if deltas.is_empty() && !roused_by.is_empty() => Some(Change::new(
+            address.clone(),
+            ChangeKind::React,
+            Vec::new(),
+            desired,
+            observed.premise(address).to_vec(),
+            roused_by,
         )),
         Some(_) if deltas.is_empty() => None,
         Some(_) => {
@@ -279,6 +315,7 @@ fn change_for(
                 deltas,
                 desired,
                 observed.premise(address).to_vec(),
+                roused_by,
             ))
         }
     })

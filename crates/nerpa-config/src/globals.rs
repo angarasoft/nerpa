@@ -36,6 +36,14 @@ enum Rejected {
     },
     #[error("provided_by expects a resource, and was given {0}")]
     NotAResource(String),
+    #[error(
+        "reacts_to of {address} holds {found}, and a reaction is declared by \
+         reference — `reacts_to = [conf]`, where `conf` is what `resource()` \
+         gave back"
+    )]
+    ReactsToNotAResource { address: String, found: String },
+    #[error("{0} was declared to react to itself")]
+    ReactsToItself(String),
     #[error("secret() needs a store and a path, and {0} is empty")]
     NamelessSecret(&'static str),
     #[error("template() takes a name and a dictionary of values, and was given {0}")]
@@ -119,6 +127,7 @@ pub(crate) fn nerpa(builder: &mut GlobalsBuilder) {
     fn resource<'v>(
         #[starlark(require = pos)] address: &str,
         #[starlark(require = pos, default = NoneType)] attributes: Value<'v>,
+        #[starlark(require = named, default = NoneType)] reacts_to: Value<'v>,
         eval: &mut Evaluator<'v, '_, '_>,
     ) -> starlark::Result<ResourceRef> {
         let store = declarations(eval)?;
@@ -144,6 +153,26 @@ pub(crate) fn nerpa(builder: &mut GlobalsBuilder) {
                         .to_string(),
                     ),
                 }
+            }
+        }
+
+        // Declared by reference rather than by name, which is the whole of
+        // decision 0026: a typo is this error with a line number instead of
+        // silence, and two modules cannot collide over "restart nginx".
+        if !reacts_to.is_none() {
+            for item in reacts_to.iterate(eval.heap())? {
+                let Some(cause) = ResourceRef::from_value(item) else {
+                    return Err(starlark::Error::new_value(Rejected::ReactsToNotAResource {
+                        address: parsed.to_string(),
+                        found: item.get_type().to_owned(),
+                    }));
+                };
+                if cause.address() == &parsed {
+                    return Err(starlark::Error::new_value(Rejected::ReactsToItself(
+                        parsed.to_string(),
+                    )));
+                }
+                resource = resource.reacting_to(cause.address().clone());
             }
         }
 

@@ -146,6 +146,7 @@ fn summary(radius: &BlastRadius) -> String {
         (radius.updates(), "to update"),
         (radius.replaces(), "to replace"),
         (radius.deletes(), "to remove"),
+        (radius.reacts(), "to rouse"),
     ] {
         if count > 0 {
             parts.push(format!("{count} {word}"));
@@ -202,6 +203,11 @@ fn action(kind: ChangeKind) -> &'static str {
         ChangeKind::Update => "[update   ]",
         ChangeKind::Replace => "[replace !]",
         ChangeKind::Delete => "[remove  !]",
+        // Not marked: `!` means the change destroys what is there, and a
+        // restart destroys nothing. What makes it visible is the line under it
+        // naming what roused it, and the count in the summary — diluting a mark
+        // that means one thing would cost more than it bought. See 0026.
+        ChangeKind::React => "[rouse    ]",
         _ => "[unknown !]",
     }
 }
@@ -225,6 +231,13 @@ fn shown(after: &Confidence) -> String {
 
 fn one(change: &Change) -> String {
     let mut out = format!("  {} {}\n", action(change.kind()), change.address());
+
+    // Why, before what. A person reading a plan over two hundred machines is
+    // entitled to know which file is about to bounce which service, and that
+    // this is the question Ansible answers only by running. See decision 0026.
+    for cause in change.roused_by() {
+        let _ = writeln!(out, "               ↺ because {cause} changes");
+    }
 
     for delta in change.deltas() {
         let before = delta

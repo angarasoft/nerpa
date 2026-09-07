@@ -287,17 +287,36 @@ template renders during apply from what the earlier stage produced; today a valu
 a template cannot be shown is refused where it is written, which is loud rather
 than silent but is not the whole of what was decided.
 
-## Reacting to change — [0026](decisions/0026-a-reaction-is-an-edge-and-can-be-owed.md) · planned
+## Reacting to change — [0026](decisions/0026-a-reaction-is-an-edge-and-can-be-owed.md) · partly built
 
-`service("nginx", restart_on = [conf])` is an edge, not a notification. A typo is
-an evaluation error rather than silence, two files notifying one restart coalesce
-into one node, the restart is ordered by the graph instead of deferred to the end
-of a play, and the plan says the restart is coming before it happens.
+```python
+resource("os:service.nginx@web-01", {"name": "nginx"}, reacts_to = [conf])
+```
 
-A reaction that was triggered and did not complete is recorded in state as owed
-and appears as pending in the next plan. The state Ansible reaches when a play
-fails between the write and its handlers — new file, old process, no record — is
-not reachable here.
+An edge, not a notification. The record's `restart_on` is spelled `reacts_to`
+because what reacting means belongs to the provider — a restart for one thing is
+a reload for another — and because `resource()` is the only constructor there is.
+
+A typo is an evaluation error naming the line rather than the silence a global
+handler table gives, two files rousing one service coalesce into one node with
+two in-edges, the restart is ordered by the graph rather than deferred to the end
+of a play, and the plan says it is coming and which file caused it:
+
+```text
+stage 2 · target: web-01
+  [rouse    ] os:service.nginx@web-01
+               ↺ because os:file.nginx-conf@web-01 changes
+```
+
+Not marked `!`: that mark means the change destroys what is there, and a restart
+destroys nothing. What makes it visible is the line naming the cause and the
+count in the summary.
+
+Not built: the debt. A reaction that was triggered and did not complete should be
+recorded in state as owed and appear as pending in the next plan — the state
+Ansible reaches when a play fails between the write and its handlers, with a new
+file, an old process and no record of it. Nor is there yet a provider for which
+being roused means anything beyond applying again; that arrives with services.
 
 ## Parallelism — [0031](decisions/0031-parallelism-is-threads-and-providers-are-sync.md) · partly built
 

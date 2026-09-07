@@ -47,12 +47,22 @@ pub enum ChangeKind {
     Replace,
     /// It exists and is no longer declared, so it goes.
     Delete,
+    /// It exists and matches its declaration, and something it reacts to
+    /// changed — so it has to act anyway. A restart is the usual one.
+    ///
+    /// In the plan rather than at the end of a run, because the expensive part
+    /// of a fleet-wide change is bouncing a service on every machine in it, and
+    /// the way to find that out should not be to run it. See decision 0026.
+    React,
 }
 
 impl ChangeKind {
     /// Whether the resource that is there now survives this.
     #[must_use]
     pub fn is_reversible(self) -> bool {
+        // A restart destroys nothing and cannot be taken back either. It is
+        // marked for the second reason: a reader scanning a plan over two
+        // hundred machines is entitled to see it before it happens.
         matches!(self, ChangeKind::Create | ChangeKind::Update)
     }
 }
@@ -154,6 +164,13 @@ pub struct Change {
     /// and decision 0034.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     premise: Vec<nerpa_proto::Premise>,
+    /// What changed that this resource reacts to.
+    ///
+    /// Carried whatever the kind turned out to be: a service whose own
+    /// attributes changed as well is one `Update`, not an update and a restart,
+    /// and the provider still has to be told why it is being asked.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    roused_by: Vec<Address>,
 }
 
 impl Change {
@@ -163,6 +180,7 @@ impl Change {
         deltas: Vec<AttributeDelta>,
         desired: Vec<(String, Confidence)>,
         premise: Vec<nerpa_proto::Premise>,
+        roused_by: Vec<Address>,
     ) -> Self {
         Self {
             address,
@@ -170,7 +188,18 @@ impl Change {
             deltas,
             desired,
             premise,
+            roused_by,
         }
+    }
+
+    /// What changed that this resource reacts to, in a stable order.
+    ///
+    /// Empty unless something did. A reader is entitled to know why a service is
+    /// being bounced before it is, which is the whole of decision 0026's fourth
+    /// paragraph.
+    #[must_use]
+    pub fn roused_by(&self) -> &[Address] {
+        &self.roused_by
     }
 
     /// What the machine looked like when this was decided.
@@ -350,6 +379,7 @@ pub struct BlastRadius {
     updates: usize,
     replaces: usize,
     deletes: usize,
+    reacts: usize,
     unresolved: usize,
     unreachable: usize,
     outdated: usize,
@@ -357,6 +387,13 @@ pub struct BlastRadius {
 }
 
 impl BlastRadius {
+    /// Resources that will be made to act because something they react to
+    /// changed — a service restarted by a configuration file, usually.
+    #[must_use]
+    pub fn reacts(&self) -> usize {
+        self.reacts
+    }
+
     /// Resources that will come into existence.
     #[must_use]
     pub fn creates(&self) -> usize {
@@ -424,7 +461,7 @@ impl BlastRadius {
     /// How many resources change at all.
     #[must_use]
     pub fn total(&self) -> usize {
-        self.creates + self.updates + self.replaces + self.deletes
+        self.creates + self.updates + self.replaces + self.deletes + self.reacts
     }
 }
 
@@ -455,6 +492,7 @@ impl Plan {
                 ChangeKind::Update => blast_radius.updates += 1,
                 ChangeKind::Replace => blast_radius.replaces += 1,
                 ChangeKind::Delete => blast_radius.deletes += 1,
+                ChangeKind::React => blast_radius.reacts += 1,
             }
             blast_radius.unresolved += change
                 .desired()
@@ -641,7 +679,16 @@ fn encode_stage(stage: &PlanStage, out: &mut Vec<u8>) {
             ChangeKind::Update => 2,
             ChangeKind::Replace => 3,
             ChangeKind::Delete => 4,
+            ChangeKind::React => 5,
         });
+
+        // Why, not only what. Two plans that restart the same service for
+        // different reasons are two different plans, and a person approving one
+        // of them is approving the reason as well as the act.
+        out.extend_from_slice(&value::length(change.roused_by().len()));
+        for cause in change.roused_by() {
+            value::text(&cause.to_string(), out);
+        }
 
         out.extend_from_slice(&value::length(change.desired().len()));
         for (name, wanted) in change.desired() {
