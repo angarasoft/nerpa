@@ -38,7 +38,12 @@ impl Provider for Empty {
     fn schema(&self) -> Schema {
         Schema::new()
     }
-    fn read(&self, _batch: &[Reading], _reach: &dyn Reach) -> Result<Read, ProviderError> {
+    fn read(
+        &self,
+        _batch: &[Reading],
+        _facts: &nerpa_core::observed::Facts<'_>,
+        _reach: &dyn Reach,
+    ) -> Result<Read, ProviderError> {
         Ok(Read::new())
     }
     fn apply(

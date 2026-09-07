@@ -28,6 +28,7 @@
 //! something nobody runs.
 
 use nerpa_core::address::{Address, Kind, Provider as ProviderName};
+use nerpa_core::observed::Facts;
 use nerpa_core::plan::ChangeKind;
 use nerpa_core::provider::{Attributes, Provider, ProviderError, Reach, Read, Reading};
 use nerpa_core::schema::Schema;
@@ -205,7 +206,12 @@ impl Provider for Os {
 
     /// One journey for the whole batch, which is the only reason the batch is
     /// the unit. See `INV-BATCH-001`.
-    fn read(&self, batch: &[Reading], reach: &dyn Reach) -> Result<Read, ProviderError> {
+    fn read(
+        &self,
+        batch: &[Reading],
+        _facts: &Facts<'_>,
+        reach: &dyn Reach,
+    ) -> Result<Read, ProviderError> {
         let mut asking = Vec::new();
         let mut about = Vec::new();
 

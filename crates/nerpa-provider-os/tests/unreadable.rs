@@ -13,6 +13,7 @@ use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
+use nerpa_core::Observed;
 use nerpa_core::address::address;
 use nerpa_core::plan::ChangeKind;
 use nerpa_core::provider::{Attributes, Provider, Reading};
@@ -65,9 +66,13 @@ fn at(path: &Path) -> Attributes {
 fn look(path: &Path) -> Result<Option<Attributes>, String> {
     let os = Os::new();
     let target = address("os:file.subject@localhost");
-    os.read(&[Reading::new(target.clone(), at(path))], &HERE)
-        .map(|found| found.attributes().get(&target).cloned())
-        .map_err(|error| error.to_string())
+    os.read(
+        &[Reading::new(target.clone(), at(path))],
+        &Observed::new().facts_of(None),
+        &HERE,
+    )
+    .map(|found| found.attributes().get(&target).cloned())
+    .map_err(|error| error.to_string())
 }
 
 /// The one that loses data. A file nerpa may not open is not a file that is not

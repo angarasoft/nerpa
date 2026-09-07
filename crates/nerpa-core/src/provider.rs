@@ -23,6 +23,7 @@
 use std::collections::BTreeMap;
 
 use crate::address::{Address, Provider as ProviderName, Target};
+use crate::observed::Facts;
 use crate::plan::ChangeKind;
 use crate::schema::Schema;
 use crate::value::Value;
@@ -196,7 +197,12 @@ pub trait Provider: Send + Sync {
     /// # Errors
     ///
     /// Returns [`ProviderError`] if the batch could not be read at all.
-    fn read(&self, batch: &[Reading], reach: &dyn Reach) -> Result<Read, ProviderError>;
+    fn read(
+        &self,
+        batch: &[Reading],
+        facts: &Facts<'_>,
+        reach: &dyn Reach,
+    ) -> Result<Read, ProviderError>;
 
     /// Makes the resource match `attributes`, and reports what it became.
     ///

@@ -276,6 +276,14 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A machine's facts are gathered before its resources are read, and handed to
+  the provider that reads them. A provider deciding how to ask a machine needs
+  to know what the machine is — whether packages arrive by `dnf` or by `emerge`
+  is read, not guessed — and the engine already gathers that once per machine,
+  so a provider asking for itself would be the second journey `INV-BATCH-001`
+  exists to prevent. A machine that will not answer is also now discovered
+  before a journey is spent on it rather than after.
+
 - A resource can say what it reacts to, and the plan says what will be roused and
   by what before anything happens. `reacts_to = [conf]` is an edge declared by
   reference: a typo is an evaluation error naming the line rather than the

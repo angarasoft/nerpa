@@ -17,6 +17,32 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::address::{Address, Target};
 use crate::value::Value;
 
+/// What one machine turned out to be.
+///
+/// Handed to a provider so that it can decide how to ask — `dnf` or `emerge` is
+/// something read from the machine, not something guessed from an address. The
+/// engine gathers these once per machine in a journey of its own, so a provider
+/// asking for itself would be a second journey that `INV-BATCH-001` exists to
+/// prevent.
+#[derive(Debug, Clone, Copy)]
+pub struct Facts<'a> {
+    said: &'a BTreeMap<String, String>,
+}
+
+impl Facts<'_> {
+    /// What the machine said to one question, if it was asked and answered.
+    #[must_use]
+    pub fn said(&self, name: &str) -> Option<&str> {
+        self.said.get(name).map(String::as_str)
+    }
+
+    /// Whether nothing is known about the machine at all.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.said.is_empty()
+    }
+}
+
 /// Observed state, gathered before planning.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Observed {
@@ -53,6 +79,20 @@ impl Observed {
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// What a machine turned out to be, for handing to a provider.
+    ///
+    /// Empty for the control domain, which has no machine to have turned out
+    /// to be anything.
+    #[must_use]
+    pub fn facts_of(&self, node: Option<&Target>) -> Facts<'_> {
+        static NONE: std::sync::OnceLock<BTreeMap<String, String>> = std::sync::OnceLock::new();
+        Facts {
+            said: node
+                .and_then(|node| self.facts.get(node))
+                .unwrap_or_else(|| NONE.get_or_init(BTreeMap::new)),
+        }
     }
 
     /// What was looked at to decide about a resource.

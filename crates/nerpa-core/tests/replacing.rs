@@ -49,7 +49,12 @@ impl Provider for DeletesButCannotCreate {
         )
     }
 
-    fn read(&self, _batch: &[Reading], _reach: &dyn Reach) -> Result<Read, ProviderError> {
+    fn read(
+        &self,
+        _batch: &[Reading],
+        _facts: &nerpa_core::observed::Facts<'_>,
+        _reach: &dyn Reach,
+    ) -> Result<Read, ProviderError> {
         Ok(Read::new())
     }
 

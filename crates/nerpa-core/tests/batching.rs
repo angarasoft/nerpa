@@ -78,7 +78,12 @@ impl Provider for Watching {
         Schema::new()
     }
 
-    fn read(&self, batch: &[Reading], _reach: &dyn Reach) -> Result<Read, ProviderError> {
+    fn read(
+        &self,
+        batch: &[Reading],
+        _facts: &nerpa_core::observed::Facts<'_>,
+        _reach: &dyn Reach,
+    ) -> Result<Read, ProviderError> {
         ASKED.with_borrow_mut(|seen| seen.push(batch.to_vec()));
         Ok(Read::new())
     }

@@ -62,45 +62,14 @@ pub fn observe(
             .push(Reading::new(address, locator));
     }
 
-    for ((provider_name, node), batch) in batches {
-        let provider = providers.named(&provider_name)?;
-        // One journey per machine per phase, and the way there is decided here
-        // rather than by the provider: provider logic runs on this machine and
-        // the work happens on that one. See decision 0032.
-        let reach = match machines.reach(node.as_ref()) {
-            Ok(reach) => reach,
-            // ENFORCES: INV-REACH-002
-            Err(ProviderError::Unreachable { node, .. }) => {
-                observed.unreachable(node);
-                continue;
-            }
-            Err(other) => return Err(other.into()),
-        };
-        match provider.read(&batch, reach) {
-            Ok(found) => {
-                for (address, premise) in found.premise().clone() {
-                    observed.looked_at(address, premise);
-                }
-                for (address, attributes) in found.attributes().clone() {
-                    observed.record(address, attributes);
-                }
-            }
-            // ENFORCES: INV-REACH-002
-            // The one failure a run survives. Everything else still stops it,
-            // because everything else means something is wrong rather than
-            // merely out of reach. See decision 0020.
-            Err(ProviderError::Unreachable { node, .. }) => observed.unreachable(node),
-            Err(other) => return Err(other.into()),
-        }
-    }
-
-    // Asked once per machine, in a journey of its own. Every fact is a question
+    // Before the resources, not after. A provider deciding how to ask a
+    // machine needs to know what the machine is — `dnf` or `emerge` is a
+    // fact, not a guess — and a machine that will not answer is better
+    // discovered here than in a journey that was doomed. Asked once per
+    // machine, in a journey of its own. Every fact is a question
     // somebody wrote down, so what this costs is the length of that list rather
     // than the length of what a machine could be asked. See decision 0029.
     for node in graph.inventory().nodes() {
-        if !observed.reached(node) {
-            continue;
-        }
         let Ok(reach) = machines.reach(Some(node)) else {
             observed.unreachable(node.clone());
             continue;
@@ -126,6 +95,41 @@ pub fn observe(
             // resource on it.
             // ENFORCES: INV-REACH-002
             Ok(_) | Err(_) => observed.unreachable(node.clone()),
+        }
+    }
+
+    for ((provider_name, node), batch) in batches {
+        let provider = providers.named(&provider_name)?;
+        // What the machine turned out to be, for a provider that has to decide
+        // how to ask it. Empty in the control domain, which has no machine.
+        let facts = observed.facts_of(node.as_ref());
+        // One journey per machine per phase, and the way there is decided here
+        // rather than by the provider: provider logic runs on this machine and
+        // the work happens on that one. See decision 0032.
+        let reach = match machines.reach(node.as_ref()) {
+            Ok(reach) => reach,
+            // ENFORCES: INV-REACH-002
+            Err(ProviderError::Unreachable { node, .. }) => {
+                observed.unreachable(node);
+                continue;
+            }
+            Err(other) => return Err(other.into()),
+        };
+        match provider.read(&batch, &facts, reach) {
+            Ok(found) => {
+                for (address, premise) in found.premise().clone() {
+                    observed.looked_at(address, premise);
+                }
+                for (address, attributes) in found.attributes().clone() {
+                    observed.record(address, attributes);
+                }
+            }
+            // ENFORCES: INV-REACH-002
+            // The one failure a run survives. Everything else still stops it,
+            // because everything else means something is wrong rather than
+            // merely out of reach. See decision 0020.
+            Err(ProviderError::Unreachable { node, .. }) => observed.unreachable(node),
+            Err(other) => return Err(other.into()),
         }
     }
 

@@ -266,7 +266,12 @@ impl Provider for Refusing {
         Schema::new()
     }
 
-    fn read(&self, batch: &[Reading], _reach: &dyn Reach) -> Result<Read, ProviderError> {
+    fn read(
+        &self,
+        batch: &[Reading],
+        _facts: &nerpa_core::observed::Facts<'_>,
+        _reach: &dyn Reach,
+    ) -> Result<Read, ProviderError> {
         let address = batch
             .first()
             .map(Reading::address)
