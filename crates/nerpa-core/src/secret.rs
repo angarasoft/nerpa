@@ -22,6 +22,7 @@
 
 use std::fmt;
 
+use crate::address::Target;
 use crate::value::Value;
 
 /// Where a secret value comes from.
@@ -108,6 +109,23 @@ impl Key {
     #[must_use]
     pub fn from_hex(text: &str) -> Option<Self> {
         from_hex(text).map(Self)
+    }
+
+    /// The seal for one machine: what its premise is sealed with.
+    ///
+    /// Derived rather than handed over. The machine that checks a premise has to
+    /// hold what it is sealed with, and a machine holding this key could test
+    /// guesses against every secret's digest in the state file. One holding its
+    /// own seal can check its own premise and nothing else. See decision 0041.
+    #[must_use]
+    pub fn seal_for(&self, node: &Target) -> nerpa_proto::Seal {
+        let mut material = Vec::with_capacity(LENGTH + node.as_str().len());
+        material.extend_from_slice(&self.0);
+        material.extend_from_slice(node.as_str().as_bytes());
+        nerpa_proto::Seal(blake3::derive_key(
+            "nerpa 2026-09-10 the seal on a premise",
+            &material,
+        ))
     }
 }
 

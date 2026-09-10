@@ -62,6 +62,7 @@ fn a_whole_conversation_survives_the_pipe() {
             observations: vec![Observation::Path {
                 path: file.display().to_string(),
             }],
+            seal: None,
         },
         Ask::Perform {
             plan: Some([4; 32]),
@@ -71,11 +72,13 @@ fn a_whole_conversation_survives_the_pipe() {
                 content: b"hello\n".to_vec(),
                 mode: 0o644,
             }],
+            seal: None,
         },
         Ask::Look {
             observations: vec![Observation::Path {
                 path: file.display().to_string(),
             }],
+            seal: None,
         },
     ]);
 
@@ -119,6 +122,7 @@ fn one_frame_carries_a_whole_machine_worth_of_looking() {
 
     let answers = through_a_pipe(&[Ask::Look {
         observations: observations.clone(),
+        seal: None,
     }]);
     let Answer::Found { seen } = &answers[0] else {
         panic!("shape changed")

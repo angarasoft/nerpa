@@ -169,3 +169,21 @@ fn a_store_that_has_nothing_says_where_it_looked() {
         "the refusal should name what was looked for: {refusal}"
     );
 }
+
+/// A machine's seal is its own: another machine's differs, another state file's
+/// differs, the same pair always gives the same one, and it prints as nothing.
+#[test]
+fn a_seal_belongs_to_one_machine_under_one_state_file() {
+    let key = Key::from_bytes([3; 32]);
+    let other = Key::from_bytes([4; 32]);
+    let web = nerpa_core::Target::new("web-01").expect("a machine");
+    let db = nerpa_core::Target::new("db-01").expect("a machine");
+
+    assert_eq!(key.seal_for(&web), key.seal_for(&web));
+    assert_ne!(key.seal_for(&web), key.seal_for(&db));
+    assert_ne!(key.seal_for(&web), other.seal_for(&web));
+    assert!(
+        !format!("{:?}", key.seal_for(&web)).contains(|c: char| c.is_ascii_digit()),
+        "a seal prints as nothing"
+    );
+}

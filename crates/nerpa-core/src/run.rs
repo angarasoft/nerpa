@@ -15,7 +15,7 @@ use crate::attribute::Attribute;
 use crate::graph::{Graph, GraphError};
 use crate::observed::Observed;
 use crate::plan::{Change, ChangeKind, Confidence, Plan};
-use crate::provider::{Attributes, Machines, ProviderError, Providers, Reading};
+use crate::provider::{Attributes, Machines, ProviderError, Providers, Reach, Reading};
 use crate::resource::Resource;
 use crate::secret::{FetchError, Recorded, Secrets};
 use crate::state::{Record, Recording, State};
@@ -87,6 +87,7 @@ pub fn observe(
             .collect();
         match reach.ask(&nerpa_proto::Ask::Look {
             observations: asking.iter().flatten().cloned().collect(),
+            seal: None,
         }) {
             Ok(nerpa_proto::Answer::Found { seen }) => {
                 let mut answered = seen.into_iter();
@@ -228,6 +229,30 @@ impl Applied {
     }
 }
 
+/// A machine's connection, with that machine's seal on everything that needs one.
+///
+/// Between a provider and the machine rather than inside either. A provider
+/// builds the batch and has no business holding a key, and the plan cannot carry
+/// the seal without putting it in the JSON it exists to keep digests out of.
+/// `Seal` prints as nothing, so deriving `Debug` shows the machine and no key.
+#[derive(Debug)]
+struct Sealing<'a> {
+    machine: &'a dyn Reach,
+    seal: nerpa_proto::Seal,
+}
+
+impl Reach for Sealing<'_> {
+    fn ask(&self, ask: &nerpa_proto::Ask) -> Result<nerpa_proto::Answer, ProviderError> {
+        let mut sealed = ask.clone();
+        if let nerpa_proto::Ask::Perform { seal, .. } | nerpa_proto::Ask::Look { seal, .. } =
+            &mut sealed
+        {
+            *seal = Some(self.seal);
+        }
+        self.machine.ask(&sealed)
+    }
+}
+
 /// Carries out a plan, stage by stage.
 ///
 /// # Errors
@@ -258,6 +283,18 @@ pub fn apply(
             let address = change.address();
             let provider = providers.for_address(address)?;
             let reach = machines.reach(address.target())?;
+            // ENFORCES: INV-PREMISE-002
+            // The seal goes on here, where the machine is known, and not in the
+            // plan, where it would travel with the JSON. Providers never see it:
+            // they build the batch, and this seals it as it leaves. Decision 0041.
+            let sealing = address.target().map(|node| Sealing {
+                machine: reach,
+                seal: secrets.key().seal_for(node),
+            });
+            let reach: &dyn Reach = match &sealing {
+                Some(sealing) => sealing,
+                None => reach,
+            };
             // What the machine turned out to be, for a provider whose command
             // depends on it. Read in the same run, before anything was applied.
             let facts = observed.facts_of(address.target());

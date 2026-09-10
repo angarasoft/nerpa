@@ -45,6 +45,7 @@ fn one_connection_carries_a_whole_run() {
         observations: vec![Observation::Path {
             path: file.display().to_string(),
         }],
+        seal: None,
     };
 
     assert_eq!(
@@ -63,6 +64,7 @@ fn one_connection_carries_a_whole_run() {
                 content: b"hello\n".to_vec(),
                 mode: 0o644,
             }],
+            seal: None,
         })
         .unwrap();
     assert!(matches!(done, Answer::Done { .. }), "{done:?}");
@@ -113,6 +115,7 @@ fn a_far_end_that_dies_is_reported_as_the_machine_and_not_as_a_resource() {
     let refusal = reach
         .ask(&Ask::Look {
             observations: Vec::new(),
+            seal: None,
         })
         .expect_err("there is nobody there to answer");
     assert!(
@@ -138,6 +141,7 @@ fn the_executor_this_nerpa_carries_is_recognised() {
     let after = reach
         .ask(&Ask::Look {
             observations: Vec::new(),
+            seal: None,
         })
         .unwrap();
     assert!(matches!(after, Answer::Found { .. }), "{after:?}");

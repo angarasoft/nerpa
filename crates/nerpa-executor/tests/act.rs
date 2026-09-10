@@ -8,7 +8,10 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
 use nerpa_executor::answer;
-use nerpa_proto::{Answer, Ask, Entry, Observation, Operation, Premise, Seen};
+use nerpa_proto::{Answer, Ask, Entry, Observation, Operation, Premise, Seal, Seen};
+
+/// What every premise in these tests is sealed with, standing for one machine's.
+const SEAL: Seal = Seal([5; 32]);
 
 fn scratch() -> tempfile::TempDir {
     tempfile::tempdir().expect("a scratch directory")
@@ -21,7 +24,10 @@ fn at(path: &Path) -> Observation {
 }
 
 fn look(observations: Vec<Observation>) -> Answer {
-    answer(&Ask::Look { observations })
+    answer(&Ask::Look {
+        observations,
+        seal: None,
+    })
 }
 
 fn perform(premise: Vec<Premise>, operations: Vec<Operation>) -> Answer {
@@ -29,6 +35,7 @@ fn perform(premise: Vec<Premise>, operations: Vec<Operation>) -> Answer {
         plan: Some([1; 32]),
         premise,
         operations,
+        seal: Some(SEAL),
     })
 }
 
@@ -124,10 +131,13 @@ fn a_batch_whose_premise_moved_does_nothing_and_says_which() {
 
     let held = Premise {
         observation: at(&watched),
-        digest: nerpa_proto::digest(&Seen::Entry(Entry::File {
-            content: b"as planned\n".to_vec(),
-            mode: fs::metadata(&watched).unwrap().permissions().mode() & 0o7777,
-        })),
+        digest: nerpa_proto::sealed(
+            &SEAL,
+            &nerpa_proto::digest(&Seen::Entry(Entry::File {
+                content: b"as planned\n".to_vec(),
+                mode: fs::metadata(&watched).unwrap().permissions().mode() & 0o7777,
+            })),
+        ),
     };
     let write = Operation::File {
         path: written.display().to_string(),
@@ -328,4 +338,117 @@ fn which_build_is_read_off_the_binary_that_is_running() {
             digest: nerpa_proto::build_of(&running)
         }
     );
+}
+
+/// What `conf` holds in the premise tests below, as a premise digest before it is
+/// sealed.
+fn as_planned(watched: &Path) -> [u8; 32] {
+    nerpa_proto::digest(&Seen::Entry(Entry::File {
+        content: b"as planned\n".to_vec(),
+        mode: fs::metadata(watched).unwrap().permissions().mode() & 0o7777,
+    }))
+}
+
+/// Compared sealed or not at all. A premise that arrives bare would be compared
+/// against an unkeyed digest, the digest a plan's JSON must not carry.
+#[test]
+fn a_premise_that_arrives_without_its_seal_is_refused_before_anything_is_done() {
+    let scratch = scratch();
+    let watched = scratch.path().join("conf");
+    let written = scratch.path().join("motd");
+    fs::write(&watched, "as planned\n").unwrap();
+
+    let refused = answer(&Ask::Perform {
+        plan: Some([1; 32]),
+        premise: vec![Premise {
+            observation: at(&watched),
+            digest: as_planned(&watched),
+        }],
+        operations: vec![Operation::File {
+            path: written.display().to_string(),
+            content: b"hello\n".to_vec(),
+            mode: 0o644,
+        }],
+        seal: None,
+    });
+
+    let Answer::Failed { problem, .. } = refused else {
+        panic!("a premise without its seal must be refused, and was answered {refused:?}")
+    };
+    assert!(problem.contains("seal"), "{problem}");
+    assert!(!written.exists(), "and nothing at all was done");
+}
+
+/// A premise sealed for one machine does not hold on another, over the very same
+/// bytes: a seal is the machine's own.
+#[test]
+fn a_premise_sealed_for_another_machine_does_not_hold() {
+    let scratch = scratch();
+    let watched = scratch.path().join("conf");
+    let written = scratch.path().join("motd");
+    fs::write(&watched, "as planned\n").unwrap();
+
+    let elsewhere = Premise {
+        observation: at(&watched),
+        digest: nerpa_proto::sealed(&Seal([6; 32]), &as_planned(&watched)),
+    };
+    let write = Operation::File {
+        path: written.display().to_string(),
+        content: b"hello\n".to_vec(),
+        mode: 0o644,
+    };
+
+    assert_eq!(
+        perform(vec![elsewhere], vec![write]),
+        Answer::Moved { at: 0 }
+    );
+    assert!(!written.exists(), "and nothing at all was done");
+}
+
+/// A sealed observation answers with what the thing hashed to, sealed, and never
+/// with the thing.
+#[test]
+fn a_sealed_observation_answers_with_a_seal_and_never_the_contents() {
+    let scratch = scratch();
+    let secret = scratch.path().join("shadow");
+    fs::write(&secret, "correct-horse-battery-staple\n").unwrap();
+    let mode = fs::metadata(&secret).unwrap().permissions().mode() & 0o7777;
+    let sealed_look = |seal: Option<Seal>| {
+        answer(&Ask::Look {
+            observations: vec![Observation::Sealed {
+                of: Box::new(at(&secret)),
+            }],
+            seal,
+        })
+    };
+
+    let Answer::Found { seen } = sealed_look(Some(SEAL)) else {
+        panic!("a sealed observation with its seal is answered")
+    };
+    let expected = nerpa_proto::sealed(
+        &SEAL,
+        &nerpa_proto::digest(&Seen::Entry(Entry::File {
+            content: b"correct-horse-battery-staple\n".to_vec(),
+            mode,
+        })),
+    );
+    assert_eq!(seen, vec![Seen::Sealed { digest: expected }]);
+    assert!(
+        !format!("{seen:?}").contains("correct-horse"),
+        "the contents never leave"
+    );
+
+    assert!(
+        matches!(sealed_look(None), Answer::Failed { .. }),
+        "without a seal there is nothing to answer with"
+    );
+    let nested = answer(&Ask::Look {
+        observations: vec![Observation::Sealed {
+            of: Box::new(Observation::Sealed {
+                of: Box::new(at(&secret)),
+            }),
+        }],
+        seal: Some(SEAL),
+    });
+    assert!(matches!(nested, Answer::Failed { .. }), "{nested:?}");
 }

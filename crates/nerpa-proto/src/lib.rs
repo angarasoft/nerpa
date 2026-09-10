@@ -44,7 +44,11 @@ use serde::{Deserialize, Serialize};
 /// has never heard of rather than a version it does not know: it decoded the
 /// whole frame before looking at the stamp. Measured, on a machine still holding
 /// one. From three on, the stamp is read first.
-pub const PROTOCOL_VERSION: u32 = 3;
+///
+/// Four since a premise travels sealed for the machine it describes, and an
+/// observation can be asked for as a seal rather than as the thing. See decision
+/// 0041.
+pub const PROTOCOL_VERSION: u32 = 4;
 
 /// The largest frame either end will read.
 ///
@@ -129,6 +133,9 @@ pub enum Ask {
         /// Everything on this machine worth looking at, in one go. Answered by
         /// [`Answer::Found`], one [`Seen`] for each, in this order.
         observations: Vec<Observation>,
+        /// What an [`Observation::Sealed`] among them is sealed with. `None` when
+        /// nothing asked for is sealed; a sealed one without it is refused.
+        seal: Option<Seal>,
     },
     /// Make these so, in the order given.
     Perform {
@@ -147,6 +154,13 @@ pub enum Ask {
         premise: Vec<Premise>,
         /// Carried out in the order given, and stopping at the first failure.
         operations: Vec<Operation>,
+        /// What the premise is sealed with, for this machine.
+        ///
+        /// Put on by the engine at the moment it asks and never carried in the
+        /// plan, so a plan's JSON holds digests nobody without the state can test
+        /// a guess against. A premise that arrives without it is refused rather
+        /// than compared bare. See decision 0041.
+        seal: Option<Seal>,
     },
     /// What did you last apply, as one number?
     ///
@@ -199,6 +213,17 @@ pub enum Observation {
         /// else's command.
         arguments: Vec<String>,
     },
+    /// What another observation found, sealed for this machine, and not the
+    /// thing itself.
+    ///
+    /// For a value the engine has to compare and must not hold: a password hash
+    /// in `/etc/shadow`, a secret file's contents. The far end reads it, seals
+    /// its digest with the seal the request carries, and answers with only that.
+    /// One inside another is refused. See decision 0041.
+    Sealed {
+        /// What to look at.
+        of: Box<Observation>,
+    },
 }
 
 /// What one observation found.
@@ -226,6 +251,11 @@ pub enum Seen {
         #[serde(with = "serde_bytes")]
         complaint: Vec<u8>,
     },
+    /// What an [`Observation::Sealed`] found, as its seal. See [`sealed`].
+    Sealed {
+        /// The sealed digest.
+        digest: [u8; 32],
+    },
 }
 
 /// Something that was true when the plan was made and has to still be true.
@@ -233,7 +263,8 @@ pub enum Seen {
 pub struct Premise {
     /// What to look at again.
     pub observation: Observation,
-    /// What it hashed to when the plan was computed, by [`digest`].
+    /// What it hashed to when the plan was computed, by [`digest`], sealed for
+    /// the machine by [`sealed`].
     pub digest: [u8; 32],
 }
 
@@ -475,8 +506,38 @@ pub fn digest(seen: &Seen) -> [u8; 32] {
             out.extend_from_slice(&length(complaint.len()));
             out.extend_from_slice(complaint);
         }
+        Seen::Sealed { digest: sealed } => {
+            out.push(3);
+            out.extend_from_slice(sealed);
+        }
     }
     *blake3::hash(&out).as_bytes()
+}
+
+/// What a premise and a sealed observation are sealed with, for one machine.
+///
+/// Derived by the engine from its state file's key and the machine's name, so a
+/// machine holding its own seal can check what it was asked about and nothing
+/// else: not another machine's premise, not a secret's digest in state.
+/// Deliberately opaque when printed, because a seal in a log is a key in a log.
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Seal(pub [u8; 32]);
+
+impl std::fmt::Debug for Seal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Seal(…)")
+    }
+}
+
+/// A digest sealed for one machine: keyed, so that holding it without the seal
+/// tells nobody what it was taken over.
+///
+/// Computed identically on both ends. The engine seals what the plan read; the
+/// executor seals what it reads again, and compares. See decision 0041.
+#[must_use]
+pub fn sealed(seal: &Seal, digest: &[u8; 32]) -> [u8; 32] {
+    *blake3::keyed_hash(&seal.0, digest).as_bytes()
 }
 
 /// The name a build of the executor goes by: a digest of every byte of it.

@@ -247,3 +247,63 @@ fn a_secret_that_cannot_be_fetched_stops_the_plan() {
         "the refusal should name what was looked for: {refusal}"
     );
 }
+
+/// A secret already on the machine, rotated in the store. The plan carries what it
+/// read so the executor can look again before writing, and what it read is the old
+/// credential: unsealed, that premise put an unkeyed digest of it into the plan's
+/// JSON, where a dictionary defeats it. Watched failing before the seal existed,
+/// and the rotation still goes through the sealed premise it carries now. See
+/// decision 0041.
+#[test]
+fn a_rotated_secret_leaves_no_unkeyed_digest_of_the_old_one_in_the_plan() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let scratch = Scratch::new("premise");
+    let path = scratch.join("credentials");
+    fs::write(&path, PASSWORD).expect("the old secret is on disk");
+    let mode = fs::metadata(&path).expect("there").permissions().mode() & 0o7777;
+    let graph = graph_of(&path);
+
+    let store = Remembered::new().holding("db/password", "an-entirely-new-password");
+    let secrets = Secrets::new(&DIGEST_KEY, &store);
+    let providers = Providers::new().with(Box::new(Os::new()));
+    let mut state = State::new();
+
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
+    let intended =
+        plan(&graph, &observed, &state, &providers.schema(), secrets).expect("plannable");
+    let carried: usize = intended
+        .changes()
+        .map(|change| change.premise().len())
+        .sum();
+    assert!(
+        carried > 0,
+        "the rotation carries a premise, or there is nothing to test"
+    );
+
+    let unkeyed = nerpa_proto::digest(&nerpa_proto::Seen::Entry(nerpa_proto::Entry::File {
+        content: PASSWORD.as_bytes().to_vec(),
+        mode,
+    }));
+    let needle = serde_json::to_string(&unkeyed).expect("a digest serialises");
+    let as_json = serde_json::to_string(&intended).expect("a plan serialises");
+    assert!(
+        !as_json.contains(needle.trim_matches(['[', ']'])),
+        "the plan's JSON carries an unkeyed digest of the secret on disk"
+    );
+
+    apply(
+        &intended,
+        &providers,
+        &machines(),
+        &observed,
+        &mut state,
+        secrets,
+        &mut kept,
+    )
+    .expect("applies through the sealed premise");
+    assert_eq!(
+        fs::read_to_string(&path).expect("written"),
+        "an-entirely-new-password"
+    );
+}

@@ -35,18 +35,19 @@ use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use nerpa_proto::{Answer, Ask, Entry, Observation, Operation, Premise, Seen};
+use nerpa_proto::{Answer, Ask, Entry, Observation, Operation, Premise, Seal, Seen};
 
 /// What this executor says to one request.
 #[must_use]
 pub fn answer(ask: &Ask) -> Answer {
     match ask {
-        Ask::Look { observations } => look(observations),
+        Ask::Look { observations, seal } => look(observations, seal.as_ref()),
         Ask::Perform {
             premise,
             operations,
+            seal,
             ..
-        } => perform(premise, operations),
+        } => perform(premise, operations, seal.as_ref()),
         Ask::Build => build(),
         // Deliberately not answered yet: a fingerprint is a claim about what
         // this executor last applied, and it has nowhere to remember that. An
@@ -83,10 +84,10 @@ fn build() -> Answer {
     }
 }
 
-fn look(observations: &[Observation]) -> Answer {
+fn look(observations: &[Observation], seal: Option<&Seal>) -> Answer {
     let mut seen = Vec::with_capacity(observations.len());
     for (at, observation) in observations.iter().enumerate() {
-        match observe(observation) {
+        match observe(observation, seal) {
             Ok(found) => seen.push(found),
             Err(problem) => return Answer::Failed { at, problem },
         }
@@ -94,13 +95,30 @@ fn look(observations: &[Observation]) -> Answer {
     Answer::Found { seen }
 }
 
-fn perform(premise: &[Premise], operations: &[Operation]) -> Answer {
+fn perform(premise: &[Premise], operations: &[Operation], seal: Option<&Seal>) -> Answer {
+    // ENFORCES: INV-PREMISE-002
+    // Compared sealed or not at all. A premise that arrived bare would be
+    // compared against an unkeyed digest, which is the digest a plan's JSON must
+    // not carry, so it is refused before anything is looked at. Decision 0041.
+    let seal = match (seal, premise.is_empty()) {
+        (Some(seal), _) => Some(seal),
+        (None, true) => None,
+        (None, false) => {
+            return Answer::Failed {
+                at: 0,
+                problem: "a premise arrived without its seal, and one is not compared bare"
+                    .to_owned(),
+            };
+        }
+    };
+
     // ENFORCES: INV-PREMISE-001
     // Before anything, and all of it. A batch acting on half a stale reading is
     // worse than one that did not act at all.
     for (at, held) in premise.iter().enumerate() {
-        match observe(&held.observation) {
-            Ok(now) if nerpa_proto::digest(&now) == held.digest => {}
+        let Some(seal) = seal else { break };
+        match observe(&held.observation, Some(seal)) {
+            Ok(now) if nerpa_proto::sealed(seal, &nerpa_proto::digest(&now)) == held.digest => {}
             Ok(_) => return Answer::Moved { at },
             Err(problem) => return Answer::Failed { at, problem },
         }
@@ -123,7 +141,7 @@ fn perform(premise: &[Premise], operations: &[Operation]) -> Answer {
 /// there, or that it could not tell. A file nobody may open is not a file that
 /// is not there, and reporting it as absent is what makes an engine propose
 /// creating it and then overwrite it.
-fn observe(observation: &Observation) -> Result<Seen, String> {
+fn observe(observation: &Observation, seal: Option<&Seal>) -> Result<Seen, String> {
     match observation {
         Observation::Path { path } => at(Path::new(path)),
         // Followed on purpose. The caller asked what the path holds, not what
@@ -139,6 +157,21 @@ fn observe(observation: &Observation) -> Result<Seen, String> {
                 status,
                 out,
                 complaint,
+            })
+        }
+        // Only what it hashed to leaves, sealed for this machine; the thing itself
+        // stays here. For what the engine has to compare and must not hold — a
+        // password hash, a secret file. Decision 0041.
+        Observation::Sealed { of } => {
+            let Some(seal) = seal else {
+                return Err("a sealed observation arrived without a seal".to_owned());
+            };
+            if matches!(of.as_ref(), Observation::Sealed { .. }) {
+                return Err("a sealed observation inside another is refused".to_owned());
+            }
+            let found = observe(of, None)?;
+            Ok(Seen::Sealed {
+                digest: nerpa_proto::sealed(seal, &nerpa_proto::digest(&found)),
             })
         }
         _ => Err("this executor does not understand that observation".to_owned()),

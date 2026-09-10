@@ -2,6 +2,11 @@
 
 - Status: accepted
 - Date: 2026-09-06
+- Corrected: 2026-09-11 — "the same encoding **unkeyed**" put an unkeyed digest of
+  whatever was read into the plan, and for a secret already on disk that reached
+  the plan's JSON; a test found it. Premise digests are sealed for their machine
+  now, and an executor refuses a premise without its seal. See
+  [0041](0041-a-premise-is-sealed-for-the-machine-it-describes.md).
 
 ## Context
 

@@ -32,7 +32,7 @@ struct Blank;
 impl Reach for Blank {
     fn ask(&self, ask: &nerpa_proto::Ask) -> Result<nerpa_proto::Answer, ProviderError> {
         match ask {
-            nerpa_proto::Ask::Look { observations } => Ok(nerpa_proto::Answer::Found {
+            nerpa_proto::Ask::Look { observations, .. } => Ok(nerpa_proto::Answer::Found {
                 seen: observations
                     .iter()
                     .map(|_| nerpa_proto::Seen::Nothing)

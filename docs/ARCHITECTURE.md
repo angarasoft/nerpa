@@ -266,6 +266,14 @@ with nothing checking that they agree. So `Provider::read` says both what it
 found and what it looked at to find it; the plan carries that, and the batch
 carries it back.
 
+The premise is sealed for the machine it describes
+([0041](decisions/0041-a-premise-is-sealed-for-the-machine-it-describes.md)).
+What was read is sometimes a secret, and an unkeyed digest of a short one in a
+plan's JSON is a lookup. So the planner seals each digest under a key derived from
+the state file's and the machine's name, the engine puts that seal on the batch as
+it leaves rather than into the plan, and the executor refuses a premise that
+arrives without it.
+
 What bounds this is how much a provider admits to having read. The check is
 exactly as wide as that and no wider, which is a limit on the guarantee rather
 than a way through it.

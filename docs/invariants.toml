@@ -584,6 +584,7 @@ enforced_by = [
 tests = [
   "a_password_reaches_the_file_and_nothing_else",
   "a_rotated_secret_is_reported_as_changed",
+  "a_rotated_secret_leaves_no_unkeyed_digest_of_the_old_one_in_the_plan",
   "the_same_value_under_two_keys_digests_differently",
   "values_that_are_not_equal_do_not_digest_equal",
 ]
@@ -919,6 +920,37 @@ adversarial = [
   "a_file_that_moved_after_the_plan_was_made_is_not_written_over",
 ]
 
+
+[[invariant]]
+id = "INV-PREMISE-002"
+status = "enforced"
+statement = "A premise leaves the planner only sealed for the machine it describes, and an executor refuses one that arrives without its seal."
+rationale = """
+A premise is a digest of what was read, and what was read is sometimes a secret. \
+Unsealed, a plan's JSON carried an unkeyed digest of a credential on disk, and a \
+dictionary defeats an unkeyed digest of a short one in seconds — found by a test \
+before any secret store was real. The planner seals each digest under a key \
+derived from the state file's and the machine's name, the engine puts that seal \
+on the batch as it leaves and never in the plan, and the executor seals what it \
+reads again and compares, refusing a premise that came bare. See 0041."""
+enforced_by = [
+  "crates/nerpa-core/src/planner.rs",
+  "crates/nerpa-core/src/run.rs",
+  "crates/nerpa-executor/src/lib.rs",
+]
+tests = [
+  "a_rotated_secret_leaves_no_unkeyed_digest_of_the_old_one_in_the_plan",
+  "a_premise_that_arrives_without_its_seal_is_refused_before_anything_is_done",
+  "a_premise_sealed_for_another_machine_does_not_hold",
+  "a_seal_belongs_to_one_machine_under_one_state_file",
+  "a_sealed_observation_answers_with_a_seal_and_never_the_contents",
+]
+bypass = "An unkeyed digest of something read reaching a plan's JSON or state — the premise as it was, or a field somebody adds beside it. Or a premise accepted bare, which is the same digest through the other door. Not covered, on purpose: a machine holding its own seal can test guesses against its own premise, which describes its own disk."
+adversarial = [
+  "a_rotated_secret_leaves_no_unkeyed_digest_of_the_old_one_in_the_plan",
+  "a_premise_that_arrives_without_its_seal_is_refused_before_anything_is_done",
+  "a_premise_sealed_for_another_machine_does_not_hold",
+]
 [[invariant]]
 id = "INV-FACT-001"
 status = "claimed"

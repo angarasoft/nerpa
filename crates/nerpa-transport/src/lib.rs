@@ -287,7 +287,7 @@ impl Reach for Held {
         };
 
         Ok(match ask {
-            Ask::Look { observations } => Answer::Found {
+            Ask::Look { observations, .. } => Answer::Found {
                 seen: observations
                     .iter()
                     .map(|observation| match observation {

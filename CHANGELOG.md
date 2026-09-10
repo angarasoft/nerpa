@@ -276,6 +276,18 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A plan's premise is sealed for the machine it describes. It had carried an
+  unkeyed digest of everything it read, and `plan --json` wrote it out, so a
+  secret already on disk and about to be rotated left an unkeyed digest of the
+  old credential in the JSON — for a short one, a lookup. Found by a test before
+  any secret store was real. Digests are sealed under a key derived from the state
+  file's and the machine's name; the seal goes on the batch as it leaves and never
+  into the plan; an executor refuses a premise without one. The protocol is
+  version 4, which is a reinstall, and it also carries a sealed observation — an
+  answer that is the sealed digest of a thing and never the thing — for password
+  hashes and secret files later. See
+  [0041](docs/decisions/0041-a-premise-is-sealed-for-the-machine-it-describes.md).
+
 - A template's last newline is kept. Jinja drops it by default and nerpa had
   inherited that, so every rendered file lost the newline its template ended with
   — and cron ignores a last line with no newline after it. Found by rendering one

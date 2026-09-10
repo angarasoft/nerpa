@@ -240,6 +240,7 @@ fn settle_service(
             plan: None,
             premise: premise.to_vec(),
             operations,
+            seal: None,
         })?,
         address,
     )?;
@@ -448,6 +449,7 @@ fn install(
             plan: None,
             premise: premise.to_vec(),
             operations: vec![family.install(&atom, &version), look_again(family, &atom)],
+            seal: None,
         })?,
         address,
     )?;
@@ -490,6 +492,7 @@ fn uninstall(
             plan: None,
             premise: premise.to_vec(),
             operations: vec![family.remove(&atom), look_again(family, &atom)],
+            seal: None,
         })?,
         address,
     )?;
@@ -588,6 +591,7 @@ impl Provider for Os {
         let seen = all(
             reach.ask(&Ask::Look {
                 observations: wanted.iter().flatten().cloned().collect(),
+                seal: None,
             })?,
             &first,
         )?;
@@ -664,6 +668,7 @@ impl Provider for Os {
             plan: None,
             premise: premise.to_vec(),
             operations: vec![operation],
+            seal: None,
         })?;
 
         // Read back rather than echoed: the far end reports what the path became
@@ -706,6 +711,7 @@ impl Provider for Os {
             plan: None,
             premise: premise.to_vec(),
             operations: vec![Operation::Remove { path }],
+            seal: None,
         })?;
         one(answer, address).map(|_| ())
     }

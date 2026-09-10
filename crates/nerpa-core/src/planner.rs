@@ -313,7 +313,7 @@ fn change_for(
                 ChangeKind::React,
                 Vec::new(),
                 desired,
-                observed.premise(address).to_vec(),
+                sealed_for_its_machine(observed.premise(address), address, secrets),
                 roused_by,
                 owed,
             ))
@@ -330,12 +330,40 @@ fn change_for(
                 kind,
                 deltas,
                 desired,
-                observed.premise(address).to_vec(),
+                sealed_for_its_machine(observed.premise(address), address, secrets),
                 roused_by,
                 owed,
             ))
         }
     })
+}
+
+// ENFORCES: INV-PREMISE-002
+/// What a change was computed from, sealed for the machine it was read on.
+///
+/// A premise is a digest of what is there now, and what is there now is
+/// sometimes a secret. Unsealed, a plan's JSON carried an unkeyed digest of the
+/// credential on disk, and a dictionary defeats an unkeyed digest of a short one
+/// in seconds: found by a test, before any secret store was real. Sealed under a
+/// key derived for that machine, it can be checked by the machine and tested by
+/// nobody holding the plan without the state. See decision 0041.
+fn sealed_for_its_machine(
+    premise: &[nerpa_proto::Premise],
+    address: &Address,
+    secrets: Secrets<'_>,
+) -> Vec<nerpa_proto::Premise> {
+    // Not on a machine, so nothing read it there and nothing there will check it.
+    let Some(node) = address.target() else {
+        return Vec::new();
+    };
+    let seal = secrets.key().seal_for(node);
+    premise
+        .iter()
+        .map(|held| nerpa_proto::Premise {
+            observation: held.observation.clone(),
+            digest: nerpa_proto::sealed(&seal, &held.digest),
+        })
+        .collect()
 }
 
 // ENFORCES: INV-PLAN-003
