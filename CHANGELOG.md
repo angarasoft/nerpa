@@ -276,6 +276,19 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- Every machine reached over `ssh` is asked which build its executor is before
+  anything else, and one that names another build is left out and reported with
+  both names. Found by accident while closing stage 1: all three machines ran the
+  executor built on 2026-09-06 at 18:50, before three fixes — a directory that
+  followed a symlink with root's `chmod`, a file created world-readable before its
+  mode was narrowed, a deadlock on a large input — and every run since had been
+  against it. The protocol version could not have said so, because none of the
+  fixes changed a frame. The name is a digest of the running binary, so nothing
+  has to be remembered to change it, and the protocol is version 3, so an older
+  executor refuses the first frame by name. Machines are opened side by side now,
+  since opening waits for the handshake. See
+  [0040](docs/decisions/0040-an-executor-says-which-build-it-is.md).
+
 - Reading fans out over a bounded pool, one machine per thread, sixteen at once,
   answers kept in the order the work was built. Measured, and worth nothing yet
   on a fleet of two: a bare `ssh` behind the proxy takes 5.07 s and the whole run

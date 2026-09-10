@@ -120,3 +120,75 @@ fn a_far_end_that_dies_is_reported_as_the_machine_and_not_as_a_resource() {
         "{refusal:?}"
     );
 }
+
+/// The name of the executor these tests run, as the engine would compute it
+/// over the file it carries.
+fn carried() -> String {
+    nerpa_transport::build_of(&std::fs::read(executor()).expect("the executor can be read"))
+}
+
+/// The executor this nerpa carries is recognised, and the connection that asked
+/// is still the one the run goes on to use.
+#[test]
+fn the_executor_this_nerpa_carries_is_recognised() {
+    let reach = Piped::running(&node("web-01"), &executor(), &[]).expect("it starts");
+
+    nerpa_transport::recognised(&reach, &node("web-01"), &carried()).expect("the same build");
+
+    let after = reach
+        .ask(&Ask::Look {
+            observations: Vec::new(),
+        })
+        .unwrap();
+    assert!(matches!(after, Answer::Found { .. }), "{after:?}");
+}
+
+/// An executor from another build answers everything the protocol has, so only
+/// asking tells it apart. It is refused naming both builds, because the way out
+/// is installing one of them.
+#[test]
+fn an_executor_from_another_build_is_refused_naming_both() {
+    let reach = Piped::running(&node("web-01"), &executor(), &[]).expect("it starts");
+    let expected = nerpa_proto::build_of(b"the executor after a fix");
+
+    let refusal = nerpa_transport::recognised(&reach, &node("web-01"), &expected)
+        .expect_err("it is another build");
+
+    let ProviderError::Unreachable {
+        node: named,
+        problem,
+    } = refusal
+    else {
+        panic!(
+            "a machine without the executor this nerpa ships is left out, not an error about a resource"
+        )
+    };
+    assert_eq!(named.as_str(), "web-01");
+    assert!(
+        problem.contains(&carried()[..16]) && problem.contains(&expected[..16]),
+        "{problem}"
+    );
+}
+
+/// A far end that cannot say which build it is is not assumed to be the right one.
+#[test]
+fn a_far_end_that_cannot_say_which_build_it_is_is_not_taken_for_the_right_one() {
+    #[derive(Debug)]
+    struct Older;
+    impl Reach for Older {
+        fn ask(&self, _: &Ask) -> Result<Answer, ProviderError> {
+            Ok(Answer::Failed {
+                at: 0,
+                problem: "this executor does not understand that request".to_owned(),
+            })
+        }
+    }
+
+    let refusal =
+        nerpa_transport::recognised(&Older, &node("web-01"), &nerpa_proto::build_of(b"anything"))
+            .expect_err("it did not say");
+    assert!(
+        matches!(&refusal, ProviderError::Unreachable { problem, .. } if problem.contains("did not say")),
+        "{refusal:?}"
+    );
+}

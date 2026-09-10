@@ -315,3 +315,17 @@ fn a_program_that_does_not_read_its_input_is_not_a_failure() {
     };
     assert!(matches!(became[0], Seen::Said { status: 0, .. }));
 }
+
+/// Which build this is comes off the binary that is running, so it is the name
+/// the engine computes over the file it carries — here, the test binary this
+/// executor is linked into.
+#[test]
+fn which_build_is_read_off_the_binary_that_is_running() {
+    let running = fs::read(std::env::current_exe().unwrap()).unwrap();
+    assert_eq!(
+        answer(&Ask::Build),
+        Answer::Build {
+            digest: nerpa_proto::build_of(&running)
+        }
+    );
+}

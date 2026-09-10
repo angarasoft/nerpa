@@ -92,21 +92,36 @@ fn main() -> ExitCode {
 /// them is `W-008`.
 const PORTABLE_ARCHITECTURE: &str = "x86_64";
 
-/// The executor built to run somewhere that is not here.
+/// The executor built to run somewhere that is not here, and the build it goes by.
 ///
 /// A separate file from the one used locally, because a machine reached over
 /// `ssh` is not this machine: the local build links against what is here, and a
-/// static one is what travels.
-fn portable(beside: &Path) -> Result<PathBuf, String> {
-    let carried = beside.with_file_name("nerpa-executor.static");
-    if carried.exists() {
-        return Ok(carried);
+/// static one is what travels. Needed for every machine reached over `ssh`, not
+/// only the ones it is delivered to, because it is also what an installed
+/// executor is compared with — decision 0040.
+#[derive(Debug)]
+struct Carried {
+    /// Where it is, here.
+    path: PathBuf,
+    /// Its name, by [`nerpa_transport::build_of`].
+    build: String,
+}
+
+/// Finds the executor this nerpa carries, and names it.
+fn portable(beside: &Path) -> Result<Carried, String> {
+    let path = beside.with_file_name("nerpa-executor.static");
+    if !path.exists() {
+        return Err(format!(
+            "{} is not there. A machine reached over ssh is checked against the \
+             executor this nerpa carries, and is given it when nothing names one",
+            path.display()
+        ));
     }
-    Err(format!(
-        "{} is not there. A machine reached over ssh needs an executor that runs \
-         where it is going, and nothing names one for this node",
-        carried.display()
-    ))
+    let binary = std::fs::read(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+    Ok(Carried {
+        build: nerpa_transport::build_of(&binary),
+        path,
+    })
 }
 
 /// How each machine in this configuration is reached.
@@ -130,7 +145,11 @@ fn reachable(graph: &nerpa_core::Graph, fleet: &Fleet) -> Result<Machines, Strin
     }
 
     let nodes: Vec<Target> = graph.inventory().nodes().cloned().collect();
-    let (machines, refused) = registry(&nodes, &|node| speaking(node, fleet, &beside));
+    // Found once for the whole fleet. Not fatal here: a fleet reaching nothing
+    // over `ssh` has no use for it, and one that does is refused machine by
+    // machine, with the reason.
+    let carried = portable(&beside);
+    let (machines, refused) = registry(&nodes, &|node| speaking(node, fleet, &beside, &carried));
     for problem in refused {
         eprintln!("nerpa: {problem}");
     }
@@ -143,7 +162,7 @@ fn reachable(graph: &nerpa_core::Graph, fleet: &Fleet) -> Result<Machines, Strin
 /// because the shape of it is the point: everything that can go wrong because a
 /// machine is not there goes wrong in here, and everything outside has to carry
 /// on regardless.
-type Opening<'a> = dyn Fn(&Target) -> Result<Box<dyn Reach>, String> + 'a;
+type Opening<'a> = dyn Fn(&Target) -> Result<Box<dyn Reach>, String> + Sync + 'a;
 
 // ENFORCES: INV-REACH-001
 /// Opens a connection to each machine, and says which ones would not open.
@@ -157,10 +176,14 @@ type Opening<'a> = dyn Fn(&Target) -> Result<Box<dyn Reach>, String> + 'a;
 /// A machine that will not open is left out. The planner then reports it as out
 /// of reach, which is what it already knew how to do — see decision 0020.
 fn registry(nodes: &[Target], open: &Opening<'_>) -> (Machines, Vec<String>) {
+    // Side by side, because opening a machine waits for its handshake — it is
+    // where the executor there is asked which build it is — and one at a time a
+    // fleet would wait for every handshake in turn before reading anything.
+    let opened = nerpa_core::fanout::every(nodes, open);
     let mut machines = Machines::new();
     let mut refused = Vec::new();
-    for node in nodes {
-        match open(node) {
+    for (node, outcome) in nodes.iter().zip(opened) {
+        match outcome {
             Ok(reach) => machines = machines.with(node.clone(), reach),
             Err(problem) => refused.push(problem),
         }
@@ -172,27 +195,36 @@ fn registry(nodes: &[Target], open: &Opening<'_>) -> (Machines, Vec<String>) {
 ///
 /// Everything that can fail because that machine is not there fails here, so
 /// the caller has one place to decide what an absent machine means.
-fn speaking(node: &Target, fleet: &Fleet, beside: &Path) -> Result<Box<dyn Reach>, String> {
-    let (program, arguments) = match fleet.route(node) {
-        Route::Here => (beside.display().to_string(), Vec::new()),
+fn speaking(
+    node: &Target,
+    fleet: &Fleet,
+    beside: &Path,
+    carried: &Result<Carried, String>,
+) -> Result<Box<dyn Reach>, String> {
+    let (program, arguments, expected) = match fleet.route(node) {
+        // Not asked which build it is: the executor here is the file beside this
+        // program, from the same build by construction.
+        Route::Here => (beside.display().to_string(), Vec::new(), None),
         Route::Ssh {
             host,
             config,
             executor,
             escalate,
         } => {
+            let carried = carried
+                .as_ref()
+                .map_err(|problem| format!("{node}: {problem}"))?;
             // Named by the fleet, or put there. A path somebody wrote down is
             // used as written: they know something about that machine that this
             // does not.
             let executor = if let Some(named) = executor {
                 named
             } else {
-                let carried = portable(beside)?;
                 nerpa_transport::delivery::deliver(
                     node,
                     &host,
                     config.as_deref(),
-                    &carried,
+                    &carried.path,
                     PORTABLE_ARCHITECTURE,
                 )
                 .map_err(|error| error.to_string())?
@@ -225,10 +257,17 @@ fn speaking(node: &Target, fleet: &Fleet, beside: &Path) -> Result<Box<dyn Reach
             arguments.push(host);
             arguments.extend(escalate);
             arguments.push(executor);
-            ("ssh".to_owned(), arguments)
+            ("ssh".to_owned(), arguments, Some(carried.build.as_str()))
         }
     };
     let reach = Piped::running(node, &program, &arguments).map_err(|error| error.to_string())?;
+    // ENFORCES: INV-WIRE-003
+    // Before anything is read, because what is read is the executor's account of
+    // the machine, and an account from a build this nerpa does not ship is not
+    // one it has a reason to believe.
+    if let Some(build) = expected {
+        nerpa_transport::recognised(&reach, node, build).map_err(|error| error.to_string())?;
+    }
     Ok(Box::new(reach))
 }
 
@@ -392,6 +431,41 @@ mod tests {
              rather than one invented here: {:?}",
             refused[0]
         );
+    }
+
+    #[test]
+    fn opened_side_by_side_every_machine_is_accounted_for_in_the_fleets_order() {
+        let nodes: Vec<Target> = (0..40)
+            .map(|at| {
+                if at % 3 == 0 {
+                    node(&format!("down-{at}"))
+                } else {
+                    node(&format!("up-{at}"))
+                }
+            })
+            .collect();
+        let opening = |node: &Target| -> Result<Box<dyn Reach>, String> {
+            if node.as_str().starts_with("down") {
+                return Err(format!("{node}: could not be reached"));
+            }
+            Ok(Box::new(Here))
+        };
+
+        let (machines, refused) = registry(&nodes, &opening);
+
+        let expected: Vec<String> = nodes
+            .iter()
+            .filter(|node| node.as_str().starts_with("down"))
+            .map(|node| format!("{node}: could not be reached"))
+            .collect();
+        assert_eq!(
+            refused, expected,
+            "every refusal once, in the fleet's order rather than the order the \
+             handshakes happened to finish in"
+        );
+        for up in nodes.iter().filter(|node| node.as_str().starts_with("up")) {
+            assert!(machines.reach(Some(up)).is_ok(), "{up} opened and is there");
+        }
     }
 
     #[test]

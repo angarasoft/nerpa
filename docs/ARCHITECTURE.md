@@ -159,7 +159,7 @@ Load-bearing rather than an optimisation, because the plan is single-pass.
 
 ## The executor and transports — [0010](decisions/0010-static-executor-pluggable-transport.md) · partly built
 
-A static Rust binary — 774 776 bytes, built for `x86_64-unknown-linux-musl` —
+A static Rust binary — 811 712 bytes, built for `x86_64-unknown-linux-musl` —
 speaking framed CBOR over stdin and stdout: four bytes of length, then the body.
 Every frame carries the protocol version it was written by, because an executor
 installed once outlives the engine that put it there, and an unknown version is
@@ -177,6 +177,16 @@ arrives in the connecting user's own directory. **Installed** is what escalation
 requires, because an executor that user can write is one they can run as root —
 so `become` without a named `executor` is refused when the fleet is read, rather
 than becoming a sudoers rule that says one path and means every command there is.
+
+Every machine reached over `ssh` is asked which build its executor is before
+anything else, and the answer is a digest of the binary that is running, compared
+with the one this nerpa carries
+([0040](decisions/0040-an-executor-says-which-build-it-is.md)). The protocol
+version cannot do this: a fix inside the executor changes no frame, and three
+machines ran a build from before three such fixes through every stage-1 run
+without anything saying so. A machine that names another build is left out and
+reported with both names, which makes a new nerpa a reinstall wherever an
+executor is installed.
 
 The executor puts itself on a machine, by the transport's own means rather than
 over the wire: until the binary is there, there is nothing to speak to. It lands

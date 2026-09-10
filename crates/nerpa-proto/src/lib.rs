@@ -38,7 +38,11 @@ use serde::{Deserialize, Serialize};
 ///
 /// Bumped when the meaning of anything below changes. An executor that reads a
 /// version it does not know refuses the frame; it does not attempt a subset.
-pub const PROTOCOL_VERSION: u32 = 2;
+///
+/// Three since an executor can be asked which build it is. The bump is what
+/// makes an executor from before that refuse the first frame by name, rather
+/// than answer everything else as though nothing had changed.
+pub const PROTOCOL_VERSION: u32 = 3;
 
 /// The largest frame either end will read.
 ///
@@ -147,6 +151,13 @@ pub enum Ask {
     /// The cheapest of the three tiers in decision 0011: a node whose digest
     /// matches what state remembers is skipped whole.
     Fingerprint,
+    /// Which build are you?
+    ///
+    /// Asked before anything else by an engine that has to know it is talking
+    /// to the executor it ships. The protocol version cannot say that: a fix
+    /// inside the executor changes nothing on the wire, so an executor without
+    /// it answers every frame as though it had it. See decision 0040.
+    Build,
 }
 
 /// Something the engine wants looked at.
@@ -370,6 +381,11 @@ pub enum Answer {
         /// Hexadecimal digest.
         digest: String,
     },
+    /// Which build answered, named by [`build_of`] over its own binary.
+    Build {
+        /// Hexadecimal digest.
+        digest: String,
+    },
     /// It could not be done, and this is as far as it got.
     Failed {
         /// Which operation or observation stopped it, by index.
@@ -459,6 +475,17 @@ pub fn digest(seen: &Seen) -> [u8; 32] {
         }
     }
     *blake3::hash(&out).as_bytes()
+}
+
+/// The name a build of the executor goes by: a digest of every byte of it.
+///
+/// Computed the same way by the executor over itself and by the engine over the
+/// file it carries, which is what lets the two be compared rather than trusted.
+/// Derived rather than declared, because a number somebody has to remember to
+/// change is a number that stays the same across a fix.
+#[must_use]
+pub fn build_of(binary: &[u8]) -> String {
+    blake3::hash(binary).to_hex().to_string()
 }
 
 /// A length as eight canonical bytes.

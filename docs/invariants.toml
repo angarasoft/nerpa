@@ -409,6 +409,32 @@ adversarial = [
   "a_pipe_that_ends_mid_frame_says_so",
 ]
 
+
+[[invariant]]
+id = "INV-WIRE-003"
+status = "enforced"
+statement = "A machine reached over ssh is worked on only by the executor build this nerpa carries."
+rationale = """
+The executor is what acts on a machine, often as root, and a fix inside it \
+changes nothing on the wire — so the protocol version cannot tell an executor \
+with the fix from one without. Measured: three machines ran a build from before \
+three fixes through every stage-1 run, and nothing said so. Each connection asks \
+the far end which build it is before anything else, by a digest of its own \
+binary, and a machine that names another build or cannot say is left out and \
+reported with both names. See 0040."""
+enforced_by = ["crates/nerpa-transport/src/lib.rs", "crates/nerpa-cli/src/main.rs"]
+tests = [
+  "the_executor_this_nerpa_carries_is_recognised",
+  "an_executor_from_another_build_is_refused_naming_both",
+  "a_far_end_that_cannot_say_which_build_it_is_is_not_taken_for_the_right_one",
+  "which_build_is_read_off_the_binary_that_is_running",
+  "a_build_is_named_by_every_byte_of_it",
+]
+bypass = "An executor installed before a fix, speaking the current protocol and answering every question correctly, driven as though it were the build with the fix. Or a far end that refuses the question, taken for a yes. Not covered, on purpose: the local route, whose executor is the file beside this program. Covered by a real machine rather than a test: that the CLI's opening calls the check at all, because the route there runs `ssh` by name and a test would have to fake the one thing it is about."
+adversarial = [
+  "an_executor_from_another_build_is_refused_naming_both",
+  "a_far_end_that_cannot_say_which_build_it_is_is_not_taken_for_the_right_one",
+]
 [[invariant]]
 id = "INV-BATCH-001"
 status = "enforced"
@@ -471,7 +497,7 @@ project exists to avoid. The provider has to tell them apart, and the type makes
 it say which."""
 enforced_by = ["crates/nerpa-core/src/provider.rs", "crates/nerpa-core/src/run.rs"]
 tests = ["any_other_refusal_still_stops_the_run"]
-bypass = "A permission error read as unreachability, which quietly stops managing a resource over a typo in an access rule. One place does this on purpose and is named here rather than left to be found: the fact-gathering loop in `run.rs` turns every failure into unreachability, because there the subject is the machine rather than a resource on it. That makes a protocol error — an executor answering a look with something else — look like a machine that is down, and marks the whole machine unreachable when its resources had already been read. It was decided, it was not written down, and an independent review found it before anybody here did."
+bypass = "A permission error read as unreachability, which quietly stops managing a resource over a typo in an access rule. One place does this on purpose and is named here rather than left to be found: the fact-gathering loop in `run.rs` turns every failure into unreachability, because there the subject is the machine rather than a resource on it. That makes a protocol error — an executor answering a look with something else — look like a machine that is down, and marks the whole machine unreachable when its resources had already been read. It was decided, it was not written down, and an independent review found it before anybody here did. A second place, also on purpose: opening a machine in the CLI leaves out one that answered, when what answered is an executor of another architecture or another build (0040). The subject there is the machine as well — nothing this nerpa ships is on it to read anything with — and the refusal names it."
 adversarial = [
   "any_other_refusal_still_stops_the_run",
 ]

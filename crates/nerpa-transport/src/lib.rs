@@ -24,6 +24,10 @@
 
 pub mod delivery;
 
+/// How a build of the executor is named, for whoever holds the file it was
+/// built as. See [`recognised`].
+pub use nerpa_proto::build_of;
+
 use std::io::Write as _;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Mutex;
@@ -168,6 +172,56 @@ impl Reach for Piped {
             .map(|response| response.body().clone())
             .map_err(|error| out_of_reach(error.to_string()))
     }
+}
+
+// ENFORCES: INV-WIRE-003
+/// Whether the far end is the executor this nerpa carries.
+///
+/// Asked before anything else is, because the executor is what acts on a
+/// machine — often as root — and a fix to it changes nothing the protocol
+/// version can see. An executor installed before the fix speaks the same wire and
+/// answers every question; only asking which build it is tells the two apart.
+/// See decision 0040.
+///
+/// Refused as out of reach, the way a machine of the wrong architecture is
+/// refused at delivery: the machine answered, and nothing this nerpa ships is
+/// there to do the work, so its resources are reported unread and every other
+/// machine carries on. The refusal names both builds, because the way out is
+/// installing one of them.
+///
+/// # Errors
+///
+/// [`ProviderError::Unreachable`] if the far end names another build, cannot say
+/// which it is, or could not be asked at all.
+pub fn recognised(
+    reach: &dyn Reach,
+    node: &nerpa_core::Target,
+    carried: &str,
+) -> Result<(), ProviderError> {
+    let refused = |problem: String| ProviderError::Unreachable {
+        node: node.clone(),
+        problem,
+    };
+    match reach.ask(&Ask::Build)? {
+        Answer::Build { digest } if digest == carried => Ok(()),
+        Answer::Build { digest } => Err(refused(format!(
+            "the executor there is build {}, and this nerpa carries {}; \
+             install the one it carries",
+            short(&digest),
+            short(carried)
+        ))),
+        Answer::Failed { problem, .. } => Err(refused(format!(
+            "the executor there did not say which build it is: {problem}"
+        ))),
+        other => Err(refused(format!(
+            "the executor there was asked which build it is and answered {other:?}"
+        ))),
+    }
+}
+
+/// Enough of a digest to tell two builds apart in a sentence.
+fn short(digest: &str) -> &str {
+    digest.get(..16).unwrap_or(digest)
 }
 
 /// The executor, in this process.

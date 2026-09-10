@@ -47,6 +47,7 @@ pub fn answer(ask: &Ask) -> Answer {
             operations,
             ..
         } => perform(premise, operations),
+        Ask::Build => build(),
         // Deliberately not answered yet: a fingerprint is a claim about what
         // this executor last applied, and it has nowhere to remember that. An
         // invented number would be worse than none, because the engine would
@@ -58,6 +59,26 @@ pub fn answer(ask: &Ask) -> Answer {
         _ => Answer::Failed {
             at: 0,
             problem: "this executor does not understand that request".to_owned(),
+        },
+    }
+}
+
+/// Which build this is, read off the binary that is running rather than written
+/// into it.
+///
+/// A number compiled in is a claim somebody has to remember to change, and not
+/// changing one is how an executor without three fixes answered a whole stage of
+/// runs as though it had them. `/proc/self/exe` is the file this process was
+/// started from, still, if it has since been replaced on disk. Where there is no
+/// `/proc` this says so rather than naming something.
+fn build() -> Answer {
+    match fs::read("/proc/self/exe") {
+        Ok(binary) => Answer::Build {
+            digest: nerpa_proto::build_of(&binary),
+        },
+        Err(error) => Answer::Failed {
+            at: 0,
+            problem: format!("this executor cannot read itself to say which build it is: {error}"),
         },
     }
 }

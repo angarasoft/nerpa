@@ -380,3 +380,37 @@ fn a_batch_carries_the_plan_it_came_from_and_what_it_assumed() {
         "a process acts wherever it acts, and this wire cannot say where"
     );
 }
+
+/// Which build an executor is travels as a question with nothing in it and an
+/// answer that is only a name.
+#[test]
+fn asking_which_build_survives_the_trip() {
+    assert_eq!(round_trip_request(Ask::Build).body(), &Ask::Build);
+
+    let answer = Response::new(Answer::Build {
+        digest: nerpa_proto::build_of(b"an executor"),
+    });
+    let mut wire = Vec::new();
+    nerpa_proto::write(&mut wire, &answer).unwrap();
+    assert_eq!(
+        nerpa_proto::read_response(&mut Cursor::new(wire))
+            .unwrap()
+            .body(),
+        answer.body()
+    );
+}
+
+/// Two builds a byte apart go by different names, and the same bytes always by
+/// the same one. Comparing builds rests on nothing else.
+#[test]
+fn a_build_is_named_by_every_byte_of_it() {
+    assert_eq!(
+        nerpa_proto::build_of(b"executor"),
+        nerpa_proto::build_of(b"executor")
+    );
+    assert_ne!(
+        nerpa_proto::build_of(b"executor"),
+        nerpa_proto::build_of(b"executoR")
+    );
+    assert_eq!(nerpa_proto::build_of(b"").len(), 64);
+}
