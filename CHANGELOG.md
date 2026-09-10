@@ -276,6 +276,12 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- An `executor` in the fleet has to be an absolute path, with no `~`, `.` or
+  `..`. The characters were checked and what they spelled was not, so
+  `~/nerpa-executor` or a relative path passed alongside `become`: a binary the
+  connecting user can write, run as root, which is what 0039 refuses. Found by
+  the review of RFC 0001.
+
 - A conversation with a machine that broke part way is ended, and every later
   ask to that machine says it has gone away. It used to be kept: the next ask
   would read the rest of the broken frame as its own answer, or wait for ever on

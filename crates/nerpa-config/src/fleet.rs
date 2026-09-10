@@ -273,6 +273,21 @@ fn read_route(name: &str, described: &toml::Value) -> Result<Route, String> {
                 .as_str()
                 .ok_or_else(|| format!("{name}: `executor` has to be a path"))?;
             plainly(name, "executor", path)?;
+            // A remote shell resolves anything but an absolute path from where the
+            // connection starts, which is the connecting user's home, and `~` is
+            // that home by name. Either is a path that user writes, and with
+            // `become` a binary that user writes is root for them (0039). The
+            // characters were checked above; what they spell is checked here.
+            if !path.starts_with('/')
+                || path.contains('~')
+                || path.split('/').any(|part| part == "." || part == "..")
+            {
+                return Err(format!(
+                    "{name}: `executor` is {path:?}, and it has to be an absolute path \
+                     with no `~`, `.` or `..` in it: a remote shell resolves anything \
+                     else from a directory the connecting user writes"
+                ));
+            }
             Ok::<String, String>(path.to_owned())
         })
         .transpose()?;
