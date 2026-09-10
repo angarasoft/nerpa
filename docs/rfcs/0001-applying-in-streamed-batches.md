@@ -345,7 +345,7 @@ being replaced, which is version 4 and has none.
 | A premise moved | Nothing done | `Moved { at }` | Unchanged | Re-plans |
 | An operation fails | Operations before it done | `Progress` up to it, `Failed { at }` | Up to the last reported change | Re-plans; the failed change is proposed again |
 | Ctrl-C once | Stops after the operation in flight | `Stopped { at }` from each machine | Everything reported | Continues where it stopped |
-| Engine killed, bastion route | Stops at the next operation once input ends (step 3); completes the batch today | Up to the last `Progress` | Up to the last recorded change | Reads the world. Machine resources are found by declared identity: a written file is adopted and a removed one is already gone. Measured: 3000 files laid down outside nerpa, with empty state, planned "nothing to do" |
+| Engine killed, bastion route | Stops at the next operation once input ends (step 3); completes the batch today | Up to the last `Progress` | Up to the last recorded change | Reads the world. Machine resources are found by declared identity: a written file is adopted and a removed one is already gone. Measured before 0042: 3000 files laid down outside nerpa, with empty state, planned "nothing to do". They are planned as adoptions now, and recorded in one write |
 | Engine killed, Teleport route | Input does not end for up to about a minute (measured 13–69 s); stops when `Alive` is missed for `L` | Same | Same | Same |
 | Network partition | Stops when `Alive` is missed for `L` | `ServerAlive*` ends the conversation, and it is reported as unreachable | Up to the last recorded change | The machine is reported with the age of its data (0020) |
 | The executor crashes | The operation in flight is unknown | Connection failed | Up to the last recorded change | Reads the world |
@@ -442,19 +442,33 @@ Severities are the reviewers' own, except where a verdict below says otherwise.
 
 These are true today, whatever becomes of this RFC.
 
-| From | How verified | Defect |
-| --- | --- | --- |
-| S-2 | E | A resource that already matches its declaration is never recorded. Plan and apply say "nothing to do", no state file is written, and when the declaration is removed later nothing is planned: the file stays. |
-| S-2 | R | State records only references still unresolved at plan time (`run.rs:411-421`). `after` edges and resolved references are lost, so removal order taken from state is incomplete. |
-| S-3 | E | Two addresses with one path are accepted. Both are created, the last write wins, and every later plan proposes the other again. |
-| S-4 | R | A reaction's debt is written only when the reacting resource's own stage runs (`run.rs:348`). A run stopped between the cause's stage and that one leaves the new file recorded and the reaction lost. |
-| B-4 | R | Nothing checks an operation's size before sending. A file over `MAX_FRAME` plans cleanly and fails at apply. |
-| P-6 | R | A package's premise is its query output. Installing A pulls in B and changes B's premise, so a B declared separately in the same stage is refused with `Moved`. Not reproduced on a machine. |
-| P-12 | R | A conversation is not dropped after a wire error; only `Drop` clears it. A later ask would read out of step. Latent: nothing asks again today. |
-| X-3 | R | The fleet accepts a relative or `~` executor path. `plainly` checks characters, not that the path is absolute. With `become`, that is the executor 0039 exists to refuse. |
-| X-8 | R | The number of answers is not checked against the number of operations (`provider-os/src/lib.rs:86-88`). |
-| X-10 | D | 0039 says the sudoers rule now "means what it says". An executor running as root runs any process (0033), so the rule is root for that account. 0039 needs a Corrected line. |
-| B-6 | R | The executor never syncs what it writes. A machine that loses power can lose a write the engine has recorded; the next read heals it. |
+| From | How verified | Defect | Fixed |
+| --- | --- | --- | --- |
+| S-2 | E | A resource that already matches its declaration is never recorded. Plan and apply say "nothing to do", no state file is written, and when the declaration is removed later nothing is planned: the file stays. | `6f70c8a`: adopted and recorded, [0042](../decisions/0042-a-resource-found-as-declared-is-adopted.md) |
+| S-2 | R | State records only references still unresolved at plan time (`run.rs:411-421`). `after` edges and resolved references are lost, so removal order taken from state is incomplete. | `85200af`: every edge, carried by the change |
+| S-3 | E | Two addresses with one path are accepted. Both are created, the last write wins, and every later plan proposes the other again. | `7aed616`: refused while planning |
+| S-4 | R | A reaction's debt is written only when the reacting resource's own stage runs (`run.rs:348`). A run stopped between the cause's stage and that one leaves the new file recorded and the reaction lost. | `a8f55b6`: owed before the cause is sent |
+| B-4 | R | Nothing checks an operation's size before sending. A file over `MAX_FRAME` plans cleanly and fails at apply. | `1856bc3`: refused while planning |
+| P-6 | R | A package's premise is its query output. Installing A pulls in B and changes B's premise, so a B declared separately in the same stage is refused with `Moved`. Not reproduced on a machine. | Not yet: to be reproduced on the Gentoo test machine first |
+| P-12 | R | A conversation is not dropped after a wire error; only `Drop` clears it. A later ask would read out of step. Latent: nothing asks again today. | `74db388` |
+| X-3 | R | The fleet accepts a relative or `~` executor path. `plainly` checks characters, not that the path is absolute. With `become`, that is the executor 0039 exists to refuse. | `e2ca0f8` |
+| X-8 | R | The number of answers is not checked against the number of operations (`provider-os/src/lib.rs:86-88`). | `37ae618` |
+| X-10 | D | 0039 says the sudoers rule now "means what it says". An executor running as root runs any process (0033), so the rule is root for that account. 0039 needs a Corrected line. | `bbbf891`: a Corrected line on 0039 |
+| B-6 | R | The executor never syncs what it writes. A machine that loses power can lose a write the engine has recorded; the next read heals it. | Deferred to the executor work, which reinstalls it anyway |
+
+Found while fixing them, and fixed the same way: a failing test first, then a
+commit of its own.
+
+| Defect | Fixed |
+| --- | --- |
+| A resource that already matched and was recorded kept the edges it was made with. An `after` written in later never reached state, so a file and its directory were still removed together in any order, and state from before `85200af` stayed short of edges. | `e1f0d1a`: planned as a reorder, [0043](../decisions/0043-what-a-resource-comes-after-is-recorded-when-that-changes.md) |
+| Adoption and reorder counted as changing, so a service reacting to an adopted file was planned to restart on every machine a first run adopted. Never released. | `715858c` |
+
+Two resolutions were built differently from what the tables below say. S-2:
+adoption is recovery again, because a written file whose record never came is
+adopted by the next plan. S-4: `owe` was not made to work without a record; a
+reacting resource that state does not record yet is recorded from what was
+read, so the state format did not change.
 
 ### P: protocol and failures
 
@@ -480,9 +494,9 @@ These are true today, whatever becomes of this RFC.
 | Id | Severity | How verified | Finding | Resolution |
 | --- | --- | --- | --- | --- |
 | S-1 | blocker | D | The reworded `INV-STATE-005` describes speed, not order; queued completions are lost | Write intent ahead. Pending records are written durably before a batch is sent, marked done on `Progress`, and a pending record is resolved by the next read. "What a run is about to make is written down before it is sent." |
-| S-2 | blocker | E, R | Adoption does not record, and edges are lost | Defects today, above; stop citing adoption as recovery |
+| S-2 | blocker | E, R | Adoption does not record, and edges are lost | Defects today, above; stop citing adoption as recovery. Fixed, and adoption is recovery again |
 | S-3 | major | E | Stage independence holds in the graph, not on the machine; creates and removals carry no premise | Refuse duplicate identity when the graph is built; re-check each change's own premise before its operations; never split a change |
-| S-4 | major | R | The debt is written too late | Before sending the batch that holds a cause, durably owe every reaction it will rouse; `owe` works without a record |
+| S-4 | major | R | The debt is written too late | Before sending the batch that holds a cause, durably owe every reaction it will rouse; `owe` works without a record. Fixed, recording the reacting resource instead |
 | S-5 | major | R | The delete half of a replacement is recorded on its own today | Record points declared in `prepare`, with P-5 |
 | S-6 | major | R | Step 1 does not keep `INV-STATE-005` without a recorder and a stop flag | With P-13 |
 | S-7 | major | D | "The first failure stops everything" contradicts `INV-REACH-002` and 0040 | **Decision needed:** continue, refusing dependents one resource at a time (which puts edges into the plan), or scope `INV-REACH-002` to plan time |
