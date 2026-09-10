@@ -147,6 +147,7 @@ fn summary(radius: &BlastRadius) -> String {
         (radius.replaces(), "to replace"),
         (radius.deletes(), "to remove"),
         (radius.reacts(), "to rouse"),
+        (radius.adopts(), "to adopt"),
     ] {
         if count > 0 {
             parts.push(format!("{count} {word}"));
@@ -208,6 +209,9 @@ fn action(kind: ChangeKind) -> &'static str {
         // naming what roused it, and the count in the summary — diluting a mark
         // that means one thing would cost more than it bought. See 0026.
         ChangeKind::React => "[rouse    ]",
+        // Not marked either: nothing is done to it. What it changes is what
+        // removing its declaration will do later, and the line under it says so.
+        ChangeKind::Adopt => "[adopt    ]",
         _ => "[unknown !]",
     }
 }
@@ -247,6 +251,16 @@ fn one(change: &Change) -> String {
             out,
             "               ↺ owed since an earlier run: {cause} changed and this \
              did not follow"
+        );
+    }
+
+    // The part that matters later. Nothing is done to it now, and from now on
+    // taking its declaration away removes it, which is not what somebody who
+    // wrote a file by hand years ago would assume. See 0042.
+    if change.kind() == ChangeKind::Adopt {
+        out.push_str(
+            "               = already as declared: nothing is sent, and removing its \
+             declaration will remove it\n",
         );
     }
 
@@ -554,10 +568,43 @@ mod tests {
             Resource::new(address("yandex:instance.db")).with("cores", 8),
         ]);
         let observed = observed_with("yandex:instance.db", &[("cores", Value::Integer(8))]);
+        // Settled means recorded as well. One that matches and that nothing
+        // records is adopted, and that is something to do.
+        let mut state = State::new();
+        state.record(
+            address("yandex:instance.db"),
+            Record::new(
+                Recorded::all(Attributes::new()),
+                std::collections::BTreeSet::new(),
+            ),
+        );
 
-        let text = rendered(&graph, &observed, &State::new(), &Schema::new());
+        let text = rendered(&graph, &observed, &state, &Schema::new());
         assert!(text.contains("nothing to do"), "{text}");
         assert!(!text.contains("stage"), "there is nothing to stage: {text}");
+    }
+
+    /// Nothing is done to an adopted resource, and removing its declaration will
+    /// now remove it. The second half is the one a person has to be told, because
+    /// it is not what somebody who wrote a file by hand years ago would assume.
+    #[test]
+    fn an_adoption_is_counted_and_says_what_removing_it_will_do() {
+        let graph = graph_of(vec![
+            Resource::new(address("yandex:instance.db")).with("cores", 8),
+        ]);
+        let observed = observed_with("yandex:instance.db", &[("cores", Value::Integer(8))]);
+
+        let text = rendered(&graph, &observed, &State::new(), &Schema::new());
+        assert!(text.contains("1 changes: 1 to adopt"), "{text}");
+        assert!(text.contains("[adopt    ] yandex:instance.db"), "{text}");
+        assert!(
+            text.contains("nothing is sent, and removing its declaration will remove it"),
+            "{text}"
+        );
+        assert!(
+            !text.contains("irreversible"),
+            "nothing is destroyed: {text}"
+        );
     }
 
     #[test]

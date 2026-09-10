@@ -7,13 +7,13 @@
 // Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use nerpa_core::address::address;
 use nerpa_core::plan::{ChangeKind, Confidence};
 use nerpa_core::planner::plan;
 use nerpa_core::secret::{Key, Recorded, Remembered, Secrets};
-use nerpa_core::state::State;
+use nerpa_core::state::{Record, State};
 
 /// A fixed key and a store holding nothing.
 ///
@@ -50,6 +50,21 @@ fn graph_of(resources: Vec<Resource>) -> Graph {
     graph
 }
 
+/// A state recording each of these, as the run that made them would have left it.
+///
+/// Without one, a machine that matches everything but its image is adopted, which
+/// is work, and these tests are about what is proposed for one already managed.
+fn recorded(addresses: &[&str]) -> State {
+    let mut state = State::new();
+    for address_text in addresses {
+        state.record(
+            address(address_text),
+            Record::new(BTreeMap::new(), BTreeSet::new()),
+        );
+    }
+    state
+}
+
 fn running(image: &str, cores: i64) -> Observed {
     let mut observed = Observed::new();
     let mut attributes = BTreeMap::new();
@@ -71,7 +86,7 @@ fn editing_the_image_does_not_propose_to_destroy_anything() {
     let plan = plan(
         &graph,
         &running("gentoo-2026-01", 8),
-        &State::new(),
+        &recorded(&["yandex:instance.web"]),
         &instances(),
         secrets(),
     )
@@ -249,7 +264,14 @@ fn two_slots_run_side_by_side_on_different_images() {
     old.insert("image".to_owned(), Value::Text("gentoo-2026-01".to_owned()));
     observed.record(address("yandex:instance.web:v1"), old);
 
-    let plan = plan(&graph, &observed, &State::new(), &instances(), secrets()).unwrap();
+    let plan = plan(
+        &graph,
+        &observed,
+        &recorded(&["yandex:instance.web:v1"]),
+        &instances(),
+        secrets(),
+    )
+    .unwrap();
 
     assert_eq!(plan.blast_radius().creates(), 1, "the new slot is made");
     assert_eq!(

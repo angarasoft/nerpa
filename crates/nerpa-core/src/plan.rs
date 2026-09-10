@@ -54,6 +54,14 @@ pub enum ChangeKind {
     /// of a fleet-wide change is bouncing a service on every machine in it, and
     /// the way to find that out should not be to run it. See decision 0026.
     React,
+    /// It exists and matches its declaration, and nothing records it — so
+    /// nothing is done to it, and it is written down.
+    ///
+    /// In the plan because it changes what a later plan may do: from here on,
+    /// taking the declaration away removes it, the same as for something Nerpa
+    /// made. A resource that already matched on the first run used to be planned
+    /// as nothing, never recorded, and never removable. See decision 0042.
+    Adopt,
 }
 
 impl ChangeKind {
@@ -63,7 +71,10 @@ impl ChangeKind {
         // A restart destroys nothing and cannot be taken back either. It is
         // marked for the second reason: a reader scanning a plan over two
         // hundred machines is entitled to see it before it happens.
-        matches!(self, ChangeKind::Create | ChangeKind::Update)
+        matches!(
+            self,
+            ChangeKind::Create | ChangeKind::Update | ChangeKind::Adopt
+        )
     }
 }
 
@@ -242,7 +253,8 @@ impl Change {
     /// What the machine looked like when this was decided.
     ///
     /// Empty for a resource nothing was looked at for — a creation has nothing
-    /// to have moved.
+    /// to have moved — and for an adoption, which sends a machine nothing to
+    /// check it against.
     #[must_use]
     pub fn premise(&self) -> &[nerpa_proto::Premise] {
         &self.premise
@@ -417,6 +429,7 @@ pub struct BlastRadius {
     replaces: usize,
     deletes: usize,
     reacts: usize,
+    adopts: usize,
     unresolved: usize,
     unreachable: usize,
     outdated: usize,
@@ -429,6 +442,13 @@ impl BlastRadius {
     #[must_use]
     pub fn reacts(&self) -> usize {
         self.reacts
+    }
+
+    /// Resources found as declared and not yet recorded, which will be written
+    /// down without anything being done to them.
+    #[must_use]
+    pub fn adopts(&self) -> usize {
+        self.adopts
     }
 
     /// Resources that will come into existence.
@@ -495,10 +515,10 @@ impl BlastRadius {
         self.replaces + self.deletes > 0
     }
 
-    /// How many resources change at all.
+    /// How many resources the plan does something about, adoptions included.
     #[must_use]
     pub fn total(&self) -> usize {
-        self.creates + self.updates + self.replaces + self.deletes + self.reacts
+        self.creates + self.updates + self.replaces + self.deletes + self.reacts + self.adopts
     }
 }
 
@@ -530,6 +550,7 @@ impl Plan {
                 ChangeKind::Replace => blast_radius.replaces += 1,
                 ChangeKind::Delete => blast_radius.deletes += 1,
                 ChangeKind::React => blast_radius.reacts += 1,
+                ChangeKind::Adopt => blast_radius.adopts += 1,
             }
             blast_radius.unresolved += change
                 .desired()
@@ -717,6 +738,7 @@ fn encode_stage(stage: &PlanStage, out: &mut Vec<u8>) {
             ChangeKind::Replace => 3,
             ChangeKind::Delete => 4,
             ChangeKind::React => 5,
+            ChangeKind::Adopt => 6,
         });
 
         // Why, not only what. Two plans that restart the same service for

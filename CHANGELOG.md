@@ -276,6 +276,17 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A resource that already matches its declaration and is not in state is
+  adopted: the plan shows it as `[adopt    ]`, nothing is sent to the machine,
+  and it is recorded with what was read and every edge it comes after. It used
+  to be planned as nothing, so it was never recorded and taking its declaration
+  away removed nothing; whether a file could ever be removed depended on whether
+  it matched on the first run. Removal now reaches files Nerpa did not create,
+  which the plan says under every adoption. Adoptions are written to state once
+  for the run. A first run over configured machines lists every declared
+  resource, and plans that adopt have new numbers. Found by the review of RFC
+  0001; see [0042](docs/decisions/0042-a-resource-found-as-declared-is-adopted.md).
+
 - State remembers every edge a resource came after, so removals run in the right
   order however the dependency was written. It kept only references still
   unresolved when planning: a dependency that already existed, or one written as

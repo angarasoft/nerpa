@@ -277,10 +277,40 @@ pub fn apply(
 ) -> Result<Applied, RunError> {
     let mut observed = known.clone();
     let mut changed = 0usize;
+    let mut adopted = false;
 
     for stage in plan.stages() {
         for change in stage.changes() {
             let address = change.address();
+
+            // ENFORCES: INV-STATE-006
+            // Found as declared, and nothing recorded it. Nothing is sent: the
+            // machine already is what the plan says, so no provider and no
+            // connection are wanted, and what is written down is what was read
+            // there — secrets reduced to digests, as for everything else.
+            //
+            // Not written on its own. An adoption made nothing, so a run that
+            // stops before it is written loses nothing: the next plan finds the
+            // same thing as declared and adopts it again. It goes with whatever
+            // is written next, or once at the end, because a first run over
+            // machines already configured adopts everything it declares, and a
+            // whole state file for each would be thousands of writes saying that
+            // nothing happened.
+            if change.kind() == ChangeKind::Adopt {
+                let found = observed.get(address);
+                requires!(
+                    found.is_some(),
+                    "{address} was planned as found, and this run was handed a reading without it"
+                );
+                if let Some(found) = found {
+                    let recorded = recording(found, change, secrets);
+                    state.record(address.clone(), Record::new(recorded, dependencies(change)));
+                    adopted = true;
+                }
+                changed += 1;
+                continue;
+            }
+
             let provider = providers.for_address(address)?;
             let reach = machines.reach(address.target())?;
             // ENFORCES: INV-PREMISE-002
@@ -393,6 +423,12 @@ pub fn apply(
             }
             changed += 1;
         }
+    }
+
+    // Adoptions nothing was written after. One more write when something was,
+    // which is cheaper than keeping count of which.
+    if adopted {
+        record(state).map_err(RunError::Record)?;
     }
 
     ensures!(

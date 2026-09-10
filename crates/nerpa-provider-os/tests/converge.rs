@@ -672,13 +672,25 @@ fn the_registry_merges_what_each_provider_refuses_to_change() {
 /// A file that is already on disk and that state has never heard of. Nerpa has
 /// to find it from the declaration alone, or it would propose making one that is
 /// already there and overwrite whatever is in it.
+///
+/// Found, it has to be written down as well. It used to plan nothing, so nothing
+/// recorded it, and a file Nerpa had been told about could never be removed by
+/// taking its declaration away. Found by the review of RFC 0001.
 #[test]
 fn a_file_that_was_already_there_is_adopted_rather_than_remade() {
     let scratch = Scratch::new("adopt");
     let providers = providers();
-    let state = State::new();
+    let mut state = State::new();
     let path = scratch.join("existing.conf");
     fs::write(&path, "already here\n").expect("somebody put it there first");
+    // Long ago, so that any write at all would leave a later time behind.
+    let long_ago = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+    fs::File::options()
+        .write(true)
+        .open(&path)
+        .expect("writable")
+        .set_modified(long_ago)
+        .expect("a time can be set");
 
     let graph = graph_of(vec![
         Resource::new(address("os:file.existing@localhost"))
@@ -692,11 +704,138 @@ fn a_file_that_was_already_there_is_adopted_rather_than_remade() {
         "it was found"
     );
 
-    let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
-    assert!(
-        plan.is_empty(),
-        "nothing to do about a file that already matches: {plan:?}"
+    let adopting =
+        plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    assert_eq!(adopting.blast_radius().adopts(), 1, "{adopting:?}");
+    assert_eq!(
+        adopting.changes().next().expect("one change").kind(),
+        ChangeKind::Adopt
     );
+    apply(
+        &adopting,
+        &providers,
+        &machines(),
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
+
+    assert!(
+        state.get(&address("os:file.existing@localhost")).is_some(),
+        "it is recorded, although nothing was done to it: {adopting:?}"
+    );
+    assert_eq!(
+        fs::metadata(&path)
+            .expect("still there")
+            .modified()
+            .expect("a time"),
+        long_ago,
+        "and nothing was written to it"
+    );
+
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
+    let again = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    assert!(
+        again.is_empty(),
+        "once recorded, there is nothing to do: {again:?}"
+    );
+}
+
+/// Adopted is Nerpa's, the same as written by it: taking the declaration away
+/// removes the file. Whether a file happened to match on the first run used to
+/// decide whether it could ever be removed at all.
+#[test]
+fn a_file_that_was_adopted_is_removed_once_its_declaration_is() {
+    let scratch = Scratch::new("adopt-remove");
+    let providers = providers();
+    let mut state = State::new();
+    let path = scratch.join("existing.conf");
+    fs::write(&path, "already here\n").expect("somebody put it there first");
+
+    let declared = graph_of(vec![
+        Resource::new(address("os:file.existing@localhost"))
+            .with("path", path.clone())
+            .with("content", "already here\n"),
+    ]);
+    let observed = observe(&declared, &providers, &machines(), &state).expect("readable");
+    apply(
+        &plan(&declared, &observed, &state, &providers.schema(), secrets()).expect("plannable"),
+        &providers,
+        &machines(),
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
+
+    // The declaration is gone.
+    let empty = Graph::new();
+    let observed = observe(&empty, &providers, &machines(), &state).expect("readable");
+    let plan = plan(&empty, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    assert_eq!(
+        plan.blast_radius().deletes(),
+        1,
+        "the file goes with its declaration: {plan:?}"
+    );
+
+    apply(
+        &plan,
+        &providers,
+        &machines(),
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
+    assert!(fs::metadata(&path).is_err(), "the file is gone");
+    assert!(state.is_empty(), "and so is the memory of it");
+}
+
+/// Adopting sends nothing, so a run that stops before writing an adoption down
+/// loses nothing: the next plan finds the same file as declared and adopts it
+/// again. It is written down once for the run, then, rather than once for each.
+/// A first run over machines that are already configured adopts everything it
+/// declares, and a whole state file written for each of those is thousands of
+/// writes saying that nothing happened.
+#[test]
+fn what_is_adopted_is_written_down_once_rather_than_once_for_each() {
+    let scratch = Scratch::new("adopt-once");
+    let providers = providers();
+    let mut state = State::new();
+    let mut resources = Vec::new();
+    for name in ["one", "two", "three"] {
+        let path = scratch.join(name);
+        fs::write(&path, "already here\n").expect("somebody put it there first");
+        resources.push(
+            Resource::new(address(&format!("os:file.{name}@localhost")))
+                .with("path", path)
+                .with("content", "already here\n"),
+        );
+    }
+    let graph = graph_of(resources);
+
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
+    let plan = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    let mut seen = Vec::new();
+    apply(
+        &plan,
+        &providers,
+        &machines(),
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |state: &State| {
+            seen.push(state.len());
+            Ok(())
+        },
+    )
+    .expect("applies");
+
+    assert_eq!(seen, vec![3], "all three, in one write");
 }
 
 /// State is written as the run goes, not once when it finishes.

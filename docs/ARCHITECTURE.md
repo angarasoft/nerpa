@@ -113,6 +113,20 @@ the configuration that described the dependency is exactly what was deleted. And
 a resource is looked for where state left it, not where the declaration now
 points — otherwise moving one reads as making a second and abandoning the first.
 
+A resource found as declared that state does not record is adopted —
+[0042](decisions/0042-a-resource-found-as-declared-is-adopted.md). Nothing is
+sent; it is recorded with what was read, so taking its declaration away later
+removes it the same as something Nerpa made, and the plan says that where it
+shows the adoption:
+
+```text
+  [adopt    ] os:file.motd@web-01
+               = already as declared: nothing is sent, and removing its declaration will remove it
+```
+
+Adoptions are written to state once for the run. They send nothing, so a run
+that stops before the write loses nothing, and the next plan adopts them again.
+
 ## Facts as values — [0029](decisions/0029-a-fact-is-a-value-not-a-branch.md) · built
 
 A fact may decide what an attribute says and never whether a resource exists.

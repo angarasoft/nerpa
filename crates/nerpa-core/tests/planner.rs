@@ -3,7 +3,7 @@
 // Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use nerpa_core::address::address;
 use nerpa_core::planner::{PlanError, plan};
@@ -50,6 +50,22 @@ fn observed_with(entries: &[(&str, &[(&str, Value)])]) -> Observed {
     observed
 }
 
+/// A state recording each of these, as the run that made them would have left it.
+///
+/// A world that matches its declaration is converged only once it is recorded as
+/// well: a resource that nothing records is adopted, and that is work. See
+/// decision 0042.
+fn recorded(addresses: &[&str]) -> State {
+    let mut state = State::new();
+    for address_text in addresses {
+        state.record(
+            address(address_text),
+            Record::new(BTreeMap::new(), BTreeSet::new()),
+        );
+    }
+    state
+}
+
 fn only_change(graph: &Graph, observed: &Observed, schema: &Schema) -> Change {
     let plan = plan(graph, observed, &State::new(), schema, secrets()).expect("plannable");
     let changes: Vec<&Change> = plan.changes().collect();
@@ -84,10 +100,41 @@ fn a_resource_that_already_matches_produces_nothing() {
     ]);
     let observed = observed_with(&[("yandex:instance.db", &[("cores", Value::Integer(8))])]);
 
-    let plan =
-        plan(&graph, &observed, &State::new(), &Schema::new(), secrets()).expect("plannable");
+    let plan = plan(
+        &graph,
+        &observed,
+        &recorded(&["yandex:instance.db"]),
+        &Schema::new(),
+        secrets(),
+    )
+    .expect("plannable");
     assert!(plan.is_empty(), "a converged world needs no plan: {plan:?}");
     assert_eq!(plan.blast_radius().total(), 0);
+}
+
+/// The same resource with nothing recording it is adopted: nothing is done to it,
+/// and it is written down, so that taking its declaration away later removes it.
+/// Planned as nothing, it never was. Decision 0042.
+#[test]
+fn a_resource_that_already_matches_and_is_not_recorded_is_adopted() {
+    let graph = graph_of(vec![
+        Resource::new(address("yandex:instance.db")).with("cores", 8),
+    ]);
+    let observed = observed_with(&[("yandex:instance.db", &[("cores", Value::Integer(8))])]);
+
+    let change = only_change(&graph, &observed, &Schema::new());
+    assert_eq!(change.kind(), ChangeKind::Adopt);
+    assert!(change.deltas().is_empty(), "nothing differs");
+    assert!(
+        change.premise().is_empty(),
+        "and nothing is sent to be checked"
+    );
+    assert_eq!(
+        change.desired(),
+        [("cores".to_owned(), Confidence::Known(Value::Integer(8)))],
+        "what it was declared as is carried, so a secret among it is known to be one"
+    );
+    assert!(change.kind().is_reversible(), "nothing is destroyed");
 }
 
 #[test]
@@ -172,8 +219,14 @@ fn a_reference_to_something_that_exists_is_already_known() {
             &[("upstream", Value::Text("10.0.0.1".to_owned()))],
         ),
     ]);
-    let settled =
-        plan(&graph, &observed, &State::new(), &Schema::new(), secrets()).expect("plannable");
+    let settled = plan(
+        &graph,
+        &observed,
+        &recorded(&["yandex:instance.db", "yandex:instance.web"]),
+        &Schema::new(),
+        secrets(),
+    )
+    .expect("plannable");
     assert!(
         settled.is_empty(),
         "once the source exists, the reader matches: {settled:?}"
@@ -221,8 +274,13 @@ fn planning_after_applying_produces_an_empty_plan() {
         ),
     ]);
 
-    let second =
-        plan(&graph, &applied, &State::new(), &Schema::new(), secrets()).expect("plannable");
+    // And the state it left behind.
+    let left = recorded(&[
+        "yandex:instance.db",
+        "os:package.nginx@web-01",
+        "os:file.nginx.conf@web-01",
+    ]);
+    let second = plan(&graph, &applied, &left, &Schema::new(), secrets()).expect("plannable");
     assert!(
         second.is_empty(),
         "the second run must change nothing: {second:?}"
@@ -275,8 +333,14 @@ fn stages_with_nothing_to_do_are_left_out_but_order_is_kept() {
         ],
     )]);
 
-    let plan =
-        plan(&graph, &observed, &State::new(), &Schema::new(), secrets()).expect("plannable");
+    let plan = plan(
+        &graph,
+        &observed,
+        &recorded(&["yandex:network.main"]),
+        &Schema::new(),
+        secrets(),
+    )
+    .expect("plannable");
     assert_eq!(
         plan.stages().len(),
         1,
@@ -378,8 +442,14 @@ fn an_empty_plan_is_empty_and_a_plan_with_work_is_not() {
     assert_eq!(work.changes().count(), 1);
 
     let settled = observed_with(&[("yandex:instance.db", &[("cores", Value::Integer(8))])]);
-    let nothing =
-        plan(&graph, &settled, &State::new(), &Schema::new(), secrets()).expect("plannable");
+    let nothing = plan(
+        &graph,
+        &settled,
+        &recorded(&["yandex:instance.db"]),
+        &Schema::new(),
+        secrets(),
+    )
+    .expect("plannable");
     assert!(nothing.is_empty());
     assert_eq!(nothing.changes().count(), 0);
 }
@@ -396,10 +466,7 @@ fn the_total_counts_removals_alongside_everything_else() {
     let mut state = State::new();
     state.record(
         address("yandex:instance.gone"),
-        Record::new(
-            Recorded::all(Attributes::new()),
-            std::collections::BTreeSet::new(),
-        ),
+        Record::new(Recorded::all(Attributes::new()), BTreeSet::new()),
     );
 
     let plan =

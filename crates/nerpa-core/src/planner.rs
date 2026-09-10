@@ -189,8 +189,8 @@ pub fn plan_at(
 
             // A reaction an earlier run began and did not finish is owed, and
             // stays owed until it is paid. See decision 0026.
-            let owed: Vec<Address> = state
-                .get(address)
+            let record = state.get(address);
+            let owed: Vec<Address> = record
                 .map(|record| record.owed().iter().cloned().collect())
                 .unwrap_or_default();
 
@@ -211,6 +211,7 @@ pub fn plan_at(
                             .collect()
                     })
                     .unwrap_or_default(),
+                record.is_some(),
             )? {
                 changing.insert(address.clone());
                 changes.push(change);
@@ -332,7 +333,8 @@ fn removals(graph: &Graph, state: &State) -> Vec<PlanStage> {
         .collect()
 }
 
-/// What has to happen to one resource, or nothing if it already matches.
+/// What has to happen to one resource, or nothing if it already matches and is
+/// recorded.
 #[allow(
     clippy::too_many_arguments,
     reason = "what a change is decided from, one argument each, so none can be left out"
@@ -346,6 +348,7 @@ fn change_for(
     roused_by: Vec<Address>,
     owed: Vec<Address>,
     depends_on: Vec<Address>,
+    recorded: bool,
 ) -> Result<Option<Change>, PlanError> {
     let address = resource.address();
     let existing = observed.get(address);
@@ -438,6 +441,24 @@ fn change_for(
                 depends_on,
             ))
         }
+        // ENFORCES: INV-STATE-006
+        // It matches its declaration and nothing records it: found on a machine
+        // somebody configured before, or made by a run that stopped before it
+        // could write that down. Nothing is done to it, and it is written down,
+        // because from here on it is Nerpa's to remove. Planned as nothing, it
+        // was never recorded, and taking its declaration away removed nothing.
+        // No premise: nothing is sent, so a machine that moved since cannot be
+        // made wrong by it, and the next reading corrects the record.
+        Some(_) if deltas.is_empty() && !recorded => Some(Change::new(
+            address.clone(),
+            ChangeKind::Adopt,
+            Vec::new(),
+            desired,
+            Vec::new(),
+            roused_by,
+            owed,
+            depends_on,
+        )),
         Some(_) if deltas.is_empty() => None,
         Some(_) => {
             let kind = if deltas.iter().any(AttributeDelta::forces_replacement) {

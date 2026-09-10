@@ -766,7 +766,8 @@ them again beside the ones already there.
 `apply` takes a place to write to and uses it after every change. What that \
 costs is the caller's decision, which is why it is a callback rather than a path: \
 the command writes the state file each time, and a test that only wants to know \
-what ended up in state can do nothing at all."""
+what ended up in state can do nothing at all. An adoption is the one change not \
+written down after itself, because it made nothing: see INV-STATE-006."""
 bypass = "A change applied without the record being called after it — a new branch in the loop, or an early `continue`. Nothing in the types ties one to the other, so the loop is the only thing keeping them in step."
 enforced_by = ["crates/nerpa-core/src/run.rs"]
 tests = [
@@ -774,6 +775,28 @@ tests = [
   "a_resource_removed_from_the_configuration_is_removed_from_the_machine",
 ]
 adversarial = ["what_was_already_made_is_recorded_before_the_next_thing_is_touched"]
+
+[[invariant]]
+id = "INV-STATE-006"
+status = "enforced"
+statement = "A declared resource that exists is recorded, whether or not anything was done to it."
+rationale = """
+State is what removal reads, so a resource that is not in it can never be removed \
+by taking its declaration away. One that already matched on the first run used to \
+be planned as nothing and so never recorded, while the same file one byte different \
+was an update and was. It is adopted instead: shown in the plan, sent nowhere, and \
+recorded with what was read and every edge it comes after. A run that stopped \
+between a write and its record leaves the same situation, and the next plan adopts \
+what it left. Adoptions are written once for the run, since they made nothing and \
+lose nothing if the run stops first. See decision 0042."""
+bypass = "A resource that matches is planned as nothing although state does not record it — the planner's arm for a match taken before the one for adoption — or an apply loop that passes over a change it sends nothing for. Either plans and applies cleanly and leaves a file that removing the declaration does not remove."
+enforced_by = ["crates/nerpa-core/src/planner.rs", "crates/nerpa-core/src/run.rs"]
+tests = [
+  "a_resource_that_already_matches_and_is_not_recorded_is_adopted",
+  "a_file_that_was_already_there_is_adopted_rather_than_remade",
+  "what_is_adopted_is_written_down_once_rather_than_once_for_each",
+]
+adversarial = ["a_file_that_was_adopted_is_removed_once_its_declaration_is"]
 
 [[invariant]]
 id = "INV-PROVIDER-001"
