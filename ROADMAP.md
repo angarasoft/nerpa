@@ -113,6 +113,18 @@ is the `sudo` plugin pointed at `doas -n`, which keeps pipelining. Not gathering
 facts saved nothing there, because the `service` module gathers what it needs
 itself.
 
+**Met, 2026-09-10,** as the clause asks. A templated file converged on three live
+machines — Rocky (`rpm`, systemd) and Gentoo (`portage`, systemd) through
+Teleport, Alpine (OpenRC) through a bastion — written as root by an installed
+executor, and the second run printed "nothing to do". Changing the templates
+restarted `chronyd` on Alpine and `systemd-timesyncd` on Gentoo: process 17045
+became 17651 and 23215 became 23319, and the empty run after that left both
+alone. The plan showed the lines that change before anything happened. A machine
+switched off was reported with the age of its data when `W-013` closed. The
+machines were then put back by nerpa itself: the files it made removed, and a
+stopped service and a configuration it had rewritten returned to what they were,
+byte for byte.
+
 ## Stage 2 — what cannot be changed later
 
 Nothing here can be shown off on a fleet, and all of it costs a day now and a
