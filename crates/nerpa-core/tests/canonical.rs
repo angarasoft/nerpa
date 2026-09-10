@@ -161,3 +161,43 @@ fn an_empty_list_and_an_empty_map_are_different_numbers() {
         Digest::of(&key, &Value::Map(BTreeMap::new()))
     );
 }
+
+/// A value arriving from outside is bounded, or every traversal below it is a
+/// stack overflow waiting for a big enough input — and an overflow is a fault
+/// rather than an unwind, so the state lock's destructor never runs.
+///
+/// Both directions of both formats, because a state file and the wire are the
+/// two places a value is built from something nerpa did not write.
+#[test]
+fn a_value_nested_past_all_reason_is_refused_rather_than_walked() {
+    let deep = |levels: usize| {
+        let mut text = String::new();
+        for _ in 0..levels {
+            text.push('[');
+        }
+        for _ in 0..levels {
+            text.push(']');
+        }
+        text
+    };
+
+    let refused = serde_json::from_str::<Value>(&deep(10_000));
+    assert!(
+        refused.is_err(),
+        "ten thousand levels of list is not a value anybody wrote"
+    );
+
+    let shallow = serde_json::from_str::<Value>(&deep(8)).expect("eight is ordinary");
+    assert!(matches!(shallow, Value::List(_)));
+
+    // The wire matters more than the file: a frame arrives from a machine, and
+    // `MAX_FRAME` admits sixty-four megabytes — room for millions of levels.
+    // 0x81 is a CBOR array of one; 0x80 is an empty one.
+    let mut wire = vec![0x81_u8; 10_000];
+    wire.push(0x80);
+    let refused = ciborium::from_reader::<Value, _>(wire.as_slice());
+    assert!(
+        refused.is_err(),
+        "a frame nested past all reason is not a value to walk"
+    );
+}
