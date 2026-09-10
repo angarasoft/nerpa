@@ -276,6 +276,12 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- The `os` provider counts what a machine answers against what it asked.
+  Answers are read by position and nothing checked: one too few left the last
+  resource described by nothing, which reads as absent and gets it created
+  again, and one too many described each resource by its neighbour. Found by the
+  review of RFC 0001.
+
 - An `executor` in the fleet has to be an absolute path, with no `~`, `.` or
   `..`. The characters were checked and what they spelled was not, so
   `~/nerpa-executor` or a relative path passed alongside `become`: a binary the

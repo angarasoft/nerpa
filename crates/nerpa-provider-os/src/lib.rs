@@ -83,9 +83,19 @@ impl Os {
 /// worth having — that a file could not be read, and why. A translator losing
 /// the reason is the silent wrongness this project is about, committed by the
 /// part meant to prevent it.
-fn all(answer: Answer, address: &Address) -> Result<Vec<Seen>, ProviderError> {
+fn all(answer: Answer, address: &Address, asked: usize) -> Result<Vec<Seen>, ProviderError> {
     match answer {
-        Answer::Found { seen } | Answer::Done { became: seen } => Ok(seen),
+        // Counted, because every caller reads these by position. One answer too
+        // few and the last resource is described by nothing; one too many and each
+        // is described by its neighbour's. Review found nothing checked.
+        Answer::Found { seen } | Answer::Done { became: seen } if seen.len() == asked => Ok(seen),
+        Answer::Found { seen } | Answer::Done { became: seen } => Err(ProviderError::World {
+            address: address.clone(),
+            problem: format!(
+                "the far end answered {} things about {asked} it was asked, and they are read by position",
+                seen.len()
+            ),
+        }),
         Answer::Moved { at } => Err(ProviderError::World {
             address: address.clone(),
             problem: format!("the machine is not what the plan was computed from, at premise {at}"),
@@ -103,7 +113,7 @@ fn all(answer: Answer, address: &Address) -> Result<Vec<Seen>, ProviderError> {
 
 /// The same, for an ask about exactly one thing.
 fn one(answer: Answer, address: &Address) -> Result<Seen, ProviderError> {
-    all(answer, address)?
+    all(answer, address, 1)?
         .into_iter()
         .next()
         .ok_or_else(|| ProviderError::World {
@@ -235,6 +245,7 @@ fn settle_service(
     // fell over a second later, which is the ordinary way a service fails.
     operations.push(init.watch(name));
 
+    let asked = operations.len();
     let became = all(
         reach.ask(&Ask::Perform {
             plan: None,
@@ -243,6 +254,7 @@ fn settle_service(
             seal: None,
         })?,
         address,
+        asked,
     )?;
     let Some(afterwards) = became.last() else {
         return Err(ProviderError::World {
@@ -452,6 +464,7 @@ fn install(
             seal: None,
         })?,
         address,
+        2,
     )?;
     let Some(afterwards) = became.last() else {
         return Err(ProviderError::World {
@@ -495,6 +508,7 @@ fn uninstall(
             seal: None,
         })?,
         address,
+        2,
     )?;
     let Some(afterwards) = became.last() else {
         return Err(ProviderError::World {
@@ -588,12 +602,14 @@ impl Provider for Os {
 
         // Each entry says how many looks it needs, and gets exactly those back.
         let wanted: Vec<Vec<Observation>> = about.iter().map(Asked::observations).collect();
+        let asked = wanted.iter().map(Vec::len).sum();
         let seen = all(
             reach.ask(&Ask::Look {
                 observations: wanted.iter().flatten().cloned().collect(),
                 seal: None,
             })?,
             &first,
+            asked,
         )?;
 
         let mut answered = seen.into_iter();

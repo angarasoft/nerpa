@@ -374,3 +374,47 @@ fn a_file_ends_up_with_the_mode_it_was_declared() {
         0o600
     );
 }
+
+/// A machine that answers a different number of things than it was asked about.
+#[derive(Debug)]
+struct Miscounting(usize);
+
+impl nerpa_core::provider::Reach for Miscounting {
+    fn ask(
+        &self,
+        _: &nerpa_proto::Ask,
+    ) -> Result<nerpa_proto::Answer, nerpa_core::provider::ProviderError> {
+        Ok(nerpa_proto::Answer::Found {
+            seen: vec![nerpa_proto::Seen::Nothing; self.0],
+        })
+    }
+}
+
+/// Answers are read by position, so a count that does not match is the two ends
+/// having lost step. One too few would leave the last file described by nothing,
+/// which reads as absent and gets it created again; one too many would describe
+/// each file by its neighbour. Neither is an answer, and review found nothing
+/// counted.
+#[test]
+fn a_reading_answered_with_the_wrong_number_of_things_is_refused() {
+    let scratch = Scratch::new("miscount");
+    let batch = [
+        Reading::new(address("os:file.one@localhost"), at(&scratch.join("one"))),
+        Reading::new(address("os:file.two@localhost"), at(&scratch.join("two"))),
+    ];
+
+    for answered in [1, 3] {
+        let refusal = Os::new()
+            .read(
+                &batch,
+                Observed::new().facts_of(None),
+                &Miscounting(answered),
+            )
+            .expect_err("a miscounted answer is not a reading");
+        let said = refusal.to_string();
+        assert!(
+            said.contains(&format!("answered {answered} things about 2")),
+            "{said}"
+        );
+    }
+}
