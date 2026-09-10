@@ -346,7 +346,7 @@ ssh = "web-01"
 
 [nodes.installed]
 ssh = "web-02"
-executor = "/usr/local/libexec/nerpa-executor"
+executor = "/usr/local/sbin/nerpa-executor"
 become = "sudo -n"
 
 [nodes.named-only]

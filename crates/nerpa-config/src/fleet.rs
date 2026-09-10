@@ -304,7 +304,7 @@ fn read_route(name: &str, described: &toml::Value) -> Result<Route, String> {
              delivers one into the connecting user's own directory, and letting \
              that user run it under sudo gives them root by another name — the \
              rule would say one path and mean everything. Install it once \
-             (`/usr/local/libexec/nerpa-executor`, owned by root) and name it \
+             (`/usr/local/sbin/nerpa-executor`, owned by root) and name it \
              here"
         ));
     }

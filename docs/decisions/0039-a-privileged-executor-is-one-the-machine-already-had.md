@@ -2,6 +2,11 @@
 
 - Status: accepted
 - Date: 2026-09-10
+- Corrected: 2026-09-10 — the example named `/usr/local/libexec`, and `install`
+  does not create a parent that is not there. A stock Gentoo has no `libexec`
+  under `/usr/local`, so the command in this record failed on the first machine
+  it was run against. `/usr/local/sbin` exists, is root's, is on root's path, and
+  says what it is: a program not meant for ordinary users to invoke.
 
 ## Context
 
@@ -44,8 +49,8 @@ owns, and for a machine created to be broken.
 **Installed.** Once, as root:
 
 ```console
-# install -o root -g root -m 0755 nerpa-executor /usr/local/libexec/nerpa-executor
-# echo 'nerpa ALL=(root) NOPASSWD: /usr/local/libexec/nerpa-executor' \
+# install -o root -g root -m 0755 nerpa-executor /usr/local/sbin/nerpa-executor
+# echo 'nerpa ALL=(root) NOPASSWD: /usr/local/sbin/nerpa-executor' \
       > /etc/sudoers.d/nerpa
 ```
 
@@ -54,7 +59,7 @@ and the fleet names it:
 ```toml
 [nodes.web-01]
 ssh = "nerpa@web-01"
-executor = "/usr/local/libexec/nerpa-executor"
+executor = "/usr/local/sbin/nerpa-executor"
 become = "sudo -n"
 ```
 
