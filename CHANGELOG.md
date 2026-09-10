@@ -276,6 +276,12 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A resource that is adopted or reordered rouses nothing. Both only write state,
+  and both counted as changing, so on a first run over configured machines a
+  service reacting to an adopted file would have been restarted for a file
+  nobody touched. Found by a test while working out when a reaction is owed,
+  before either kind had been released.
+
 - A resource that already matches and is recorded with edges other than the ones
   it has now is reordered: the plan shows it as `[reorder  ]` with what it comes
   after, nothing is sent, and it is recorded again. An `after` written in once a

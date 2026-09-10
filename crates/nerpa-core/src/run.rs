@@ -297,7 +297,7 @@ pub fn apply(
             // machines already configured adopts everything it declares, and a
             // whole state file for each would be thousands of writes saying that
             // nothing happened.
-            if matches!(change.kind(), ChangeKind::Adopt | ChangeKind::Reorder) {
+            if !change.kind().sends_anything() {
                 let found = observed.get(address);
                 requires!(
                     found.is_some(),

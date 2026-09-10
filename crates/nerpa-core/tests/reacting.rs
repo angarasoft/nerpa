@@ -206,3 +206,36 @@ fn a_debt_survives_the_state_file() {
     );
     let _ = std::fs::remove_dir_all(&scratch);
 }
+
+/// A file that is adopted or reordered did not change, and rouses nothing. Only
+/// state is written for it; a service reacting to it would otherwise be restarted
+/// on every machine a first run adopts, for a file nobody touched.
+#[test]
+fn a_file_adopted_or_reordered_rouses_nothing() {
+    let (graph, observed, _) = world("as it was\n");
+    let adopted =
+        plan(&graph, &observed, &State::new(), &Schema::new(), secrets()).expect("plannable");
+    assert_eq!(adopted.blast_radius().adopts(), 2, "{adopted:?}");
+    assert_eq!(
+        adopted.blast_radius().reacts(),
+        0,
+        "nothing changed to react to: {adopted:?}"
+    );
+
+    // Recorded with an edge it no longer has, so the file is reordered.
+    let (_, _, mut state) = world("as it was\n");
+    state.record(
+        address(CONF),
+        Record::new(
+            BTreeMap::new(),
+            [address("os:file.gone@web-01")].into_iter().collect(),
+        ),
+    );
+    let reordered = plan(&graph, &observed, &state, &Schema::new(), secrets()).expect("plannable");
+    assert_eq!(reordered.blast_radius().reorders(), 1, "{reordered:?}");
+    assert_eq!(
+        reordered.blast_radius().reacts(),
+        0,
+        "nothing changed to react to: {reordered:?}"
+    );
+}

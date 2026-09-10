@@ -213,7 +213,14 @@ pub fn plan_at(
                     .unwrap_or_default(),
                 record.map(Record::depends_on),
             )? {
-                changing.insert(address.clone());
+                // ENFORCES: INV-REACT-001
+                // Only what moves on the machine rouses anything. An adoption or
+                // a reorder writes state and leaves the file as it was, and
+                // counting one restarted every service reacting to a file that a
+                // first run over configured machines adopted.
+                if change.kind().sends_anything() {
+                    changing.insert(address.clone());
+                }
                 changes.push(change);
             }
         }

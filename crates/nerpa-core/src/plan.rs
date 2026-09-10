@@ -86,6 +86,23 @@ impl ChangeKind {
             ChangeKind::Create | ChangeKind::Update | ChangeKind::Adopt | ChangeKind::Reorder
         )
     }
+
+    /// Whether anything is sent to where the resource lives.
+    ///
+    /// An adoption and a reorder only write state: the resource already is what
+    /// it should be. So neither wants a provider or a connection, and neither is
+    /// a change anything reacts to, because nothing on the machine moved.
+    #[must_use]
+    pub fn sends_anything(self) -> bool {
+        match self {
+            ChangeKind::Create
+            | ChangeKind::Update
+            | ChangeKind::Replace
+            | ChangeKind::Delete
+            | ChangeKind::React => true,
+            ChangeKind::Adopt | ChangeKind::Reorder => false,
+        }
+    }
 }
 
 /// A value the plan is about to write, and whether it is known yet.
