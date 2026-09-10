@@ -8,7 +8,7 @@
 // Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
-use std::cell::RefCell;
+use std::sync::{Arc, Mutex};
 
 use nerpa_core::address::address;
 use nerpa_core::plan::ChangeKind;
@@ -48,25 +48,55 @@ fn machines() -> Machines {
     Machines::new().everywhere(Box::new(Blank))
 }
 
-thread_local! {
-    /// Every batch the provider was handed, in order. A thread local rather than
-    /// state on the provider, because the registry takes ownership of it and a
-    /// test cannot borrow back through a `Box<dyn Provider>`.
-    static ASKED: RefCell<Vec<Vec<Reading>>> = const { RefCell::new(Vec::new()) };
+/// Every batch the provider was handed.
+///
+/// Held by the provider and by the test at once, which is what `Arc` is for —
+/// the registry takes ownership of the provider and a test cannot borrow back
+/// through a `Box<dyn Provider>`. It used to be a thread local, and that stopped
+/// working the day separate machines began to be spoken to on separate threads:
+/// a recorder each thread kept to itself had the test reading an empty list and
+/// calling it a pass, which is worse than failing. A single shared static would
+/// have been worse again, because the test harness runs these in parallel and
+/// they would have cleared each other's.
+#[derive(Debug, Clone, Default)]
+struct Ledger(Arc<Mutex<Vec<Vec<Reading>>>>);
+
+impl Ledger {
+    fn note(&self, batch: &[Reading]) {
+        if let Ok(mut seen) = self.0.lock() {
+            seen.push(batch.to_vec());
+        }
+    }
+
+    /// In the order the batches were built rather than the order threads
+    /// finished, so what this asserts does not depend on which machine was
+    /// quickest.
+    fn asked(&self) -> Vec<Vec<Reading>> {
+        let mut seen = self.0.lock().map(|seen| seen.clone()).unwrap_or_default();
+        // By machine, which is what a batch belongs to. Sorting by the first
+        // address in it would order by whichever file happened to come first
+        // and put the second machine ahead of the first.
+        seen.sort_by_key(|batch| {
+            batch
+                .first()
+                .and_then(|reading| reading.address().target().map(ToString::to_string))
+                .unwrap_or_default()
+        });
+        seen
+    }
 }
 
-fn watch() -> Providers {
-    ASKED.with_borrow_mut(Vec::clear);
-    Providers::new().with(Box::new(Watching))
-}
-
-fn asked() -> Vec<Vec<Reading>> {
-    ASKED.with_borrow(Clone::clone)
+fn watch() -> (Providers, Ledger) {
+    let ledger = Ledger::default();
+    (
+        Providers::new().with(Box::new(Watching(ledger.clone()))),
+        ledger,
+    )
 }
 
 /// Answers nothing, and remembers exactly what it was asked for.
 #[derive(Debug)]
-struct Watching;
+struct Watching(Ledger);
 
 impl Provider for Watching {
     fn name(&self) -> &nerpa_core::Provider {
@@ -84,7 +114,7 @@ impl Provider for Watching {
         _facts: nerpa_core::observed::Facts<'_>,
         _reach: &dyn Reach,
     ) -> Result<Read, ProviderError> {
-        ASKED.with_borrow_mut(|seen| seen.push(batch.to_vec()));
+        self.0.note(batch);
         Ok(Read::new())
     }
 
@@ -112,7 +142,7 @@ impl Provider for Watching {
     }
 
     fn fake() -> Self {
-        Self
+        Self(Ledger::default())
     }
 }
 
@@ -138,11 +168,11 @@ fn every_resource_on_one_machine_is_asked_for_at_once() {
         file("hosts", "web-01"),
         file("resolv", "web-01"),
     ]);
-    let providers = watch();
+    let (providers, ledger) = watch();
 
     observe(&graph, &providers, &machines(), &State::new()).unwrap();
 
-    let calls = asked();
+    let calls = ledger.asked();
     assert_eq!(
         calls.len(),
         1,
@@ -158,11 +188,11 @@ fn separate_machines_are_separate_journeys() {
         file("motd", "web-02"),
         file("hosts", "web-02"),
     ]);
-    let providers = watch();
+    let (providers, ledger) = watch();
 
     observe(&graph, &providers, &machines(), &State::new()).unwrap();
 
-    let sizes: Vec<usize> = asked().iter().map(Vec::len).collect();
+    let sizes: Vec<usize> = ledger.asked().iter().map(Vec::len).collect();
     assert_eq!(
         sizes,
         [1, 2],
@@ -173,11 +203,11 @@ fn separate_machines_are_separate_journeys() {
 #[test]
 fn the_batch_carries_where_to_look() {
     let graph = graph_of(vec![file("motd", "web-01")]);
-    let providers = watch();
+    let (providers, ledger) = watch();
 
     observe(&graph, &providers, &machines(), &State::new()).unwrap();
 
-    let calls = asked();
+    let calls = ledger.asked();
     assert_eq!(
         calls[0][0].locator().get("path"),
         Some(&Value::Text("/etc/motd".to_owned())),
@@ -201,11 +231,11 @@ fn what_state_remembers_beats_what_the_declaration_says() {
         Record::new(Recorded::all(recorded), std::collections::BTreeSet::new()),
     );
 
-    let providers = watch();
+    let (providers, ledger) = watch();
     observe(&graph, &providers, &machines(), &state).unwrap();
 
     assert_eq!(
-        asked()[0][0].locator().get("path"),
+        ledger.asked()[0][0].locator().get("path"),
         Some(&Value::Text("/var/motd".to_owned())),
         "looked where it was left, not where it should be"
     );
@@ -226,10 +256,10 @@ fn something_only_state_remembers_travels_with_the_rest() {
         ),
     );
 
-    let providers = watch();
+    let (providers, ledger) = watch();
     observe(&graph, &providers, &machines(), &state).unwrap();
 
-    let calls = asked();
+    let calls = ledger.asked();
     assert_eq!(calls.len(), 1, "still one journey to that machine");
     let names: Vec<String> = calls[0].iter().map(|r| r.address().to_string()).collect();
     assert_eq!(names, ["os:file.forgotten@web-01", "os:file.motd@web-01"]);
@@ -259,14 +289,15 @@ fn a_graph_that_cannot_be_ordered_stops_the_run_rather_than_reading_as_empty() {
             .expect("distinct addresses");
     }
 
-    let refusal = observe(&graph, &watch(), &machines(), &State::new())
+    let (providers, ledger) = watch();
+    let refusal = observe(&graph, &providers, &machines(), &State::new())
         .expect_err("a cycle is not a configuration that declares nothing");
     assert!(
         refusal.to_string().contains("os:file.a@web-01"),
         "the refusal should name what is stuck: {refusal}"
     );
     assert!(
-        ASKED.with_borrow(Vec::is_empty),
+        ledger.asked().is_empty(),
         "and nothing should have been read at all"
     );
 }

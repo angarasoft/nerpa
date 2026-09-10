@@ -65,6 +65,7 @@ pub mod attribute;
 pub mod contract;
 pub mod domain;
 pub mod facts;
+pub mod fanout;
 pub mod graph;
 pub mod inventory;
 pub mod observed;

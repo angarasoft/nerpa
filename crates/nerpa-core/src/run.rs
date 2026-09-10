@@ -21,6 +21,9 @@ use crate::secret::{FetchError, Recorded, Secrets};
 use crate::state::{Record, Recording, State};
 use crate::{ensures, requires};
 
+/// One journey's worth: who is asked, where they have to go, and about what.
+type Batch = ((ProviderName, Option<Target>), Vec<Reading>);
+
 /// Reads every resource the configuration declares.
 ///
 /// # Errors
@@ -69,13 +72,15 @@ pub fn observe(
     // machine, in a journey of its own. Every fact is a question
     // somebody wrote down, so what this costs is the length of that list rather
     // than the length of what a machine could be asked. See decision 0029.
-    for node in graph.inventory().nodes() {
+    // One machine at a time was one machine at a time: three of them cost three
+    // connect timeouts in a row, and the number a fleet has is not three. Fanned
+    // out over a bounded pool, in the order the inventory names them so that the
+    // answers do not reorder themselves by which machine was quickest.
+    let nodes: Vec<Target> = graph.inventory().nodes().cloned().collect();
+    let learned = crate::fanout::every(&nodes, |node| {
         let Ok(reach) = machines.reach(Some(node)) else {
-            observed.unreachable(node.clone());
-            continue;
+            return Err(node.clone());
         };
-        // A question may take more than one look, so each one's answers are
-        // handed back to it in the order it asked for them.
         let asking: Vec<Vec<nerpa_proto::Observation>> = crate::facts::ASKED
             .iter()
             .map(|asked| (asked.ask)())
@@ -85,13 +90,15 @@ pub fn observe(
         }) {
             Ok(nerpa_proto::Answer::Found { seen }) => {
                 let mut answered = seen.into_iter();
+                let mut said = Vec::new();
                 for (asked, wanted) in crate::facts::ASKED.iter().zip(&asking) {
                     let mine: Vec<nerpa_proto::Seen> =
                         answered.by_ref().take(wanted.len()).collect();
-                    if let Some(said) = (asked.read)(&mine) {
-                        observed.learn(node.clone(), asked.name, said);
+                    if let Some(answer) = (asked.read)(&mine) {
+                        said.push((asked.name, answer));
                     }
                 }
+                Ok(said)
             }
             // A machine that will not say what it is is a machine nothing can
             // be planned for, and that is the same fact as one that did not
@@ -100,28 +107,40 @@ pub fn observe(
             // already is, because the subject is a machine rather than a
             // resource on it.
             // ENFORCES: INV-REACH-002
-            Ok(_) | Err(_) => observed.unreachable(node.clone()),
+            Ok(_) | Err(_) => Err(node.clone()),
+        }
+    });
+
+    for (node, answer) in nodes.iter().zip(learned) {
+        match answer {
+            Ok(said) => {
+                for (name, value) in said {
+                    observed.learn(node.clone(), name, value);
+                }
+            }
+            Err(node) => observed.unreachable(node),
         }
     }
 
-    for ((provider_name, node), batch) in batches {
-        let provider = providers.named(&provider_name)?;
+    // Fanned out the same way, and for the same reason: a batch belongs to one
+    // machine, so two batches are two conversations that need not wait for each
+    // other. Reading `observed` happens before, writing to it after — the pool
+    // hands back answers rather than a shared thing to write into.
+    let work: Vec<Batch> = batches.into_iter().collect();
+    let read = crate::fanout::every(&work, |((provider_name, node), batch)| {
+        let provider = providers.named(provider_name)?;
         // What the machine turned out to be, for a provider that has to decide
         // how to ask it. Empty in the control domain, which has no machine.
         let facts = observed.facts_of(node.as_ref());
         // One journey per machine per phase, and the way there is decided here
         // rather than by the provider: provider logic runs on this machine and
         // the work happens on that one. See decision 0032.
-        let reach = match machines.reach(node.as_ref()) {
-            Ok(reach) => reach,
-            // ENFORCES: INV-REACH-002
-            Err(ProviderError::Unreachable { node, .. }) => {
-                observed.unreachable(node);
-                continue;
-            }
-            Err(other) => return Err(other.into()),
-        };
-        match provider.read(&batch, facts, reach) {
+        let reach = machines.reach(node.as_ref())?;
+        provider.read(batch, facts, reach)
+    });
+
+    for answer in read {
+        match answer {
             Ok(found) => {
                 for (address, premise) in found.premise().clone() {
                     observed.looked_at(address, premise);

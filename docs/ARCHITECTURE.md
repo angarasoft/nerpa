@@ -358,6 +358,20 @@ and the same identifier.
 
 ## Parallelism — [0031](decisions/0031-parallelism-is-threads-and-providers-are-sync.md) · partly built
 
+Reading fans out over a bounded pool of sixteen: the fact journey and the
+resource batches, one machine per thread, answers handed back in the order the
+work was built so that a plan does not reorder itself by which machine was
+quickest. Applying does not yet.
+
+Measured on a fleet of two, it is worth nothing, and why is the finding. A bare
+`ssh` behind an identity-aware proxy takes 5.07 s and behind a bastion 3.11 s;
+a whole run against those machines takes 5.06 s and 3.65 s. The conversation is
+half a second and the handshake is the rest — and `Piped` spawns its `ssh`
+without waiting on that handshake, so every machine is already shaking hands at
+once whether or not anything here is threaded. One at a time and sixteen at a
+time were the same wall clock, measured both ways on one fleet. What the pool is
+for is machines that work rather than wait, which is the apply half.
+
 Threads, not async. The workload is hundreds of conversations that spend their
 time waiting rather than tens of thousands, and `async` would colour the one
 signature strangers write against — a provider author would have to bring a

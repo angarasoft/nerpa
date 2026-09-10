@@ -276,6 +276,15 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- Reading fans out over a bounded pool, one machine per thread, sixteen at once,
+  answers kept in the order the work was built. Measured, and worth nothing yet
+  on a fleet of two: a bare `ssh` behind the proxy takes 5.07 s and the whole run
+  5.06 s, because the handshake is nearly all of it and `Piped` already spawns
+  every `ssh` without waiting for one. Kept for the case it is for — machines
+  doing seconds of their own work, which nothing overlaps. A test recorder that
+  was thread-local read an empty list and passed once the threads arrived; it is
+  held by the provider now.
+
 - `os:service` reads and settles, on `systemd` and on OpenRC, and a reaction
   restarts. Shown on a real machine of each kind: a service stopped and taken out
   of its runlevel and put back, and `chrony.conf` rewritten with `chronyd`
