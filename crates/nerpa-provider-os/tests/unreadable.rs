@@ -418,3 +418,56 @@ fn a_reading_answered_with_the_wrong_number_of_things_is_refused() {
         );
     }
 }
+
+/// A machine that must not be asked anything.
+#[derive(Debug)]
+struct Untouchable;
+
+impl nerpa_core::provider::Reach for Untouchable {
+    fn ask(
+        &self,
+        _: &nerpa_proto::Ask,
+    ) -> Result<nerpa_proto::Answer, nerpa_core::provider::ProviderError> {
+        panic!("the machine was asked, and nothing should have been sent")
+    }
+}
+
+/// The os provider says how much content one operation carries, so the planner
+/// can refuse more before anything is done.
+#[test]
+fn the_os_provider_bounds_content_at_what_one_operation_carries() {
+    assert_eq!(
+        Os::new()
+            .schema()
+            .bound(&address("os:file.motd@localhost"), "content"),
+        Some(nerpa_proto::MAX_CONTENT)
+    );
+}
+
+/// Content over the bound is refused before the machine is asked. Planning sees
+/// every value but a secret's; this is where a secret's is caught, and where any
+/// value would be caught if planning were bypassed.
+#[test]
+fn content_too_large_is_refused_before_the_machine_is_asked() {
+    let scratch = Scratch::new("too-large");
+    let mut attributes = at(&scratch.join("big"));
+    attributes.insert(
+        "content".to_owned(),
+        Value::Text("x".repeat(nerpa_proto::MAX_CONTENT + 1)),
+    );
+
+    let refusal = Os::new()
+        .apply(
+            &address("os:file.big@localhost"),
+            ChangeKind::Create,
+            &attributes,
+            &[],
+            Observed::new().facts_of(None),
+            &Untouchable,
+        )
+        .expect_err("over the bound");
+    assert!(
+        refusal.to_string().contains("most one operation carries"),
+        "{refusal}"
+    );
+}

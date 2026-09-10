@@ -58,6 +58,20 @@ pub enum PlanError {
     /// answer that would be believed and is the one that could be wrong.
     #[error(transparent)]
     Secret(#[from] FetchError),
+    /// A value too large to carry to a machine in one operation.
+    #[error(
+        "{address}: {attribute} is {size} bytes, and {most} is the most one operation can carry"
+    )]
+    TooLarge {
+        /// The resource declaring it.
+        address: Address,
+        /// Which attribute.
+        attribute: String,
+        /// How large it is.
+        size: usize,
+        /// The most its provider accepts.
+        most: usize,
+    },
 }
 
 /// Computes what would have to happen for the world to match the configuration.
@@ -253,6 +267,23 @@ fn change_for(
     let mut desired = Vec::new();
     for (name, declared) in resource.attributes() {
         let after = resolve(declared, observed, secrets)?;
+
+        // ENFORCES: INV-PLAN-007
+        // Refused while planning, so nothing is done on the strength of a plan
+        // whose batch cannot be written. A secret is sealed before this point and
+        // is checked by its provider before sending instead.
+        if let Confidence::Known(value) = &after
+            && let Some(most) = schema.bound(address, name)
+            && let Some(bytes) = value.as_bytes()
+            && bytes.len() > most
+        {
+            return Err(PlanError::TooLarge {
+                address: address.clone(),
+                attribute: name.clone(),
+                size: bytes.len(),
+                most,
+            });
+        }
         desired.push((name.clone(), after.clone()));
 
         // Reduced here, at the edge: a secret attribute's observed value is a

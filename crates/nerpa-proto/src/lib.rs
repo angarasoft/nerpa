@@ -56,6 +56,14 @@ pub const PROTOCOL_VERSION: u32 = 4;
 /// the length that says how big it is arrives from somewhere else.
 pub const MAX_FRAME: usize = 64 * 1024 * 1024;
 
+/// The largest content one operation may carry.
+///
+/// Half a frame, because what is written is read back: a file's answer holds its
+/// content again, and both have to fit in a frame with room for everything else.
+/// Checked when planning, so a file too big to send is refused before anything
+/// happens rather than when its batch is written.
+pub const MAX_CONTENT: usize = MAX_FRAME / 2;
+
 /// What went wrong on the wire.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]

@@ -32,6 +32,7 @@ use crate::address::{Address, Kind, Provider};
 pub struct Schema {
     immutable: BTreeMap<(Provider, Kind), BTreeSet<String>>,
     at_birth: BTreeMap<(Provider, Kind), BTreeSet<String>>,
+    bounded: BTreeMap<(Provider, Kind), BTreeMap<String, usize>>,
 }
 
 impl Schema {
@@ -76,6 +77,35 @@ impl Schema {
         self
     }
 
+    /// Declares the most, in bytes, this attribute may carry.
+    ///
+    /// For a value that has to reach a machine in one operation. The planner
+    /// refuses a known value over it, so a file too big to send is refused before
+    /// anything happens rather than when its batch is written.
+    #[must_use]
+    pub fn bounded(
+        mut self,
+        provider: Provider,
+        kind: Kind,
+        attribute: impl Into<String>,
+        most: usize,
+    ) -> Self {
+        self.bounded
+            .entry((provider, kind))
+            .or_default()
+            .insert(attribute.into(), most);
+        self
+    }
+
+    /// The most, in bytes, this attribute of this resource may carry, if there is
+    /// a most.
+    #[must_use]
+    pub fn bound(&self, address: &Address, attribute: &str) -> Option<usize> {
+        self.bounded
+            .get(&(address.provider().clone(), address.kind().clone()))
+            .and_then(|bounds| bounds.get(attribute).copied())
+    }
+
     /// Whether this attribute describes the resource's making rather than its
     /// state.
     #[must_use]
@@ -95,6 +125,16 @@ impl Schema {
         }
         for (kind, attributes) in other.at_birth {
             self.at_birth.entry(kind).or_default().extend(attributes);
+        }
+        // Two schemas bounding the same attribute keep the smaller bound: the
+        // larger one would let through what the other says cannot be carried.
+        for (kind, bounds) in other.bounded {
+            let mine = self.bounded.entry(kind).or_default();
+            for (attribute, most) in bounds {
+                mine.entry(attribute)
+                    .and_modify(|held| *held = (*held).min(most))
+                    .or_insert(most);
+            }
         }
         self
     }

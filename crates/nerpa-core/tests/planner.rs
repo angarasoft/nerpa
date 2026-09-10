@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 
 use nerpa_core::address::address;
-use nerpa_core::planner::plan;
+use nerpa_core::planner::{PlanError, plan};
 use nerpa_core::provider::Attributes;
 use nerpa_core::secret::Recorded;
 use nerpa_core::secret::{Key, Remembered, Secrets};
@@ -456,4 +456,44 @@ fn a_plan_survives_a_trip_through_json() {
         text.contains("replace"),
         "and so does the kind of change: {text}"
     );
+}
+
+/// A value that cannot reach a machine in one operation is refused while
+/// planning, at exactly the bound its provider declares, rather than found when
+/// its batch is written, after earlier changes in the run have been made.
+#[test]
+fn a_value_too_large_for_one_operation_is_refused_when_planning() {
+    let schema = Schema::new().bounded(
+        Provider::new("os").unwrap(),
+        Kind::new("file").unwrap(),
+        "content",
+        8,
+    );
+    let at_the_bound = graph_of(vec![
+        Resource::new(address("os:file.motd@web-01")).with("content", "12345678"),
+    ]);
+    plan(
+        &at_the_bound,
+        &Observed::new(),
+        &State::new(),
+        &schema,
+        secrets(),
+    )
+    .expect("eight bytes is within a bound of eight");
+
+    let over = graph_of(vec![
+        Resource::new(address("os:file.motd@web-01")).with("content", "123456789"),
+    ]);
+    let refusal = plan(&over, &Observed::new(), &State::new(), &schema, secrets())
+        .expect_err("nine bytes is over it");
+    let PlanError::TooLarge {
+        attribute,
+        size,
+        most,
+        ..
+    } = refusal
+    else {
+        panic!("refused for the wrong reason: {refusal}")
+    };
+    assert_eq!((attribute.as_str(), size, most), ("content", 9, 8));
 }

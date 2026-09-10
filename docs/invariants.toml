@@ -858,6 +858,30 @@ adversarial = [
   "two_values_that_differ_never_get_the_same_number",
 ]
 
+
+[[invariant]]
+id = "INV-PLAN-007"
+status = "enforced"
+statement = "A value too large to carry to a machine in one operation is refused when planning, not discovered when applying."
+rationale = """
+A frame has a limit because a length prefix is an instruction to allocate \
+(INV-WIRE-002), and nothing checked the content that has to fit in one. A file \
+over the limit planned cleanly, and its batch failed at apply with an error \
+naming no resource, after earlier changes in the run had already been made. A \
+provider declares the most an attribute may carry; the planner refuses a known \
+value over it, and the provider checks again before sending, for the value \
+planning cannot see."""
+enforced_by = ["crates/nerpa-core/src/planner.rs", "crates/nerpa-provider-os/src/lib.rs"]
+tests = [
+  "a_value_too_large_for_one_operation_is_refused_when_planning",
+  "the_os_provider_bounds_content_at_what_one_operation_carries",
+  "content_too_large_is_refused_before_the_machine_is_asked",
+]
+bypass = "A value whose size is known only after planning: a secret, sealed before the check runs. The provider refuses it before anything is sent, so it fails at apply rather than on the wire, and earlier changes in that run will already have been made."
+adversarial = [
+  "a_value_too_large_for_one_operation_is_refused_when_planning",
+  "content_too_large_is_refused_before_the_machine_is_asked",
+]
 [[invariant]]
 id = "INV-TEMPLATE-001"
 status = "enforced"

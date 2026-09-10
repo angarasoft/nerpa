@@ -397,13 +397,29 @@ fn content_of(attributes: &Attributes, address: &Address) -> Result<Vec<u8>, Pro
     match attributes.get("content") {
         None => Ok(Vec::new()),
         Some(value) => {
-            value
-                .as_bytes()
-                .map(<[u8]>::to_vec)
-                .ok_or_else(|| ProviderError::Declaration {
+            let content =
+                value
+                    .as_bytes()
+                    .map(<[u8]>::to_vec)
+                    .ok_or_else(|| ProviderError::Declaration {
+                        address: address.clone(),
+                        problem: format!("content holds {value}, which is neither text nor bytes"),
+                    })?;
+            // ENFORCES: INV-PLAN-007
+            // Planning refuses this already for every value it can see. Checked
+            // again here for the one it cannot, a secret's, and because content
+            // that overflows a frame fails in a way that names no resource.
+            if content.len() > nerpa_proto::MAX_CONTENT {
+                return Err(ProviderError::Declaration {
                     address: address.clone(),
-                    problem: format!("content holds {value}, which is neither text nor bytes"),
-                })
+                    problem: format!(
+                        "content is {} bytes, and {} is the most one operation carries",
+                        content.len(),
+                        nerpa_proto::MAX_CONTENT
+                    ),
+                });
+            }
+            Ok(content)
         }
     }
 }
@@ -546,6 +562,12 @@ impl Provider for Os {
         Schema::new()
             .immutable(self.name.clone(), kind("file"), "path")
             .immutable(self.name.clone(), kind("directory"), "path")
+            .bounded(
+                self.name.clone(),
+                kind("file"),
+                "content",
+                nerpa_proto::MAX_CONTENT,
+            )
         // Nothing about a service is immutable: a stopped one starts, a
         // disabled one is enabled, and neither needs the resource replaced.
     }

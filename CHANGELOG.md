@@ -276,6 +276,14 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A value too large to carry to a machine in one operation is refused while
+  planning. A provider declares the most an attribute may carry, and the `os`
+  provider bounds a file's content at half a frame, because what is written is
+  read back. A file over the frame limit used to plan cleanly and fail at apply
+  with an error that named no resource, after earlier changes had been made. The
+  provider checks again before sending, for a secret's value, which planning
+  cannot see. Found by the review of RFC 0001.
+
 - The `os` provider counts what a machine answers against what it asked.
   Answers are read by position and nothing checked: one too few left the last
   resource described by nothing, which reads as absent and gets it created
