@@ -209,3 +209,12 @@ Reading a resource without taking it under management — Terraform's data sourc
 and one-shot commands in the spirit of `ansible all -a uptime`. Both are real
 gaps; neither blocks anything above, and the second matters more for adoption than
 its size suggests.
+
+Keeping an installed executor current without anybody logging in. Since
+[0040](docs/decisions/0040-an-executor-says-which-build-it-is.md) a new build is a
+reinstall on every machine with an installed executor, and doing that by hand on
+two machines was already called tedious. Both ways are wanted and neither is now:
+nerpa replacing an executor of another build through that executor, shown in the
+plan — it already runs as root, so the replacement adds no privilege, and it needs
+a record refining 0040 — and packages, `rpm`, `ebuild`, `apk` and a tarball, so a
+machine's own package manager or image carries it.
