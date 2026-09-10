@@ -388,6 +388,117 @@ fn what_depended_on_a_thing_is_removed_before_the_thing() {
     assert!(state.is_empty());
 }
 
+/// Removal order has to hold for every edge, not only a reference that was still
+/// unknown when planning. State kept only those, so an ordering written as
+/// `after` was forgotten, and the file and its directory were removed in one
+/// stage in any order. Review found it.
+#[test]
+fn what_came_after_a_thing_is_removed_before_the_thing() {
+    let scratch = Scratch::new("order-after");
+    let providers = providers();
+    let mut state = State::new();
+    let directory = scratch.join("etc");
+
+    let declared = graph_of(vec![
+        Resource::new(address("os:directory.etc@localhost")).with("path", directory.clone()),
+        Resource::new(address("os:file.conf@localhost"))
+            .with("path", format!("{directory}/app.conf"))
+            .with("content", "listen 80\n")
+            .after(address("os:directory.etc@localhost")),
+    ]);
+    let observed = observe(&declared, &providers, &machines(), &state).expect("readable");
+    apply(
+        &plan(&declared, &observed, &state, &providers.schema(), secrets()).expect("plannable"),
+        &providers,
+        &machines(),
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
+
+    let empty = Graph::new();
+    let observed = observe(&empty, &providers, &machines(), &state).expect("readable");
+    let plan = plan(&empty, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    assert_eq!(
+        plan.stages().len(),
+        2,
+        "what came after the directory cannot go with it"
+    );
+    assert_eq!(
+        plan.stages()[0].changes()[0].address(),
+        &address("os:file.conf@localhost")
+    );
+}
+
+/// The same for a reference that was already resolved when planning, because the
+/// thing it points at existed. State kept no edge for it, since only a value
+/// still unknown was taken to mean a dependency. Review found it.
+#[test]
+fn what_read_from_a_thing_that_already_existed_is_removed_before_the_thing() {
+    let scratch = Scratch::new("order-resolved");
+    let providers = providers();
+    let mut state = State::new();
+    let directory = scratch.join("etc");
+
+    let first = graph_of(vec![
+        Resource::new(address("os:directory.etc@localhost")).with("path", directory.clone()),
+    ]);
+    let observed = observe(&first, &providers, &machines(), &state).expect("readable");
+    apply(
+        &plan(&first, &observed, &state, &providers.schema(), secrets()).expect("plannable"),
+        &providers,
+        &machines(),
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
+
+    let second = graph_of(vec![
+        Resource::new(address("os:directory.etc@localhost")).with("path", directory.clone()),
+        Resource::new(address("os:file.conf@localhost"))
+            .with("path", format!("{directory}/app.conf"))
+            .with(
+                "content",
+                Reference::to(address("os:directory.etc@localhost"), "path"),
+            ),
+    ]);
+    let observed = observe(&second, &providers, &machines(), &state).expect("readable");
+    let planned =
+        plan(&second, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    assert_eq!(
+        planned.blast_radius().unresolved(),
+        0,
+        "the directory exists, so the reference is resolved while planning"
+    );
+    apply(
+        &planned,
+        &providers,
+        &machines(),
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
+
+    let empty = Graph::new();
+    let observed = observe(&empty, &providers, &machines(), &state).expect("readable");
+    let plan = plan(&empty, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    assert_eq!(
+        plan.stages().len(),
+        2,
+        "the file cannot go with the directory"
+    );
+    assert_eq!(
+        plan.stages()[0].changes()[0].address(),
+        &address("os:file.conf@localhost")
+    );
+}
+
 /// A value that does not exist at plan time is filled in from what the earlier
 /// stage produced, and only then written.
 #[test]

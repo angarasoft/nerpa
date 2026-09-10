@@ -403,22 +403,15 @@ pub fn apply(
 }
 
 // ENFORCES: INV-PLAN-004
-/// What this change read from, so that its removal can be ordered later.
+/// What this change came after, so that its removal can be ordered later.
 ///
 /// Taken from the plan rather than from the graph: the plan is what was actually
 /// carried out, and the configuration that described it may be gone by the time
-/// this is read back.
+/// this is read back. Every edge, however it arose. This used to take only the
+/// references still unresolved when planning, so a dependency that already
+/// existed, or one written as `after`, was never remembered.
 fn dependencies(change: &Change) -> BTreeSet<Address> {
-    change
-        .desired()
-        .iter()
-        .filter_map(|(_, value)| match value {
-            Confidence::Unknown(reference) => Some(reference.source().clone()),
-            // A fact is not a resource, so nothing was created to depend on. It
-            // orders nothing, which is the point of it not being a reference.
-            Confidence::Known(_) | Confidence::Secret(_) | Confidence::Bounded(_) => None,
-        })
-        .collect()
+    change.depends_on().iter().cloned().collect()
 }
 
 /// What state may keep of what a provider reported.

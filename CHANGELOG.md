@@ -276,6 +276,14 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- State remembers every edge a resource came after, so removals run in the right
+  order however the dependency was written. It kept only references still
+  unresolved when planning: a dependency that already existed, or one written as
+  `after`, was forgotten, and a file and its directory were removed in one stage
+  in any order. A change now carries its edges, and they are part of the plan's
+  number, so plans with dependencies have new numbers. Found by the review of
+  RFC 0001.
+
 - Two resources on one machine that name the same thing there are refused while
   planning. A provider says which attribute names the thing and in which
   namespace, and a file and a directory share `path`. Two files at one path used

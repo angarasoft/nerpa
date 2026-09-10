@@ -178,9 +178,23 @@ pub struct Change {
     /// a restart was owed since a run that stopped. See decision 0026.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     owed: Vec<Address>,
+    /// Everything this resource comes after, however that ordering arose: a
+    /// reference, `after`, a reaction.
+    ///
+    /// Carried so that state can remember it. Removal order comes from state,
+    /// because the configuration that described a dependency is exactly what was
+    /// deleted, and state used to keep only the references still unresolved when
+    /// planning — so a dependency that already existed, or one written as `after`,
+    /// was forgotten and its removal came in any order. See `INV-STATE-002`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    depends_on: Vec<Address>,
 }
 
 impl Change {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "one argument for each part of a change, so none can be left out"
+    )]
     pub(crate) fn new(
         address: Address,
         kind: ChangeKind,
@@ -189,6 +203,7 @@ impl Change {
         premise: Vec<nerpa_proto::Premise>,
         roused_by: Vec<Address>,
         owed: Vec<Address>,
+        depends_on: Vec<Address>,
     ) -> Self {
         Self {
             address,
@@ -198,7 +213,14 @@ impl Change {
             premise,
             roused_by,
             owed,
+            depends_on,
         }
+    }
+
+    /// Everything this resource comes after, in a stable order.
+    #[must_use]
+    pub fn depends_on(&self) -> &[Address] {
+        &self.depends_on
     }
 
     /// What roused it in an earlier run that did not finish paying.
@@ -710,6 +732,14 @@ fn encode_stage(stage: &PlanStage, out: &mut Vec<u8>) {
         out.extend_from_slice(&value::length(change.owed().len()));
         for cause in change.owed() {
             value::text(&cause.to_string(), out);
+        }
+
+        // What it comes after, which is what state will remember to order its
+        // removal by. A plan recording different edges removes things in a
+        // different order later, so the edges are part of what it intends.
+        out.extend_from_slice(&value::length(change.depends_on().len()));
+        for dependency in change.depends_on() {
+            value::text(&dependency.to_string(), out);
         }
 
         out.extend_from_slice(&value::length(change.desired().len()));

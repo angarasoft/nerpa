@@ -202,6 +202,15 @@ pub fn plan_at(
                 &mut outdated,
                 roused_by,
                 owed,
+                dependencies
+                    .get(address)
+                    .map(|of_this| {
+                        of_this
+                            .iter()
+                            .map(|dependency| (*dependency).clone())
+                            .collect()
+                    })
+                    .unwrap_or_default(),
             )? {
                 changing.insert(address.clone());
                 changes.push(change);
@@ -314,6 +323,7 @@ fn removals(graph: &Graph, state: &State) -> Vec<PlanStage> {
                         Vec::new(),
                         Vec::new(),
                         Vec::new(),
+                        Vec::new(),
                     )
                 })
                 .collect();
@@ -323,6 +333,10 @@ fn removals(graph: &Graph, state: &State) -> Vec<PlanStage> {
 }
 
 /// What has to happen to one resource, or nothing if it already matches.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "what a change is decided from, one argument each, so none can be left out"
+)]
 fn change_for(
     resource: &Resource,
     observed: &Observed,
@@ -331,6 +345,7 @@ fn change_for(
     outdated: &mut Vec<Outdated>,
     roused_by: Vec<Address>,
     owed: Vec<Address>,
+    depends_on: Vec<Address>,
 ) -> Result<Option<Change>, PlanError> {
     let address = resource.address();
     let existing = observed.get(address);
@@ -404,6 +419,7 @@ fn change_for(
             Vec::new(),
             roused_by,
             owed,
+            depends_on,
         )),
         // It matches its declaration, and something it reacts to does not — so
         // it has to act anyway. The desired values go with it because the
@@ -419,6 +435,7 @@ fn change_for(
                 sealed_for_its_machine(observed.premise(address), address, secrets),
                 roused_by,
                 owed,
+                depends_on,
             ))
         }
         Some(_) if deltas.is_empty() => None,
@@ -436,6 +453,7 @@ fn change_for(
                 sealed_for_its_machine(observed.premise(address), address, secrets),
                 roused_by,
                 owed,
+                depends_on,
             ))
         }
     })
