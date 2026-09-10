@@ -13,6 +13,7 @@ within a week.
 | Kind | Home |
 | --- | --- |
 | Why a decision was taken, and when | `docs/decisions/` — immutable once accepted, superseded rather than edited |
+| A change worked out, measured and attacked before its decisions are taken | `docs/rfcs/` — reviewed on purpose, with the findings kept in the document, then turned into records |
 | What the system is, as contracts | `docs/ARCHITECTURE.md` — every section names its record and says whether it is built |
 | What must never break, and how it could | `docs/invariants.toml` — the registry, checked against the code both ways |
 | What is being built, in what order | `ROADMAP.md` — stages with exit criteria that can be executed |

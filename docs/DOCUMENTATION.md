@@ -9,6 +9,7 @@ one place.
 | --- | --- | --- |
 | How do I use this thing? | rustdoc, in the code | `missing_docs`, `# Errors` and `# Panics` sections, no broken links |
 | Why is it like this? | `docs/decisions/` | `cargo xtask docs` |
+| What are we about to decide, and has it been attacked? | `docs/rfcs/` | review, logged in the document |
 | What must never break? | `docs/invariants.toml` | `cargo xtask invariants` |
 | What shape is it in now? | `docs/ARCHITECTURE.md` | `cargo xtask docs` |
 | Where does this go? | `docs/MAP.md` | `cargo xtask docs` |
