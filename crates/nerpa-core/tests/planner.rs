@@ -497,3 +497,50 @@ fn a_value_too_large_for_one_operation_is_refused_when_planning() {
     };
     assert_eq!((attribute.as_str(), size, most), ("content", 9, 8));
 }
+
+/// One thing on a machine is declared once. A file and a directory at one path,
+/// however the path is spelled, are the same thing there; the same path on
+/// another machine is not.
+#[test]
+fn two_resources_naming_one_thing_on_a_machine_are_refused() {
+    let os = Provider::new("os").unwrap();
+    let schema = Schema::new()
+        .identity(os.clone(), Kind::new("file").unwrap(), "path", "path")
+        .identity(os, Kind::new("directory").unwrap(), "path", "path");
+
+    let apart = graph_of(vec![
+        Resource::new(address("os:file.motd@web-01")).with("path", "/etc/motd"),
+        Resource::new(address("os:file.motd@web-02")).with("path", "/etc/motd"),
+    ]);
+    plan(&apart, &Observed::new(), &State::new(), &schema, secrets())
+        .expect("the same path on two machines is two things");
+
+    let together = graph_of(vec![
+        Resource::new(address("os:file.one@web-01")).with("path", "/etc/app/conf"),
+        Resource::new(address("os:directory.two@web-01")).with("path", "/etc//app/./conf/"),
+    ]);
+    let refusal = plan(
+        &together,
+        &Observed::new(),
+        &State::new(),
+        &schema,
+        secrets(),
+    )
+    .expect_err("one path, two declarations");
+    let PlanError::SameThing {
+        first,
+        second,
+        namespace,
+        ..
+    } = refusal
+    else {
+        panic!("refused for the wrong reason: {refusal}")
+    };
+    let named = [first.to_string(), second.to_string()];
+    assert!(
+        named.contains(&"os:file.one@web-01".to_owned())
+            && named.contains(&"os:directory.two@web-01".to_owned()),
+        "{named:?}"
+    );
+    assert_eq!(namespace, "path");
+}

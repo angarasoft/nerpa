@@ -276,6 +276,14 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- Two resources on one machine that name the same thing there are refused while
+  planning. A provider says which attribute names the thing and in which
+  namespace, and a file and a directory share `path`. Two files at one path used
+  to be created one over the other, and every later plan proposed the loser
+  again, so the second run was never empty. Paths are compared without repeated
+  separators, `.` segments or a trailing separator; `..` and symbolic links are
+  not resolved. Found by the review of RFC 0001.
+
 - A value too large to carry to a machine in one operation is refused while
   planning. A provider declares the most an attribute may carry, and the `os`
   provider bounds a file's content at half a frame, because what is written is

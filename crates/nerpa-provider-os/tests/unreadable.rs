@@ -471,3 +471,18 @@ fn content_too_large_is_refused_before_the_machine_is_asked() {
         "{refusal}"
     );
 }
+
+/// A file and a directory at one path are one thing on the machine, so the os
+/// provider names both by their path, in one namespace.
+#[test]
+fn the_os_provider_names_files_and_directories_by_path_in_one_namespace() {
+    let schema = Os::new().schema();
+    assert_eq!(
+        schema.identity_of(&address("os:file.a@localhost")),
+        Some(("path", "path"))
+    );
+    assert_eq!(
+        schema.identity_of(&address("os:directory.b@localhost")),
+        Some(("path", "path"))
+    );
+}

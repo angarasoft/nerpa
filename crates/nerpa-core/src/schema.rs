@@ -33,6 +33,7 @@ pub struct Schema {
     immutable: BTreeMap<(Provider, Kind), BTreeSet<String>>,
     at_birth: BTreeMap<(Provider, Kind), BTreeSet<String>>,
     bounded: BTreeMap<(Provider, Kind), BTreeMap<String, usize>>,
+    identities: BTreeMap<(Provider, Kind), (String, String)>,
 }
 
 impl Schema {
@@ -75,6 +76,35 @@ impl Schema {
             .or_default()
             .insert(attribute.into());
         self
+    }
+
+    /// Declares that this attribute names the thing on the machine, within a
+    /// namespace that several kinds can share.
+    ///
+    /// A file and a directory at one path are one thing on the machine however
+    /// many addresses declare them, so both name their path in the namespace
+    /// `path`. Two resources on one machine naming the same thing are refused,
+    /// because otherwise each is written over the other on every run.
+    #[must_use]
+    pub fn identity(
+        mut self,
+        provider: Provider,
+        kind: Kind,
+        attribute: impl Into<String>,
+        namespace: impl Into<String>,
+    ) -> Self {
+        self.identities
+            .insert((provider, kind), (attribute.into(), namespace.into()));
+        self
+    }
+
+    /// Which attribute names this resource's thing on its machine, and in which
+    /// namespace, if its provider says.
+    #[must_use]
+    pub fn identity_of(&self, address: &Address) -> Option<(&str, &str)> {
+        self.identities
+            .get(&(address.provider().clone(), address.kind().clone()))
+            .map(|(attribute, namespace)| (attribute.as_str(), namespace.as_str()))
     }
 
     /// Declares the most, in bytes, this attribute may carry.
@@ -136,6 +166,7 @@ impl Schema {
                     .or_insert(most);
             }
         }
+        self.identities.extend(other.identities);
         self
     }
 

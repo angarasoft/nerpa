@@ -568,6 +568,9 @@ impl Provider for Os {
                 "content",
                 nerpa_proto::MAX_CONTENT,
             )
+            // A file and a directory at one path are one thing on the machine.
+            .identity(self.name.clone(), kind("file"), "path", "path")
+            .identity(self.name.clone(), kind("directory"), "path", "path")
         // Nothing about a service is immutable: a stopped one starts, a
         // disabled one is enabled, and neither needs the resource replaced.
     }

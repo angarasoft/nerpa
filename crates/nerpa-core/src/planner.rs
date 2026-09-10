@@ -18,7 +18,7 @@
 //! never converge — the second run would never be empty, which is the one thing
 //! it has to be.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::address::{Address, Target};
 use crate::attribute::Attribute;
@@ -31,6 +31,7 @@ use crate::resource::Resource;
 use crate::schema::Schema;
 use crate::secret::{FetchError, Recorded, Secrets};
 use crate::state::{Record, State, Written};
+use crate::value::Value;
 
 /// Why a plan could not be produced at all.
 #[derive(Debug, thiserror::Error)]
@@ -71,6 +72,22 @@ pub enum PlanError {
         size: usize,
         /// The most its provider accepts.
         most: usize,
+    },
+    /// Two resources on one machine that name the same thing there.
+    #[error(
+        "{first} and {second} both declare {namespace} {value:?} on {node}, and one thing on a machine is declared once"
+    )]
+    SameThing {
+        /// The resource met first.
+        first: Address,
+        /// The resource that names the same thing.
+        second: Address,
+        /// The machine they are both on.
+        node: Target,
+        /// What kind of name they share.
+        namespace: String,
+        /// The name, as the second declares it.
+        value: String,
     },
 }
 
@@ -116,6 +133,7 @@ pub fn plan_at(
     // dependencies rebuilds every edge it has, and this loop asks for every
     // resource.
     let dependencies = graph.dependencies()?;
+    one_thing_once(graph, schema)?;
 
     let mut stages = removals(graph, state);
     let mut unreachable = Vec::new();
@@ -197,6 +215,60 @@ pub fn plan_at(
     }
 
     Ok(Plan::new(stages, unreachable, outdated))
+}
+
+// ENFORCES: INV-PLAN-008
+/// Refuses two resources on one machine that name the same thing there.
+///
+/// Addresses are unique by construction; what they declare is not. Two files at
+/// one path were both created, the last write won, and every later plan proposed
+/// the other again. Checked on declared values, so a name that arrives through a
+/// reference is known only later and is not caught here.
+fn one_thing_once(graph: &Graph, schema: &Schema) -> Result<(), PlanError> {
+    let mut seen: BTreeMap<(Target, String, String), Address> = BTreeMap::new();
+    for stage in graph.stages()? {
+        for address in stage.addresses() {
+            let (Some(node), Some(resource), Some((attribute, namespace))) = (
+                address.target(),
+                graph.get(address),
+                schema.identity_of(address),
+            ) else {
+                continue;
+            };
+            let Some(Value::Text(value)) = resource.attribute(attribute).and_then(Attribute::known)
+            else {
+                continue;
+            };
+            let key = (node.clone(), namespace.to_owned(), one_spelling(value));
+            if let Some(first) = seen.get(&key) {
+                return Err(PlanError::SameThing {
+                    first: first.clone(),
+                    second: address.clone(),
+                    node: node.clone(),
+                    namespace: namespace.to_owned(),
+                    value: value.clone(),
+                });
+            }
+            seen.insert(key, address.clone());
+        }
+    }
+    Ok(())
+}
+
+/// A path without the spellings that name the same one: repeated separators, `.`
+/// segments and a trailing separator. `..` is left as written, because through a
+/// symbolic link it does not mean what it looks like.
+fn one_spelling(path: &str) -> String {
+    let kept: Vec<&str> = path
+        .split('/')
+        .filter(|part| !part.is_empty() && *part != ".")
+        .collect();
+    let joined = kept.join("/");
+    if path.starts_with('/') {
+        format!("/{joined}")
+    } else {
+        joined
+    }
 }
 
 /// How old the newest thing known about a machine is, in seconds.
