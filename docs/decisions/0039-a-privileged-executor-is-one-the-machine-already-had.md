@@ -7,6 +7,13 @@
   under `/usr/local`, so the command in this record failed on the first machine
   it was run against. `/usr/local/sbin` exists, is root's, is on root's path, and
   says what it is: a program not meant for ordinary users to invoke.
+- Corrected: 2026-09-11 — "Now the rule means what it says. That user may run that
+  one program as root and cannot change what it is." The second half holds and
+  the first does not. The executor runs whatever process it is asked to (0033),
+  so a rule that lets an account run it as root is root for that account, stated
+  narrowly. What an installed executor buys is that the account cannot swap the
+  binary for another; it does not narrow what the binary will do. Found by the
+  review of RFC 0001.
 
 ## Context
 

@@ -174,9 +174,12 @@ There are two ways to run, and they are not interchangeable
 ([0039](decisions/0039-a-privileged-executor-is-one-the-machine-already-had.md)).
 **Delivered** needs no preparation and is for unprivileged work: the executor
 arrives in the connecting user's own directory. **Installed** is what escalation
-requires, because an executor that user can write is one they can run as root —
-so `become` without a named `executor` is refused when the fleet is read, rather
-than becoming a sudoers rule that says one path and means every command there is.
+requires, because an executor that user can write is one they can swap for
+anything and run as root — so `become` without a named `executor` is refused when
+the fleet is read. Installing it does not make the rule narrow: the executor runs
+whatever process it is asked to, so a rule letting an account run it as root is
+root for that account either way. What installing buys is that the account
+cannot change which binary that is.
 
 Every machine reached over `ssh` is asked which build its executor is before
 anything else, and the answer is a digest of the binary that is running, compared
