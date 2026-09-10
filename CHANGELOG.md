@@ -276,6 +276,15 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- `become` without a named `executor` is refused when the fleet is read. Nerpa
+  delivers its executor into the connecting user's own directory, so a sudoers
+  rule naming that path grants that user root over the whole machine — they can
+  write anything there and run it. The rule looks careful and is not, and nobody
+  reading it in a year would see it. Escalation now requires an executor root
+  installed where that user cannot write, which is one file and one sudoers line
+  —
+  [0039](docs/decisions/0039-a-privileged-executor-is-one-the-machine-already-had.md).
+
 - `os:package` reads. Two families, `rpm` with `dnf` and `portage` with
   `emerge`, chosen to stand as far apart as the space allows; a machine calling
   itself anything else is refused by name at plan time rather than sent a

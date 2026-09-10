@@ -313,3 +313,47 @@ become = "sudo -n"
     .expect("nothing here is a way to run a command");
     assert_eq!(fleet.len(), 4);
 }
+
+/// An executor the connecting user can write is an executor that user can run
+/// as root, so `NOPASSWD` on a delivered one is full root wearing a narrow
+/// rule. The two are refused together, and the refusal names the way out: an
+/// executor root put somewhere that user cannot write.
+#[test]
+fn escalating_to_an_executor_nerpa_delivers_is_refused() {
+    let refusal = Fleet::read(
+        r#"
+[nodes.web-01]
+ssh = "web-01"
+become = "sudo -n"
+"#,
+    )
+    .expect_err("that combination is root in disguise");
+    assert!(
+        refusal.contains("executor") && refusal.contains("become"),
+        "the refusal should name both halves and the way out: {refusal}"
+    );
+}
+
+/// Either alone is fine. Delivering to run unprivileged is the ordinary case,
+/// and naming an installed executor without escalating is somebody who put it
+/// somewhere of their own.
+#[test]
+fn delivering_without_escalating_and_escalating_to_an_installed_one_both_read() {
+    let fleet = Fleet::read(
+        r#"
+[nodes.delivered]
+ssh = "web-01"
+
+[nodes.installed]
+ssh = "web-02"
+executor = "/usr/local/libexec/nerpa-executor"
+become = "sudo -n"
+
+[nodes.named-only]
+ssh = "web-03"
+executor = "/opt/nerpa/nerpa-executor"
+"#,
+    )
+    .expect("none of these is the trap");
+    assert_eq!(fleet.len(), 3);
+}

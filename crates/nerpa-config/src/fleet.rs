@@ -293,6 +293,22 @@ fn read_route(name: &str, described: &toml::Value) -> Result<Route, String> {
         },
     )?;
 
+    // An executor this delivers goes to a path the connecting user writes, and
+    // an executor that user can write is one they can run as root — so
+    // `NOPASSWD` on a delivered executor is full root wearing a narrow rule,
+    // and pretending otherwise is worse than saying so. Refused here rather
+    // than discovered by somebody reading a sudoers file two years from now.
+    if !escalate.is_empty() && executor.is_none() {
+        return Err(format!(
+            "{name}: `become` needs an `executor` that root put there. Nerpa \
+             delivers one into the connecting user's own directory, and letting \
+             that user run it under sudo gives them root by another name — the \
+             rule would say one path and mean everything. Install it once \
+             (`/usr/local/libexec/nerpa-executor`, owned by root) and name it \
+             here"
+        ));
+    }
+
     Ok(Route::Ssh {
         host,
         config,

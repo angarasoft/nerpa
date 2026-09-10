@@ -163,6 +163,14 @@ The transport carries bytes and knows nothing about them, and is a command that
 produces a pipe: the executor here, or `ssh` to run it there. One connection
 carries a whole run.
 
+There are two ways to run, and they are not interchangeable
+([0039](decisions/0039-a-privileged-executor-is-one-the-machine-already-had.md)).
+**Delivered** needs no preparation and is for unprivileged work: the executor
+arrives in the connecting user's own directory. **Installed** is what escalation
+requires, because an executor that user can write is one they can run as root —
+so `become` without a named `executor` is refused when the fleet is read, rather
+than becoming a sudoers rule that says one path and means every command there is.
+
 The executor puts itself on a machine, by the transport's own means rather than
 over the wire: until the binary is there, there is nothing to speak to. It lands
 under a name carrying its digest, so a machine holding a different build holds
