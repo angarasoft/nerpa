@@ -71,6 +71,48 @@ is more, and it is what the two real defects of that week required: quoting in
 the second init system and nothing else. Moving an exit criterion is moving a
 goalpost, so it is recorded here with what it cost and what it bought.
 
+**Measured, 2026-09-10,** against the same change written as an Ansible playbook
+(ansible-core 2.19.3), from one control machine over the same routes: two
+machines behind the identity-aware proxy, one behind a bastion. Seconds; medians
+of six runs for cold, of three or four for kept connections.
+
+A file rendered from a template on all three machines, as the connecting user:
+
+| | nerpa | Ansible | Ansible, no facts |
+| --- | --- | --- | --- |
+| nothing to do, cold | 5.69 | 10.05 | 7.71 |
+| a change, cold | 6.20 | 12.23 | 9.12 |
+| nothing to do, connections kept | 1.23 | 5.73 | |
+| a change, connections kept | 1.63 | 8.48 | |
+
+`chrony.conf` rendered on the Alpine machine as root through `doas`, with
+`chronyd` restarted when it changes:
+
+| | nerpa | Ansible | Ansible, `doas` plugin |
+| --- | --- | --- | --- |
+| nothing to do, cold | 3.83 | 10.78 | 20.59 |
+| a change, cold | 4.37 | 14.87 | 28.04 |
+| nothing to do, connections kept | 1.09 | 7.20 | |
+| a change, connections kept | 1.58 | 11.23 | |
+
+Cold is a fresh `ssh` for every run: what nerpa does unless told otherwise, and
+what Ansible does without a control socket left from the run before. Connections
+kept is `ControlPersist` for both — Ansible through its own setting, nerpa through
+an `ssh_config` that says so, because how a host is reached belongs to `ssh`. The
+cold comparison alone said nerpa was twice as fast, and on three machines a kept
+Ansible connection matched nerpa's cold number to the hundredth: the handshake was
+most of both. Measured both ways, the difference that is left is the work each
+does once it is connected. See `W-022`.
+
+What this does not measure. Escalation on Gentoo and Rocky: those machines let
+the connecting user run the executor as root and nothing else, and Ansible's
+`become` needs a root shell, so the escalated comparison is one machine.
+`community.general.doas`, the documented way to use `doas`, turns pipelining off
+by itself, which is where most of its extra seconds go; the column headed Ansible
+is the `sudo` plugin pointed at `doas -n`, which keeps pipelining. Not gathering
+facts saved nothing there, because the `service` module gathers what it needs
+itself.
+
 ## Stage 2 — what cannot be changed later
 
 Nothing here can be shown off on a fleet, and all of it costs a day now and a
