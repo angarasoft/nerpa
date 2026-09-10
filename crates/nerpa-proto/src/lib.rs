@@ -39,9 +39,11 @@ use serde::{Deserialize, Serialize};
 /// Bumped when the meaning of anything below changes. An executor that reads a
 /// version it does not know refuses the frame; it does not attempt a subset.
 ///
-/// Three since an executor can be asked which build it is. The bump is what
-/// makes an executor from before that refuse the first frame by name, rather
-/// than answer everything else as though nothing had changed.
+/// Three since an executor can be asked which build it is. An executor of
+/// version 2 refuses the first frame of version 3, and says it is a request it
+/// has never heard of rather than a version it does not know: it decoded the
+/// whole frame before looking at the stamp. Measured, on a machine still holding
+/// one. From three on, the stamp is read first.
 pub const PROTOCOL_VERSION: u32 = 3;
 
 /// The largest frame either end will read.
@@ -535,6 +537,11 @@ pub fn write<W: Write, T: Serialize>(sink: &mut W, value: &T) -> Result<(), Wire
 /// Returns [`WireError`] if the pipe ends early, announces more than
 /// [`MAX_FRAME`], or carries something that is not the expected shape.
 pub fn read<R: Read, T: for<'de> Deserialize<'de>>(source: &mut R) -> Result<T, WireError> {
+    decode(&frame(source)?)
+}
+
+/// The bytes of one frame, before anything in them is believed.
+fn frame<R: Read>(source: &mut R) -> Result<Vec<u8>, WireError> {
     let mut prefix = [0_u8; 4];
     source
         .read_exact(&mut prefix)
@@ -573,7 +580,35 @@ pub fn read<R: Read, T: for<'de> Deserialize<'de>>(source: &mut R) -> Result<T, 
         }
     }
 
-    ciborium::from_reader(body.as_slice()).map_err(|error| WireError::Malformed(error.to_string()))
+    Ok(body)
+}
+
+/// What a frame's bytes say, as the shape asked for.
+fn decode<T: for<'de> Deserialize<'de>>(body: &[u8]) -> Result<T, WireError> {
+    ciborium::from_reader(body).map_err(|error| WireError::Malformed(error.to_string()))
+}
+
+/// A frame's version, and nothing else about it.
+///
+/// Read on its own before the rest is decoded. A frame from another version can
+/// carry a request this build has never heard of, and decoding all of it first
+/// reports that as an unknown variant — which is what an executor of version 2
+/// said to the first frame of version 3. The version is the reason; the variant
+/// is only how it showed.
+#[derive(Deserialize)]
+struct Stamp {
+    version: u32,
+}
+
+/// Refuses a frame stamped with a version this build does not know.
+fn stamped(body: &[u8]) -> Result<(), WireError> {
+    let stamp: Stamp = decode(body)?;
+    if stamp.version != PROTOCOL_VERSION {
+        return Err(WireError::Version {
+            found: stamp.version,
+        });
+    }
+    Ok(())
 }
 
 /// Reads a request, and refuses one written by a version this build does not know.
@@ -583,13 +618,9 @@ pub fn read<R: Read, T: for<'de> Deserialize<'de>>(source: &mut R) -> Result<T, 
 /// Everything [`read`] returns, plus [`WireError::Version`].
 // ENFORCES: INV-WIRE-001
 pub fn read_request<R: Read>(source: &mut R) -> Result<Request, WireError> {
-    let request: Request = read(source)?;
-    if request.version != PROTOCOL_VERSION {
-        return Err(WireError::Version {
-            found: request.version,
-        });
-    }
-    Ok(request)
+    let body = frame(source)?;
+    stamped(&body)?;
+    decode(&body)
 }
 
 /// Reads a response, and refuses one written by a version this build does not know.
@@ -598,13 +629,9 @@ pub fn read_request<R: Read>(source: &mut R) -> Result<Request, WireError> {
 ///
 /// Everything [`read`] returns, plus [`WireError::Version`].
 pub fn read_response<R: Read>(source: &mut R) -> Result<Response, WireError> {
-    let response: Response = read(source)?;
-    if response.version != PROTOCOL_VERSION {
-        return Err(WireError::Version {
-            found: response.version,
-        });
-    }
-    Ok(response)
+    let body = frame(source)?;
+    stamped(&body)?;
+    decode(&body)
 }
 
 // The boundary, asserted at the boundary rather than by building a frame of that

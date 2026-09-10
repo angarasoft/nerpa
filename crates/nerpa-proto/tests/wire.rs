@@ -414,3 +414,73 @@ fn a_build_is_named_by_every_byte_of_it() {
     );
     assert_eq!(nerpa_proto::build_of(b"").len(), 64);
 }
+
+/// Something a later version asks for, which this one has never heard of.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+enum NotYetInvented {
+    Teleport { somewhere: String },
+}
+
+/// A frame from a later version usually carries something new, and the new thing
+/// is not the reason to give. Measured: an executor of version 2, handed the
+/// first frame of version 3, said `unknown variant build` — it decoded the body
+/// before looking at the stamp. The stamp is read first, so the refusal names
+/// the version, which is what somebody reading it can act on.
+#[test]
+fn a_frame_from_another_version_is_refused_as_a_version_even_when_what_it_asks_is_new() {
+    #[derive(serde::Serialize)]
+    struct FromTheFuture {
+        version: u32,
+        body: NotYetInvented,
+    }
+
+    let mut wire = Vec::new();
+    nerpa_proto::write(
+        &mut wire,
+        &FromTheFuture {
+            version: PROTOCOL_VERSION + 1,
+            body: NotYetInvented::Teleport {
+                somewhere: "elsewhere".to_owned(),
+            },
+        },
+    )
+    .unwrap();
+
+    let refusal = nerpa_proto::read_request(&mut Cursor::new(wire.clone())).unwrap_err();
+    assert!(
+        matches!(refusal, WireError::Version { found } if found == PROTOCOL_VERSION + 1),
+        "{refusal:?}"
+    );
+    let refusal = nerpa_proto::read_response(&mut Cursor::new(wire)).unwrap_err();
+    assert!(
+        matches!(refusal, WireError::Version { found } if found == PROTOCOL_VERSION + 1),
+        "{refusal:?}"
+    );
+}
+
+/// Reading the stamp first is not believing the frame first: one of this version
+/// asking for something nobody defined is still refused, as unreadable.
+#[test]
+fn a_frame_of_this_version_asking_for_something_nobody_defined_is_still_refused() {
+    #[derive(serde::Serialize)]
+    struct Current {
+        version: u32,
+        body: NotYetInvented,
+    }
+
+    let mut wire = Vec::new();
+    nerpa_proto::write(
+        &mut wire,
+        &Current {
+            version: PROTOCOL_VERSION,
+            body: NotYetInvented::Teleport {
+                somewhere: "elsewhere".to_owned(),
+            },
+        },
+    )
+    .unwrap();
+
+    let refusal = nerpa_proto::read_request(&mut Cursor::new(wire)).unwrap_err();
+    assert!(matches!(refusal, WireError::Malformed(_)), "{refusal:?}");
+}

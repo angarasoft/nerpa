@@ -2,6 +2,13 @@
 
 - Status: accepted
 - Date: 2026-09-10
+- Corrected: 2026-09-10 — "an executor from before this refuses the first frame
+  by name" was written before it was run, and is not what happened. Against a
+  machine still holding version 2 the executor said `unknown variant build`: it
+  decoded the whole frame before looking at the stamp, so it gave the new request
+  as its reason rather than the version. The machine was refused all the same.
+  Frames are now read stamp first, so from version 3 on a newer frame is refused
+  as a version.
 
 ## Context
 

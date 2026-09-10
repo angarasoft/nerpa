@@ -284,9 +284,11 @@ without ceremony until the first stage is complete.
   mode was narrowed, a deadlock on a large input — and every run since had been
   against it. The protocol version could not have said so, because none of the
   fixes changed a frame. The name is a digest of the running binary, so nothing
-  has to be remembered to change it, and the protocol is version 3, so an older
-  executor refuses the first frame by name. Machines are opened side by side now,
-  since opening waits for the handshake. See
+  has to be remembered to change it. The protocol is version 3, and an executor
+  from before it refuses the first frame — as a request it has never heard of
+  rather than as a version, measured, because it decoded the frame before reading
+  the stamp. Frames are read stamp first now, so the next bump is refused as what
+  it is. Machines are opened side by side, since opening waits for the handshake. See
   [0040](docs/decisions/0040-an-executor-says-which-build-it-is.md).
 
 - Reading fans out over a bounded pool, one machine per thread, sixteen at once,
