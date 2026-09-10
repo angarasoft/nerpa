@@ -184,7 +184,7 @@ impl State {
         self.resources.insert(address, record);
     }
 
-    /// Writes down that a resource owes a reaction, before it is attempted.
+    /// Writes down that a resource owes a reaction, before its cause is sent.
     ///
     /// The order is the whole point. A debt written after the action would be
     /// lost by exactly the run that failed to pay it, which is the state

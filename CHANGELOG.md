@@ -276,6 +276,13 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A reaction is owed from before its cause is sent. The debt was written when the
+  reacting resource's own stage came, so a run that stopped in between — a machine
+  gone, a Ctrl-C — left the new file recorded and the restart forgotten, and the
+  next plan had nothing to say about it. A reacting resource that state does not
+  record yet is recorded from what was read, so that it can carry the debt. Found
+  by the review of RFC 0001.
+
 - A resource that is adopted or reordered rouses nothing. Both only write state,
   and both counted as changing, so on a first run over configured machines a
   service reacting to an adopted file would have been restarted for a file

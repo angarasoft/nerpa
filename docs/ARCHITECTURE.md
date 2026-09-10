@@ -377,8 +377,8 @@ destroys nothing. What makes it visible is the line naming the cause and the
 count in the summary.
 
 A reaction that was triggered and did not complete is **owed**. The debt is
-written into state before the action is attempted and gone once it succeeds, so
-the window between the two resolves toward reporting a debt that was in fact
+written into state before its cause is sent and gone once the reaction succeeds,
+so the window between the two resolves toward reporting a debt that was in fact
 paid: one redundant restart, against an outage nobody knows about. It outlives
 the process — a state file carries it — and the next plan says so with the
 reason:

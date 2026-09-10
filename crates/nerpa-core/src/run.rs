@@ -278,6 +278,7 @@ pub fn apply(
     let mut observed = known.clone();
     let mut changed = 0usize;
     let mut adopted = false;
+    let rousing = roused_by_each(plan);
 
     for stage in plan.stages() {
         for change in stage.changes() {
@@ -330,6 +331,22 @@ pub fn apply(
             // depends on it. Read in the same run, before anything was applied.
             let facts = observed.facts_of(address.target());
 
+            // ENFORCES: INV-REACT-002
+            // Owed before its cause is sent, not when the reaction's own stage
+            // comes. Written there, a debt was lost by exactly the run that
+            // stopped in between — a machine gone, a Ctrl-C, a failure in a
+            // stage between the two — which left a new file, an old process and
+            // nothing recording that fact: the state 0026 exists to make
+            // unreachable. The window between this write and the reaction
+            // resolves toward reporting a debt that was in fact paid: one
+            // redundant restart, against an outage nobody knows about.
+            if let Some(reactors) = rousing.get(address) {
+                for reactor in reactors {
+                    owe_before(state, reactor, address, &observed, secrets);
+                }
+                record(state).map_err(RunError::Record)?;
+            }
+
             if change.kind() == ChangeKind::Delete {
                 if let Some(record) = state.get(address) {
                     provider.delete(address, &record.locator(), change.premise(), facts, reach)?;
@@ -368,24 +385,12 @@ pub fn apply(
                 premise = &[];
             }
 
-            // ENFORCES: INV-STATE-005
-            // Before the action, not after. A debt written afterwards is lost
-            // by exactly the run that failed to pay it, which leaves a new file,
-            // an old process and nothing recording that fact — the state 0026
-            // exists to make unreachable. The window between this write and the
-            // record below resolves toward reporting a debt that was in fact
-            // paid: one redundant restart against an outage nobody knows about.
-            if !change.roused_by().is_empty() {
-                state.owe(address, change.roused_by());
-                record(state).map_err(RunError::Record)?;
-            }
-
             let attributes = settle(change, &observed, secrets)?;
             let result =
                 provider.apply(address, change.kind(), &attributes, premise, facts, reach)?;
 
-            // A fresh record owes nothing, which is how a debt written above is
-            // cleared: paid by having got this far.
+            // A fresh record owes nothing, which is how a debt written before
+            // its cause was sent is cleared: paid by having got this far.
             state.record(
                 address.clone(),
                 Record::new(recording(&result, change, secrets), dependencies(change)),
@@ -437,6 +442,55 @@ pub fn apply(
         "every change in the plan was carried out, or the run stopped"
     );
     Ok(Applied { observed, changed })
+}
+
+/// What each change in `plan` rouses, by cause, in plan order.
+///
+/// Built once, so that the debts a change leaves can be written before it is sent
+/// without looking through the rest of the plan for every change.
+fn roused_by_each(plan: &Plan) -> BTreeMap<&Address, Vec<&Change>> {
+    let mut rousing: BTreeMap<&Address, Vec<&Change>> = BTreeMap::new();
+    for later in plan.changes() {
+        for cause in later.roused_by() {
+            rousing.entry(cause).or_default().push(later);
+        }
+    }
+    rousing
+}
+
+/// Writes down that `reactor` owes a reaction to `cause`, before `cause` is sent.
+///
+/// A reacting resource state does not record yet — found as declared, and roused
+/// in the plan that would otherwise have adopted it — is recorded from what was
+/// read, so that the debt has somewhere to be written. One that is not there, or
+/// is about to be made again, owes nothing: whatever starts it reads the new file.
+fn owe_before(
+    state: &mut State,
+    reactor: &Change,
+    cause: &Address,
+    observed: &Observed,
+    secrets: Secrets<'_>,
+) {
+    let address = reactor.address();
+    if state.get(address).is_some() {
+        state.owe(address, std::slice::from_ref(cause));
+        return;
+    }
+    let found = match reactor.kind() {
+        ChangeKind::React | ChangeKind::Update => observed.get(address),
+        ChangeKind::Create
+        | ChangeKind::Replace
+        | ChangeKind::Delete
+        | ChangeKind::Adopt
+        | ChangeKind::Reorder => None,
+    };
+    if let Some(found) = found {
+        state.record(
+            address.clone(),
+            Record::new(recording(found, reactor, secrets), dependencies(reactor))
+                .owing(BTreeSet::from([cause.clone()])),
+        );
+    }
 }
 
 // ENFORCES: INV-PLAN-004

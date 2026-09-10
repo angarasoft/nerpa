@@ -10,8 +10,13 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use nerpa_core::Address;
 use nerpa_core::address::address;
 use nerpa_core::planner::plan;
+use nerpa_core::provider::{
+    Attributes, Machines, Provider, ProviderError, Providers, Reach, Read, Reading,
+};
+use nerpa_core::run::apply;
 use nerpa_core::schema::Schema;
 use nerpa_core::secret::{Key, Remembered, Secrets};
 use nerpa_core::state::{Record, State};
@@ -237,5 +242,183 @@ fn a_file_adopted_or_reordered_rouses_nothing() {
         reordered.blast_radius().reacts(),
         0,
         "nothing changed to react to: {reordered:?}"
+    );
+}
+
+/// Writes what it is given and reports it back, except for the one resource that
+/// stands for the run stopping: a machine gone, a Ctrl-C, anything that comes
+/// between a cause and the reaction to it.
+#[derive(Debug)]
+struct StopsAt(&'static str);
+
+impl Provider for StopsAt {
+    fn name(&self) -> &nerpa_core::Provider {
+        static NAME: std::sync::OnceLock<nerpa_core::Provider> = std::sync::OnceLock::new();
+        NAME.get_or_init(|| nerpa_core::Provider::new("os").unwrap())
+    }
+
+    fn schema(&self) -> Schema {
+        Schema::new()
+    }
+
+    fn read(
+        &self,
+        _batch: &[Reading],
+        _facts: nerpa_core::observed::Facts<'_>,
+        _reach: &dyn Reach,
+    ) -> Result<Read, ProviderError> {
+        Ok(Read::new())
+    }
+
+    fn apply(
+        &self,
+        address: &Address,
+        _kind: ChangeKind,
+        attributes: &Attributes,
+        _premise: &[nerpa_proto::Premise],
+        _facts: nerpa_core::observed::Facts<'_>,
+        _reach: &dyn Reach,
+    ) -> Result<Attributes, ProviderError> {
+        if address.to_string() == self.0 {
+            return Err(ProviderError::World {
+                address: address.clone(),
+                problem: "the machine went away".to_owned(),
+            });
+        }
+        Ok(attributes.clone())
+    }
+
+    fn delete(
+        &self,
+        _address: &Address,
+        _recorded: &Attributes,
+        _premise: &[nerpa_proto::Premise],
+        _facts: nerpa_core::observed::Facts<'_>,
+        _reach: &dyn Reach,
+    ) -> Result<(), ProviderError> {
+        Ok(())
+    }
+
+    fn fake() -> Self {
+        Self("")
+    }
+}
+
+/// Reaches nothing, because this provider never asks.
+#[derive(Debug)]
+struct Nowhere;
+
+impl Reach for Nowhere {
+    fn ask(&self, _ask: &nerpa_proto::Ask) -> Result<nerpa_proto::Answer, ProviderError> {
+        panic!("this provider does not speak to a machine")
+    }
+}
+
+/// What stands between the file and the service in the run that stops.
+const BLOCKER: &str = "os:file.blocker@web-01";
+
+/// Plans the file changing, something in the way, and the service after it;
+/// applies that, stopping at what is in the way; and plans again against the world
+/// the run left behind: the file written, and nothing after it.
+fn replanned_after_stopping_between(mut state: State) -> nerpa_core::Plan {
+    let mut graph = Graph::new();
+    graph.preexisting(nerpa_core::Target::new("web-01").unwrap());
+    graph
+        .insert(Resource::new(address(CONF)).with("content", "as it will be\n"))
+        .unwrap();
+    graph
+        .insert(
+            Resource::new(address(BLOCKER))
+                .with("content", "in the way\n")
+                .after(address(CONF)),
+        )
+        .unwrap();
+    graph
+        .insert(
+            Resource::new(address(SERVICE))
+                .with("name", "nginx")
+                .reacting_to(address(CONF))
+                .after(address(BLOCKER)),
+        )
+        .unwrap();
+
+    let (_, observed, _) = world("as it was\n");
+    let providers = Providers::new().with(Box::new(StopsAt(BLOCKER)));
+    let first = plan(&graph, &observed, &state, &Schema::new(), secrets()).expect("plannable");
+    assert_eq!(
+        first.stages().len(),
+        3,
+        "the file, what is in the way, the service: {first:?}"
+    );
+
+    let outcome = apply(
+        &first,
+        &providers,
+        &Machines::new().everywhere(Box::new(Nowhere)),
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |_: &State| Ok(()),
+    );
+    assert!(
+        outcome.is_err(),
+        "the run stopped before the service's stage"
+    );
+
+    let mut now = observed.clone();
+    now.record(
+        address(CONF),
+        [(
+            "content".to_owned(),
+            Value::Text("as it will be\n".to_owned()),
+        )]
+        .into_iter()
+        .collect(),
+    );
+    plan(&graph, &now, &state, &Schema::new(), secrets()).expect("plannable")
+}
+
+/// A reaction is owed from before its cause is sent, not from when its own stage
+/// comes. A run that stopped in between used to leave the new file recorded and
+/// the restart forgotten: the next plan found the file matching, nothing changing,
+/// and nothing owed. Found by the review of RFC 0001.
+#[test]
+fn a_run_that_stops_between_a_cause_and_its_reaction_leaves_the_reaction_owed() {
+    let (_, _, state) = world("as it was\n");
+    let next = replanned_after_stopping_between(state);
+
+    let service = next
+        .changes()
+        .find(|change| change.address() == &address(SERVICE))
+        .expect("the service is in the plan");
+    assert_eq!(service.kind(), ChangeKind::React, "{next:?}");
+    assert_eq!(
+        service.owed(),
+        [address(CONF)],
+        "owed since the run that stopped"
+    );
+}
+
+/// And a service that state does not record yet — found as declared, and roused
+/// in the plan that would otherwise have adopted it — is recorded from what was
+/// read, so that the debt has somewhere to be written.
+#[test]
+fn a_reactor_nothing_recorded_yet_is_owed_its_reaction_all_the_same() {
+    let mut state = State::new();
+    state.record(
+        address(CONF),
+        Record::new(BTreeMap::new(), BTreeSet::default()),
+    );
+    let next = replanned_after_stopping_between(state);
+
+    let service = next
+        .changes()
+        .find(|change| change.address() == &address(SERVICE))
+        .expect("the service is in the plan");
+    assert_eq!(service.kind(), ChangeKind::React, "{next:?}");
+    assert_eq!(
+        service.owed(),
+        [address(CONF)],
+        "owed since the run that stopped"
     );
 }

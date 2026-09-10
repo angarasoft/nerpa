@@ -2,6 +2,12 @@
 
 - Status: accepted
 - Date: 2026-09-05
+- Corrected: 2026-09-11 — "a debt has to be written down before the action is
+  attempted" was built as before the reaction, and a run that stopped between the
+  cause and the reaction lost the debt: found by the review of RFC 0001. It is
+  written before the cause is sent, once for each cause that rouses anything, and
+  a reacting resource that state does not record yet is recorded from what was
+  read so that it has somewhere to carry one.
 
 ## Context
 
