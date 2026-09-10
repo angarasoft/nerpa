@@ -159,7 +159,7 @@ Load-bearing rather than an optimisation, because the plan is single-pass.
 
 ## The executor and transports — [0010](decisions/0010-static-executor-pluggable-transport.md) · partly built
 
-A static Rust binary — 811 712 bytes, built for `x86_64-unknown-linux-musl` —
+A static Rust binary — 832 192 bytes, built for `x86_64-unknown-linux-musl` —
 speaking framed CBOR over stdin and stdout: four bytes of length, then the body.
 Every frame carries the protocol version it was written by, because an executor
 installed once outlives the engine that put it there, and an unknown version is
@@ -368,19 +368,26 @@ and the same identifier.
 
 ## Parallelism — [0031](decisions/0031-parallelism-is-threads-and-providers-are-sync.md) · partly built
 
-Reading fans out over a bounded pool of sixteen: the fact journey and the
-resource batches, one machine per thread, answers handed back in the order the
-work was built so that a plan does not reorder itself by which machine was
-quickest. Applying does not yet.
+Opening and reading fan out over a bounded pool of sixteen: opening each
+machine, the fact journey and the resource batches, one machine per thread,
+answers handed back in the order the work was built so that a plan does not
+reorder itself by which machine was quickest. Applying does not yet.
 
 Measured on a fleet of two, it is worth nothing, and why is the finding. A bare
 `ssh` behind an identity-aware proxy takes 5.07 s and behind a bastion 3.11 s;
 a whole run against those machines takes 5.06 s and 3.65 s. The conversation is
-half a second and the handshake is the rest — and `Piped` spawns its `ssh`
-without waiting on that handshake, so every machine is already shaking hands at
-once whether or not anything here is threaded. One at a time and sixteen at a
+half a second and the handshake is the rest — and `Piped` spawned its `ssh`
+without waiting on that handshake, so every machine was already shaking hands at
+once whether or not anything here was threaded. One at a time and sixteen at a
 time were the same wall clock, measured both ways on one fleet. What the pool is
 for is machines that work rather than wait, which is the apply half.
+
+That stopped being true when opening began asking each executor which build it
+is ([0040](decisions/0040-an-executor-says-which-build-it-is.md)): the question
+waits for the handshake, so machines opened one after another would pay for their
+handshakes one after another. Opening fans out for that reason. A plan across
+three machines — two behind the proxy, one behind the bastion — takes 5.81 s,
+where their handshakes alone add up to 13.25 s.
 
 Threads, not async. The workload is hundreds of conversations that spend their
 time waiting rather than tens of thousands, and `async` would colour the one
