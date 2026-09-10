@@ -268,13 +268,7 @@ fn one(change: &Change) -> String {
         // A file's contents on one escaped line defeat the reason they are
         // rendered before anything happens. Anything with a newline in it goes
         // underneath, as itself.
-        let blocks: Vec<(&str, &str)> = [
-            ("was", block_of(delta.before())),
-            ("becomes", after_block(delta)),
-        ]
-        .into_iter()
-        .filter_map(|(label, text)| text.map(|text| (label, text)))
-        .collect();
+        let blocks = underneath(block_of(delta.before()), after_block(delta));
 
         if blocks.is_empty() {
             let _ = writeln!(
@@ -298,28 +292,52 @@ fn one(change: &Change) -> String {
 /// reads.
 const SHOWN_LINES: usize = 40;
 
-/// The text of a value worth showing on its own lines, if it is one.
-fn multiline(value: Option<&Value>) -> Option<&str> {
+/// The text of a value, if it is text.
+fn text_of(value: Option<&Value>) -> Option<&str> {
     match value {
-        Some(Value::Text(text)) if text.contains('\n') => Some(text.as_str()),
+        Some(Value::Text(text)) => Some(text.as_str()),
         _ => None,
     }
 }
 
 fn block_of(before: Option<&Recorded>) -> Option<&str> {
-    multiline(before.and_then(Recorded::plain))
+    text_of(before.and_then(Recorded::plain))
 }
 
 fn after_block(delta: &nerpa_core::plan::AttributeDelta) -> Option<&str> {
     match delta.after() {
-        Confidence::Known(value) => multiline(Some(value)),
+        Confidence::Known(value) => text_of(Some(value)),
         _ => None,
     }
+}
+
+/// Which sides of a change are printed underneath, as themselves.
+///
+/// Both, as soon as either has a newline in it. Choosing side by side printed a
+/// one-line file that became a longer one — or that only gained its last
+/// newline — as the new text under nothing at all, and what was there is the
+/// half of a change somebody reading a plan needs.
+fn underneath<'a>(was: Option<&'a str>, becomes: Option<&'a str>) -> Vec<(&'static str, &'a str)> {
+    let sides = [("was", was), ("becomes", becomes)];
+    if !sides
+        .iter()
+        .any(|(_, text)| text.is_some_and(|text| text.contains('\n')))
+    {
+        return Vec::new();
+    }
+    sides
+        .into_iter()
+        .filter_map(|(label, text)| text.map(|text| (label, text)))
+        .collect()
 }
 
 /// A file's contents, indented, and cut off before they stop being readable.
 fn lines_of(text: &str) -> String {
     let mut out = String::new();
+    if text.is_empty() {
+        let _ = writeln!(out, "                   ↳ empty");
+        return out;
+    }
     let all: Vec<&str> = text.lines().collect();
     for line in all.iter().take(SHOWN_LINES) {
         let _ = writeln!(out, "                   │ {line}");
@@ -425,6 +443,31 @@ mod tests {
     /// The plan says which store a credential comes from, because that is what a
     /// person approving the change needs, and never what it is.
 
+    #[test]
+    fn a_one_line_file_that_changes_shows_what_it_was() {
+        let sides = super::underneath(Some("alpine managed"), Some("alpine managed\n"));
+        assert_eq!(
+            sides,
+            vec![("was", "alpine managed"), ("becomes", "alpine managed\n")],
+            "a file that only gains its last newline prints both sides"
+        );
+        let printed: String = sides
+            .iter()
+            .map(|(_, text)| super::lines_of(text))
+            .collect();
+        assert!(printed.contains("no newline at the end"), "{printed}");
+
+        assert_eq!(
+            super::underneath(Some("listen 80"), Some("listen 8080\nworkers 4\n")).len(),
+            2,
+            "what was there is shown although it was one line"
+        );
+        assert!(
+            super::underneath(Some("80"), Some("8080")).is_empty(),
+            "one line to one line stays on one line"
+        );
+        assert!(super::lines_of("").contains("empty"));
+    }
     #[test]
     fn a_file_that_differs_only_by_its_last_newline_does_not_print_the_same() {
         let without = super::lines_of("rtcsync\nmakestep 1.0 7");

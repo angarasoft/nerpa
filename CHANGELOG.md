@@ -282,8 +282,10 @@ without ceremony until the first stage is complete.
   template with nerpa and with Ansible, which keeps it: each rewrote the file after
   the other ran and restarted `chronyd`, under a plan whose `was` and `becomes`
   read the same. The plan now says when a file has no newline at the end, outside
-  the gutter so it cannot be read as a line of the file. Every file nerpa rendered
-  before this changes once, by one byte, on the next run.
+  the gutter so it cannot be read as a line of the file. It also shows what a file
+  was when that was one line: sides were chosen one at a time, so a one-line file
+  becoming a longer one printed as the new text under nothing at all. Every file
+  nerpa rendered before this changes once, by one byte, on the next run.
 
 - Every machine reached over `ssh` is asked which build its executor is before
   anything else, and one that names another build is left out and reported with
