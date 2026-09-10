@@ -276,6 +276,13 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- `os:package` installs and removes, shown on a real machine through an
+  identity-aware proxy with an installed executor under `sudo -n`: `app-misc/jq`
+  installed, read back off the machine rather than echoed, a second run empty,
+  the declaration removed and the package gone. `--oneshot` keeps it out of
+  portage's `world` set, so the declaration stays the only record of what was
+  asked for.
+
 - `become` without a named `executor` is refused when the fleet is read. Nerpa
   delivers its executor into the connecting user's own directory, so a sudoers
   rule naming that path grants that user root over the whole machine — they can

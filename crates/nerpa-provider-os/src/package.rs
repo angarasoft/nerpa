@@ -129,6 +129,11 @@ impl Family {
         // A version is written down or the declaration does not have one, and
         // "the newest there is" is refused by 0038 — so pinning is the ordinary
         // case rather than the exception, and each family spells it its own way.
+        //
+        // `--oneshot` on purpose: it keeps the package out of portage's `world`
+        // set, so the declaration stays the only record of what was asked for.
+        // Two records of the same thing drift, and the one nerpa does not write
+        // would drift silently.
         let (program, arguments) = match self {
             Self::Rhel => (
                 "dnf",
@@ -166,6 +171,18 @@ impl Family {
     }
 
     /// What to run to make it absent.
+    ///
+    /// Portage gets `--depclean`, which refuses to remove a package something
+    /// else still needs, and refuses one recorded in the `world` set. Neither
+    /// refusal is worked around: a package nerpa installed is never in `world`
+    /// (see `install`), so the only thing this cannot remove is one somebody
+    /// put there by hand — and `--deselect`ing it would edit a record nerpa does
+    /// not own. The read-back then reports that it is still installed, which is
+    /// the truth.
+    ///
+    /// `dnf remove` is the opposite and worse: it takes everything that depends
+    /// on the package with it, so a plan saying "remove one" can remove twelve.
+    /// That is `W-019` and is not solved here.
     pub(crate) fn remove(self, atom: &str) -> Operation {
         let (program, arguments) = match self {
             Self::Rhel => (

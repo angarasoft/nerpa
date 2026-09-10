@@ -437,8 +437,20 @@ that. Version comparison is asked of the machine, never implemented here: `rpm`,
 `portage` and `dpkg` disagree, and a comparator written on the control machine is
 what `W-010` describes.
 
-Reading is built and shown against both families. Installing and removing are
-written and not yet run against a machine anybody agreed to have changed.
+Installing and removing are built and shown on a real machine: `app-misc/jq`
+installed, read back, a second run empty, then the declaration removed and the
+package gone. The executor there is one root installed, per
+[0039](decisions/0039-a-privileged-executor-is-one-the-machine-already-had.md).
+
+`--oneshot` keeps a package out of portage's `world` set on purpose: the
+declaration is the only record of what was asked for, and a second record that
+nerpa does not write would drift without anybody seeing it. The cost is that a
+package somebody installed by hand cannot be removed by `--depclean`, and the
+read-back says so rather than pretending.
+
+What a plan cannot know is whether the version it names can be installed at all —
+on a machine taking only binary packages, the binhost holds what it holds. See
+`W-019` and `W-020`.
 
 ## Drift, and the rest from Portage — [0013](decisions/0013-borrow-from-portage.md) · partly built
 
