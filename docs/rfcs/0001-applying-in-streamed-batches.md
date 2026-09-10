@@ -1,31 +1,41 @@
 # RFC 0001. Applying in streamed batches, and an executor that replaces itself
 
-- Status: in review; findings logged in §9, revision pending decisions
+- Status: in review; revised after the first review (§9), second review pending
 - Date: 2026-09-11
-- Touches: 0006, 0010, 0011, 0020, 0026, 0031, 0032, 0033, 0034, 0040, 0041;
-  `INV-BATCH-001`, `INV-STATE-005`, `INV-PREMISE-001`, `INV-PREMISE-002`,
-  `INV-WIRE-001`, `INV-WIRE-003`; `W-009`, `W-014`, `W-015`, `W-022`
+- Revised: 2026-09-11
+- Touches: 0006, 0010, 0011, 0020, 0026, 0031, 0032, 0033, 0034, 0040, 0041,
+  0042, 0043; `INV-BATCH-001`, `INV-STATE-005`, `INV-REACH-002`, `INV-REACT-002`,
+  `INV-PREMISE-001`, `INV-PREMISE-002`, `INV-WIRE-001`, `INV-WIRE-003`; `W-009`,
+  `W-014`, `W-015`, `W-022`
 
 ## 1. Summary
 
 Applying costs one network exchange per change, one machine after another.
 Reading already costs one journey per machine.
 
-This RFC proposes the end state called D. Each stage of a plan is one
-conversation per machine, and machines run side by side. The executor reports
-every operation as it completes. The engine records each change as it hears of
-it. An executor that stops hearing from its engine stops between operations.
+This RFC proposes the end state called D. Each machine is one conversation for
+the whole run, and each stage is one batch in it. Machines run side by side. The
+executor reports every operation as it completes, and the engine records each
+change as it hears of it. What a batch is about to do is written down before it
+is sent. An executor that stops hearing from its engine stops at the next change
+boundary.
 
 It gets there in three steps, and each step leaves the tool correct:
 
 1. **Providers split into `prepare` and `conclude`, and machines apply in
-   parallel, still one `Perform` per change.** The protocol does not change and
-   nothing is reinstalled. `INV-STATE-005` is untouched.
-2. **The engine replaces an installed executor of another build through that
-   executor.** The protocol does not change. This refines 0040, which refuses
-   such a machine today.
-3. **Protocol 5: streamed batches, liveness in both directions, and stopping.**
-   Step 2 delivers it, so the manual install of 2026-09-11 is the last one.
+   parallel, still one `Perform` per change.** One recorder writes state, with
+   group commit and a shared stop flag; what is about to be sent is written down
+   first; what happens when something fails is chosen per run. The protocol does
+   not change and nothing is reinstalled.
+2. **The engine replaces an installed executor through that executor,** only
+   under `apply`, only where the fleet allows it, and only by a newer release
+   that nerpa itself verifies. The protocol does not change. **Not scheduled:**
+   it is designed here so that step 3 does not rule it out.
+3. **Protocol 5: streamed batches, liveness in both directions for the whole
+   conversation, and stopping at change boundaries.** Delivered by step 2 if it
+   exists by then, and by one more manual install if not.
+
+The first review's findings, and where each is answered, are in §9.
 
 ## 2. What was measured
 
@@ -115,24 +125,48 @@ policy gives a new file in `/usr/local/sbin` `bin_t` too. A file moved in from
   place. It is built for reading only; `ARCHITECTURE.md` says "Applying does not
   yet".
 - **0006:** stages order execution, so a batch never crosses a stage.
-- **0026:** a triggered reaction is recorded as owed before it is attempted.
+- **0026:** a triggered reaction is owed, and since `a8f55b6` the debt is written
+  before its cause is sent (`INV-REACT-002`).
 - **0034** and **0041:** a batch carries a sealed premise, and the executor checks
-  all of it before any operation.
+  it before any operation.
 - **0033:** the operation set is closed. Providers emit processes; authors never
   do.
 - **0040:** a machine is spoken to only by the executor build this nerpa carries.
 - **0010:** the executor is signed, and "the node checks the binary before
   replacing it". Signing is not built.
+- **0042** and **0043:** a resource found as declared is recorded without being
+  touched, and one whose edges changed is recorded again. So the next read
+  resolves most of what a run did not record: a written file is adopted and a
+  removed one is already gone.
 - **`INV-STATE-005`:** what a run has made is written down before it touches the
   next thing.
 - **`INV-BATCH-001`:** promises one journey for reading, and says nothing about
   applying.
+- **`INV-REACH-002`:** only a machine not answering lets a run continue.
+
+**Built since the review, and relied on below.** A change carries every edge it
+comes after (`85200af`), so the plan alone can say what depends on a change that
+failed. A change that sends nothing, an adoption or a reorder, is marked so
+(`ChangeKind::sends_anything`). A value too large for one operation is refused
+while planning (`1856bc3`), and so are two resources naming one thing on a
+machine (`7aed616`).
+
+**Decided by the owner after the review.**
+
+- What happens when something fails is **configurable**, because a fleet needs
+  both answers at different times (§5.6).
+- An installed executor is replaced only after **verification on the engine**
+  against a manifest nerpa carries, only with **explicit opt-in** in the fleet,
+  and never by an older build. Signing the manifest comes later (§5.10).
+- Executor replacement and packages that carry the executor are **not
+  scheduled** (`ROADMAP.md`).
 
 **Not decided, and what this RFC settles.**
 
 - What state knows when a batch is interrupted.
 - The provider contract for a batch.
 - How an executor learns that its engine is gone, and how a person stops a run.
+- What a failure does to the rest of a run.
 - How an installed executor is kept current, and what checks the replacement.
 - Limits on concurrency that the transports impose.
 
@@ -157,82 +191,125 @@ so nothing has to be killed to replace it.
 
 ### 5.1 The unit
 
-**One conversation per stage per machine.**
+**One conversation per machine for the run, and one batch per stage in it.**
 
+- A change that sends nothing, an adoption or a reorder, goes straight to the
+  recorder. No batch is sent for it.
 - A change whose resource is not on a machine (the control domain) runs one at a
-  time, as today, and is recorded after each.
-- So does a change whose provider asks for it (§5.2).
+  time, as today, and is recorded after each. It is never timed out.
+- A change its provider marks one at a time (§5.2) is sent and recorded before
+  its machine's batch for that stage is sent. A group comes before the user who
+  needs it.
+- **A change is never split.** Chunks (§5.9), stopping (§5.3) and record points
+  (§5.7) all fall between changes or at points a change declares.
 
 ### 5.2 Providers: `prepare` and `conclude`
 
 ```rust
+/// Everything a provider is told about one change, handed to both halves.
+pub struct Prepared<'a> {
+    pub address: &'a Address,
+    pub kind: ChangeKind,
+    /// Settled desired values; for a removal, what state recorded.
+    pub attributes: &'a Attributes,
+    pub facts: Facts<'a>,
+}
+
 trait Provider: Send + Sync {
     fn read(&self, batch: &[Reading], facts: Facts<'_>, reach: &dyn Reach)
         -> Result<Read, ProviderError>;                        // unchanged
 
-    /// The operations that make this change, and nothing else. No machine.
-    fn prepare(&self, change: &Prepared<'_>) -> Result<Vec<Operation>, ProviderError>;
+    /// The operations that make this change, for every kind that sends
+    /// anything, removal included. No machine.
+    fn prepare(&self, change: &Prepared<'_>) -> Result<Planned, ProviderError>;
 
-    /// What the change became, from what exactly its operations answered.
+    /// What the change became, from exactly its own operations' answers. A
+    /// removal concludes with nothing once it has read back that the thing is
+    /// gone.
     fn conclude(&self, change: &Prepared<'_>, became: &[Seen])
         -> Result<Attributes, ProviderError>;
 
-    /// The operations that remove what `recorded` describes.
-    fn prepare_removal(&self, address: &Address, recorded: &Attributes, facts: Facts<'_>)
-        -> Result<Vec<Operation>, ProviderError>;
-
-    /// Changes this provider makes that must be recorded one at a time: a
-    /// resource whose identity the machine mints when it is created.
-    fn one_at_a_time(&self, address: &Address) -> bool { false }
+    /// Whether this change is sent and recorded on its own: a resource whose
+    /// identity the machine mints, or work that has to branch.
+    fn one_at_a_time(&self, change: &Prepared<'_>) -> bool { false }
 
     fn fake() -> Self where Self: Sized;
+}
+
+/// The operations, and where inside them the change may be recorded part way:
+/// after the delete half of a replacement, for instance.
+pub struct Planned {
+    pub operations: Vec<Operation>,
+    pub record_points: Vec<usize>,
 }
 ```
 
 The rules:
 
 - **A provider never reaches a machine outside `read`.** The signatures enforce
-  it: neither `prepare` nor `conclude` is given a `Reach`.
+  it: neither half is given a `Reach`.
 - **One change's operations are contiguous.** `conclude` is handed exactly its
   own slice of the answer.
+- **Removal has both halves.** Today's `uninstall` checks that the package is
+  no longer installed; that check becomes its `conclude`.
 - **No branching inside a batch.** A provider that needs to decide on an
-  intermediate result splits the work across stages (`W-009`), or asks for
-  `one_at_a_time`.
+  intermediate result splits the work across stages (`W-009`), or asks for one at
+  a time.
 - **Operations are idempotent, or observed.** Re-running a batch whose outcome was
-  lost must converge: a file rewritten, a package already present, a service
-  already running. A provider emitting a process that is neither says
-  `one_at_a_time`.
+  lost must converge. This is tested rather than promised (§5.12).
+- **Facts are decoded in one helper,** not in each provider.
+
+**A stage is prepared whole before any of it is sent.** Secrets are fetched here.
+What a failure to prepare does depends on the failure policy (§5.6).
 
 The trait changes now because only one provider implements it: the `os`
 provider, plus the test fakes. That is the argument 0031 made for `Send + Sync`.
 
 ### 5.3 Protocol 5
 
-`Ask::Perform` keeps its shape. Its answer becomes a stream:
+`Ask::Perform` gains a sequence number and the index where each change begins.
+Its answer becomes a stream, and **every frame names the `Perform` it belongs
+to**:
 
 | Frame | Direction | When | Final |
 | --- | --- | --- | --- |
-| `Answer::Progress { at, became }` | executor → engine | after operation `at` | no |
-| `Answer::Working { at }` | executor → engine | every `H` seconds while operation `at` runs | no |
-| `Answer::Finished` | executor → engine | after the last operation | yes |
-| `Answer::Failed { at, problem }` | executor → engine | an operation failed | yes |
-| `Answer::Moved { at }` | executor → engine | a premise did not hold; nothing was done | yes |
-| `Answer::Stopped { at }` | executor → engine | stopped before operation `at` | yes |
-| `Ask::Alive` | engine → executor | every `E` seconds while a `Perform` runs | — |
-| `Ask::Stop` | engine → executor | a person or a failure elsewhere stops the run | — |
+| `Answer::Progress { seq, at, became }` | executor → engine | after operation `at` | no |
+| `Answer::Working { seq, at }` | executor → engine | every `H` seconds while operation `at` runs | no |
+| `Answer::Finished { seq }` | executor → engine | after the last operation | yes |
+| `Answer::Failed { seq, operation, problem }` | executor → engine | an operation failed | yes |
+| `Answer::Moved { seq, premise }` | executor → engine | a premise did not hold; nothing was done | yes |
+| `Answer::Stopped { seq, before_change, reason }` | executor → engine | stopped at a change boundary: asked, input ended, or the engine went quiet | yes |
+| `Ask::Alive` | engine → executor | every `E` seconds for the whole conversation | — |
+| `Ask::Stop { seq }` | engine → executor | stop at the next change boundary | — |
 
-**The executor stops between operations** when a `Stop` arrives, when its input
-ends, or when nothing at all has arrived from the engine for `L` seconds (`L` is
-several times `E`). It answers `Stopped` if it still can.
+Exactly one final frame answers each `Perform`. The engine validates the stream:
+sequence numbers match, `at` only rises and stays in range, nothing follows a
+final frame. A stray frame is a protocol error for that machine, not an answer
+for the next request.
 
-Every frame is stamped (`INV-WIRE-001`). A version 4 executor refuses a version 5
-frame by name, which is measured.
+**The executor stops at a change boundary** when a `Stop` arrives, when its input
+ends, or when nothing at all has arrived for `L` seconds. Liveness is timed from
+the last byte received, so a large `Perform` arriving slowly is not silence.
+
+**A frozen bootstrap.** `Ask::Build`, and the frames of the replacement sequence
+in §5.10, get an encoding that is decoded before the version stamp is enforced and
+never changes again. A version 5 engine can then ask any later executor which
+build it is, and replace it. `INV-WIRE-001` changes accordingly: a frame of
+another version is refused, except the bootstrap. The first executor installed
+after this carries it, whether step 2 or a manual install puts it there.
+
+**Opening.** A handshake is retried only before the first `Perform` of a
+conversation. A failed transport's exit status and standard error are kept for
+the report.
+
+Every other frame is stamped (`INV-WIRE-001`). A version 4 executor refuses a
+version 5 frame by name, which is measured.
 
 ### 5.4 The executor: three threads
 
 - **Reader.** Frames from stdin onto a channel. It notes the time of the last
-  frame, and whether input ended or a `Stop` arrived.
-- **Worker.** Carries out one `Perform`. Before each operation it checks the stop
+  byte, and whether input ended or a `Stop` arrived.
+- **Worker.** Carries out one `Perform`. Before each change it checks the stop
   flag and the liveness deadline.
 - **Writer.** The only thing that writes stdout. It serialises `Progress`,
   `Working` and the final frame, so a heartbeat can never interleave inside a
@@ -241,146 +318,267 @@ frame by name, which is measured.
 At most one `Perform` runs at a time. `Look` and `Build` are answered between
 batches.
 
+`Working` proves that the process is alive and the operation has not returned.
+It does not prove the operation is getting anywhere: a package manager waiting on
+a lock nobody will release still holds a run. `W-015` is not narrowed by this; a
+budget per operation is a separate decision.
+
 ### 5.5 The engine: running a stage
 
-1. **Group the stage's changes by machine.** Control-domain and `one_at_a_time`
-   changes go through the path of step 1.
-2. **Record owed reactions first.** For every change in a machine's batch that a
-   reaction rouses, record the debt (0026) before the batch is sent.
-3. **Send the batches.** Sealing (0041), chunking (§5.8) and a bounded pool of
-   machines, limited per route (§5.10).
-4. **Consume each stream on its machine's thread.** Forward
-   `(machine, change, became)` to the recorder when a change's last operation is
-   reported.
-5. **The recorder is the only writer of state (0031).** It calls `conclude`,
-   records, and writes with group commit (§5.6).
-6. **On the first failure anywhere,** start no new batch and send `Stop` to every
-   batch in flight. Wait a bounded time for final frames, then report every
-   failure, not only the first.
-7. **Ctrl-C once:** as in 6, then exit with a failure. **Ctrl-C twice:** exit
-   immediately.
+1. **Prepare the whole stage** (§5.2).
+2. **Group by machine.** Adoptions and reorders go to the recorder. Control-domain
+   and one-at-a-time changes go first, one at a time.
+3. **Write ahead** (§5.7), and owe every reaction a change in the batch will rouse
+   (`INV-REACT-002`, built).
+4. **Send the batches** over a bounded pool, limited per route (§5.11). Each
+   conversation has a writer thread that sends `Perform`, `Alive` and `Stop`, and a
+   reader thread that consumes the stream. `Reach::ask`, one answer under one
+   lock, cannot do this and is replaced by a conversation with separate send and
+   receive halves. The ask is borrowed when sealing, the answer body is consumed
+   rather than copied, and a digest is computed as a stream.
+5. **Readers forward** `(machine, change, became)` to the recorder when a change's
+   last operation, or a record point, is reported. A machine's threads never block
+   on the recorder.
+6. **The recorder is the only writer of state (0031).** It calls `conclude`,
+   records, and writes with group commit (§5.7).
+7. **On a failure,** the policy decides (§5.6).
+8. **Ctrl-C once:** the stop flag is set and every conversation is sent `Stop`;
+   each batch ends at a change boundary; the recorder writes what arrives; after a
+   bounded wait the run reports and exits with a failure. **Ctrl-C twice:** print
+   what is in flight on which machine, remove the state lock, and exit. What was
+   in flight is pending in state and resolved by the next read.
+9. **Transports run in their own process group,** so the terminal's Ctrl-C reaches
+   nerpa and not `ssh`, and there is still a pipe to send `Stop` down. Closing a
+   conversation waits a bounded time, then kills.
 
 nerpa has no signal handling today; the process dies on the first Ctrl-C.
 
-### 5.6 State and `INV-STATE-005`
+### 5.6 When something fails
 
-A change is recorded when the engine learns it completed.
+Two policies, chosen per run. The review asked for one of them (S-7); the owner
+decided both are needed.
+
+**`stop`, the default.** The first failure anywhere sets the stop flag. No batch
+starts, batches in flight are sent `Stop` and end at a change boundary, every
+failure is reported and the run exits with a failure. This is today's behaviour,
+made parallel.
+
+**`continue`.** A change that failed is refused, and so is everything that comes
+after it in the plan, followed transitively through `Change::depends_on`. The plan
+carries those edges already, so apply needs no graph. Everything else goes on, on
+that machine and on others. A machine that stops answering part way has its
+remaining changes refused, and their dependents on other machines with them. The
+run ends with every failure and every refusal named, with its cause, and exits
+with a failure.
+
+- **What counts as a failure:** `Failed`, `Moved`, a conversation lost, and a
+  refusal from `prepare` or `conclude`. Under `stop`, a failure to prepare sends
+  nothing in that stage. Under `continue`, it refuses that change and its
+  dependents, and the rest of the stage is sent.
+- **Always a stop, whatever the policy:** the state write fails, a contract is
+  violated, or a person presses Ctrl-C.
+- **Reactions.** A reacting resource comes after its cause, so it is refused when
+  its cause fails. Its debt was written before the cause was sent, so the next run
+  still rouses it: at most one redundant restart, the window 0026 accepts.
+- **Where it is set:** `[apply] on_failure = "stop"` or `"continue"` in the fleet
+  document, overridden by `nerpa apply --on-failure`. Not per group: a policy per
+  group has to say what stopping one group means for another in the same stage,
+  and nothing needs that yet.
+
+**Invariants.** `INV-REACH-002` keeps its wording and is scoped to planning. A new
+invariant holds for applying under both policies: **nothing that comes after a
+failed change is sent.** Under `stop`, also **nothing is sent after the stop flag
+is set.**
+
+**Risk, accepted:** `continue` leaves a fleet part changed on purpose. It is
+named in every refusal and in the exit status, and it is not the default.
+
+### 5.7 State: write ahead, then record
+
+**Write ahead.** Before a batch is sent, the recorder durably writes a pending
+entry for every change in it, in one write. The record for a change clears its
+entry.
+
+**Resolved by reading.** The next plan treats a pending address as in doubt and
+lets what it reads decide: found as declared, it is adopted (0042) or reordered
+(0043); found different, updated; not found, created again; a pending removal
+found gone, forgotten. The plan says which were in doubt and since when, so a
+person sees what the last run did not confirm.
 
 **Group commit.** While one durable write is in progress, completions queue up,
 and the next write carries all of them. This keeps the two `fsync`s per write
-(§2.1) from multiplying by the number of changes.
+(§2.1) from multiplying by the number of changes. A write costs the size of
+state: 14.8 ms a change at 1000 resources and 1.35 MB, against 16.0 ms at 100.
+A limit of scale rather than a defect here; the format at 10 000 resources and
+beyond gets a watchlist entry.
 
-**The invariant becomes:** "What a run has made is recorded as soon as the engine
-learns of it, and at most the operation in flight is unknown." Today's wording,
-"before it touches the next thing", assumed the engine does the touching. In a
-batch the executor does, and the honest bound is the operation in flight, not
-the change.
+**Record points.** A change may be recorded part way where `prepare` says so
+(§5.2), which is how the delete half of a replacement is recorded on its own
+today (`INV-STATE-005`'s attack in `replacing.rs`) without a second `Perform`.
 
-### 5.7 Premise
+**In step 1.** Machines in parallel already need one writer and a shared stop,
+so the recorder, the stop flag, group commit and pending entries arrive with step
+1, not step 3.
 
-The premise of a batch is the union of its changes' premises, sealed for the
-machine and checked before the first operation (0034, 0041). A replacement's
-create half no longer needs the empty premise it is given today, because the
-check runs before the delete.
+**The format** goes to version 5. A version 4 file is read as a state with
+nothing pending: one deliberate migration, where today any other version is
+refused.
 
-### 5.8 Size
+**`INV-STATE-005` becomes:** "What a run is about to send is written down before
+it is sent, and what it made is recorded as soon as the engine learns of it."
+Today's wording, "before it touches the next thing", assumed the engine does the
+touching.
+
+**The property.** A completed run leaves the same state whatever order machines
+finish in, `written` aside (0031's fixed order). An interrupted run leaves a
+subset of that state plus pending entries for the rest.
+
+### 5.8 Premise
+
+**Checked once per batch, before its first operation,** over the union of its
+changes' premises, sealed for the machine (0034, 0041).
+
+A later change whose premise an earlier change in the same batch moved has been
+moved by this run, not by anyone else. Installing a package that pulls in another
+changes the second one's reading, which is P-6's case. Two resources naming one
+thing are refused while planning (`INV-PLAN-008`), so what remains is side effect,
+and `conclude` reads back what each change became. The replacement path already
+reasons this way: the create half is not checked against a premise its own delete
+just moved.
+
+**Step 1** still sends one `Perform` per change, each with its own premise. P-6 is
+a defect there if it is real, and it is reproduced on the Gentoo test machine
+before step 1 decides whether to check a machine's premises once at the start of
+its stage.
+
+**Risk, bounded:** a change made by somebody else between the check and a later
+operation of the same batch is not detected. It is bounded by the length of the
+batch, and the next read sees it.
+
+### 5.9 Size
 
 A batch is split into chunks by encoded size (8 MiB) and by operation count
-(1000), both well under `MAX_FRAME`. Chunks run in order within one conversation.
-Changes in a stage are independent, so one chunk cannot invalidate the premise of
-the next.
+(1000), **only between changes**, well under `MAX_FRAME`. Chunks run in order in
+one conversation, and the premise is checked before the first. One operation's
+content is bounded while planning (`INV-PLAN-007`), so a change larger than a
+chunk is sent as a chunk of its own.
 
-### 5.9 Replacing an installed executor (step 2)
+### 5.10 Replacing an installed executor (step 2, not scheduled)
 
-When a machine answers `Build` with another digest, and the fleet names an
-installed executor at path `P`:
+**What nerpa carries.** A manifest compiled into it: the digest, architecture and
+protocol of the executor beside it; a build number that only rises from release
+to release; and the manifests of the earlier releases it knows. A development
+build has build number 0 and replaces nothing.
 
-1. **The plan shows it:** `[replace  ] executor@node  build X → Y`.
-2. **Beside, not over.** `Operation::File` writes `dir(P)/.nerpa-executor-<digest>.new`
-   with mode 0755. Same directory, so it gets the same SELinux label (§2.4); same
-   filesystem, so the rename is atomic.
-3. **Health check through the old executor.** `Operation::Process` runs the new
-   file with an encoded `Build` request on stdin, in the new file's own protocol
-   version. The old executor only pipes bytes. The output must decode to `Build`
-   with the carried digest. If it does not, the new file is removed, the machine
-   is refused as today, and the old binary was never touched.
-4. **Keep the previous, then switch.** `ln -f P P.previous`, then `mv -f new P`.
-   The switch is a rename, so there is never a moment without an executor at `P`.
-5. **Reconnect and ask `Build` again,** then carry on with the run.
+**When it happens.** All of these, or the machine is refused as 0040 refuses it
+today, naming both builds and the rule that refused:
 
-A delivered executor is named by its digest and is simply delivered anew.
+- the task is `apply`;
+- the fleet allows it for that machine: `replace_executor = true` on the node or
+  one of its groups;
+- the installed executor answers `Build` with a digest this nerpa's list names, at
+  a lower build number;
+- the file beside nerpa has the manifest's digest, and the machine's `arch` is
+  the manifest's.
 
-**Across a protocol version.** Step 3's engine speaks 5, and the machines it
-upgrades run 4. It keeps an encoder for version 4 `Perform` and `Build` frames
-only, enough for this sequence. An executor older than the previous version is
-refused with manual instructions.
+**Before reading, on its own.** A machine whose executor is not recognised is not
+read through it. Its plan holds one line, `[replace  ] executor@node  build 17 →
+18`, and nothing else; apply replaces the executor; that machine's own changes
+wait for the next run, which reads it with the new one.
 
-**Signing.** 0010 wants the node to check the binary before replacing it. The
-first replacement cannot: the checking code would have to be in the executor
-being replaced, which is version 4 and has none.
+**The sequence.**
 
-- **Unsigned in step 2.** It adds no capability: whoever controls the engine can
-  already run anything as root through the executor it replaces.
-- **Signed from step 3 on.** The version 5 executor carries a verifier
-  (`minisign-verify`, MIT, synchronous, no dependencies), so every later
-  replacement is checked by the binary being replaced. Key distribution is an
-  open question (§8).
+1. **Check where it goes.** `P` and every parent directory are owned by root and
+   writable by nobody else. That reading is the premise of the batch that
+   follows.
+2. **Beside, not over.** Create `dir(P)/.nerpa-executor-<digest>-<random>.new`
+   exclusively, mode 0755, and sync it. Same directory, so it gets the same
+   SELinux label (§2.4); same filesystem, so the rename is atomic.
+3. **Health check, with a timeout.** Through the old executor, run the new file
+   with a bootstrap `Build` request (§5.3). It must answer the carried digest.
+   Where the machine has labels, the new file's must match `P`'s.
+4. **Keep the previous, then switch.** `ln -nf -- P P.previous`, then
+   `mv -Tf -- new P`, then sync the directory.
+5. **Reconnect and ask `Build`.** If that fails, restore `P.previous` through the
+   conversation still open to the old executor, and refuse.
 
-### 5.10 Limits the transports impose
+The next replacement removes `.new` files a failed one left behind.
+
+**What the check proves:** the new binary starts, speaks the bootstrap, and is
+the build nerpa carries. Not that every operation works on that machine.
+
+**Risk, accepted:** replacement runs as root, and until signing lands the manifest
+is only as trustworthy as the nerpa binary holding it. A check on the machine
+would protect nothing a compromised engine cannot route around, which is why the
+check is on the engine. Signing the manifest, key distribution and revocation are
+open (§8).
+
+This refines 0040: another build is replaced rather than refused, when every rule
+above holds.
+
+### 5.11 Limits the transports impose
 
 | Limit | Value | Consequence | Response |
 | --- | --- | --- | --- |
-| OpenSSH `MaxStartups` on a shared bastion | `10:30:100` by default | More than 10 unauthenticated connections start being dropped at random. Today's fan-out of 16 through one jump host can exceed it, when reading as well | Concurrency limit per first hop, default 8. Retry pre-authentication drops with jittered backoff. Recommend `ControlMaster` on the jump hop so its authentication is shared |
+| OpenSSH `MaxStartups` on a shared bastion | `10:30:100` by default | More than 10 unauthenticated connections start being dropped at random. Today's fan-out of 16 through one jump host can exceed it, when reading as well | A limit per first hop inside the global one: default 8 per jump host or proxy, 16 in all, both set in the fleet's `[apply]` table. Retry pre-authentication drops with jittered backoff. Recommend `ControlMaster` on the jump hop so its authentication is shared. A simulated fleet measures the defaults |
 | OpenSSH `MaxSessions` | 10 per connection | Counts shell, login and subsystem sessions; forwarding channels are not named | Verify before relying on multiplexing through a jump host (§8) |
 | Teleport role `max_sessions` | 10 per SSH connection | nerpa opens one session per connection | None needed |
 | Teleport proxy `connection_limits.max_connections` | 1000 per client IP, per service | Far above this fleet | Name it in the operator guide |
 | One `ssh` process per machine | `W-014` | Memory and process count on the control machine | Unchanged; the pool bound is per route |
-| Durable state writes | 2 `fsync` per write, 7.6 ms each | Linear in the number of writes | Group commit (§5.6) |
+| Durable state writes | 2 `fsync` per write, 7.6 ms each; a write costs the size of state | Linear in the number of writes | Group commit (§5.7) |
 | Memory | chunk size × machines in flight | 8 MiB × 16 = 128 MiB worst case | Chunk size is the lever |
-
-### 5.11 Failure analysis
-
-| Event | Machine | Engine knows | State says | Next run |
-| --- | --- | --- | --- | --- |
-| A premise moved | Nothing done | `Moved { at }` | Unchanged | Re-plans |
-| An operation fails | Operations before it done | `Progress` up to it, `Failed { at }` | Up to the last reported change | Re-plans; the failed change is proposed again |
-| Ctrl-C once | Stops after the operation in flight | `Stopped { at }` from each machine | Everything reported | Continues where it stopped |
-| Engine killed, bastion route | Stops at the next operation once input ends (step 3); completes the batch today | Up to the last `Progress` | Up to the last recorded change | Reads the world. Machine resources are found by declared identity: a written file is adopted and a removed one is already gone. Measured before 0042: 3000 files laid down outside nerpa, with empty state, planned "nothing to do". They are planned as adoptions now, and recorded in one write |
-| Engine killed, Teleport route | Input does not end for up to about a minute (measured 13–69 s); stops when `Alive` is missed for `L` | Same | Same | Same |
-| Network partition | Stops when `Alive` is missed for `L` | `ServerAlive*` ends the conversation, and it is reported as unreachable | Up to the last recorded change | The machine is reported with the age of its data (0020) |
-| The executor crashes | The operation in flight is unknown | Connection failed | Up to the last recorded change | Reads the world |
-| The machine reboots mid-batch | Same | Same | Same | Same. An owed reaction is still owed (0026) |
-| The state write fails (disk full) | Batches in flight get `Stop` | Everything reported before the failure | The last successful write | A person fixes the disk; the next run reads the world |
-| Fetching a secret fails in `prepare` | No batch sent for that machine | A refusal before sending | Unchanged | As today |
-| The replacement fails its health check | Old executor untouched, new file removed | Refused, naming both builds | Unchanged | Refused until fixed |
-| The replacement passes, but fails on the next connection | `P.previous` is kept | Refused by `Build` | Unchanged | Manual restore from `P.previous`; named in the refusal |
-| Two engines on one machine at once | Two conversations | Each knows its own | The state-file lock protects the file, not the machine | Premises catch overlapping writes; no global lock (§8) |
 
 ### 5.12 Testing
 
 This is new policy for `docs/TESTING.md`: the suite has property and adversarial
 tests, and no fault injection.
 
-- **An in-memory transport that misbehaves on command:** ends after operation N,
-  delays frames, drops `Alive`, answers `Stopped`. The engine is tested against
-  every row of §5.11 it can reach without a machine.
-- **The real executor behind a pipe,** with input closed mid-batch, no `Alive`
-  for `L`, and `Stop` between operations. Each must stop between operations and
-  answer what it can.
+- **An in-memory executor that interprets operations,** with files in a map and
+  processes answered from a script. Every provider gets a replay test: a batch
+  applied twice converges, which is what "idempotent, or observed" means.
+- **A transport that misbehaves on command:** ends after operation N, delays
+  frames, drops `Alive`, sends a stray or duplicate frame, answers `Stopped`. The
+  engine is tested against every row of §5.13 it can reach without a machine.
+- **The real executor behind a pipe,** with input closed mid-batch, no `Alive` for
+  `L`, and `Stop` mid-change. Each must stop at a change boundary and answer what
+  it can.
 - **A recorder property:** any order in which completions from several machines
-  arrive yields the same state file and the same report (0031's fixed order).
-- **Self-update:** the health check refuses a binary for another architecture and
-  one of another build; the switch is a rename; the label check on Rocky.
-- **The live harness** used for §2.3, run on all three routes, as part of the exit
+  arrive yields the same state for a completed run, and a subset plus pending
+  entries for an interrupted one.
+- **A failure-policy property:** under `continue`, nothing after a refused change
+  is sent; under `stop`, nothing is sent after the flag.
+- **Replacement:** refuses another architecture, an older or unknown build, a
+  development build, a machine without opt-in, and `plan`; the switch is a rename;
+  restoring works; the label check runs on Rocky.
+- **The live harness** used for §2.3, on all three routes, as part of the exit
   check for step 3.
 
-### 5.13 Migration
+### 5.13 Failure analysis
+
+| Event | Machine | Engine knows | State says | Next run |
+| --- | --- | --- | --- | --- |
+| A premise moved | Nothing of that batch done | `Moved { seq, premise }` | Pending for the batch | `stop`: the run stops. `continue`: the batch's changes and their dependents are refused. Either way the next plan reads and resolves |
+| An operation fails | Operations before it done | `Progress` up to it, `Failed` | Up to the last reported change; pending for the rest | Pending entries resolved by reading; the failed change is proposed again |
+| Ctrl-C once | Stops at a change boundary | `Stopped` from each machine | Everything reported; pending for the rest | Continues where it stopped |
+| Ctrl-C twice | Stops when input ends or `Alive` is missed | What was in flight, printed | The last write, with pending entries; the lock removed | Resolved by reading |
+| Engine killed, bastion route | Stops at the next change boundary once input ends (step 3); completes the batch today | Up to the last `Progress` | Up to the last recorded change; pending for the rest | Reads the world. A written file is adopted, a removed one is already gone (0042); measured before 0042, 3000 files laid down outside nerpa planned "nothing to do", and they are planned as adoptions now |
+| Engine killed, Teleport route | Input does not end for about a minute (measured 59 s); stops when `Alive` is missed for `L` | Same | Same | Same |
+| Network partition | Stops when `Alive` is missed for `L` | `ServerAlive*` ends the conversation, and it is reported as unreachable | Up to the last recorded change; pending for the rest | The policy decides the rest of this run; the machine is reported with the age of its data (0020) |
+| The executor crashes | The operation in flight is unknown | Conversation lost | Same | Reads the world |
+| The machine reboots mid-batch | Same, and a write the executor never synced may be lost | Same | May record a write the machine lost | The next read sees the difference and proposes it again. An owed reaction is still owed (0026) |
+| The state write fails (disk full) | Batches in flight get `Stop` | Everything reported before the failure | The last successful write | Always a stop. A person fixes the disk; the next run reads the world |
+| `prepare` fails, a secret included | Nothing of that stage sent (`stop`), or the rest of it sent (`continue`) | A refusal before action | Unchanged | As today |
+| The replacement fails its health check | Old executor untouched, new file removed | Refused, naming both builds | Unchanged | Refused until fixed |
+| The replacement passes, but the next connection fails | `P.previous` restored through the old conversation | Refused by `Build` | Unchanged | Refused, naming what failed |
+| Two engines on one machine at once | Two conversations | Each knows its own | The state-file lock protects the file, not the machine | Premises catch overlapping writes; no global lock (§8) |
+
+### 5.14 Migration
 
 | Step | Changes | Protocol | Reinstall | Invariants |
 | --- | --- | --- | --- | --- |
-| 1 | `prepare`/`conclude`; machines in parallel with a `Perform` per change; per-route concurrency limit; handshake retry | 4 | No | `INV-STATE-005` unchanged; `INV-BATCH-001` extended to name applying |
-| 2 | Replace an installed executor through itself; health check; `P.previous` | 4 | No | 0040 refined: another build is replaced, not refused, when the path is known |
-| 3 | Streamed batches, `Alive`/`Stop`, the three-thread executor, group commit, Ctrl-C, the signature verifier | 5 | Delivered by step 2 | `INV-STATE-005` reworded (§5.6); `W-015` narrowed |
+| 1 | `prepare`/`conclude` for every kind; machines in parallel with a `Perform` per change; the recorder, stop flag, group commit and pending entries (state format 5); the failure policy; limits per route; process groups and Ctrl-C; handshake retry before the first `Perform` | 4 | No | `INV-STATE-005` reworded (§5.7); `INV-BATCH-001` extended to name applying; `INV-REACH-002` scoped to planning; a new invariant for applying (§5.6) |
+| 2, not scheduled | Replacement through the installed executor, verified on the engine, opt-in; the bootstrap `Build` | 4, and the bootstrap | No | 0040 refined; `INV-WIRE-001` excepts the bootstrap |
+| 3 | Streamed batches with sequence numbers; `Alive` for the whole conversation; `Stop` at change boundaries; the three-thread executor; the premise once per batch; a digest rather than the content when reading back a large file | 5 | By step 2 if it exists, otherwise by hand | `W-015` unchanged (§5.4) |
 
 ## 6. Alternatives
 
@@ -393,17 +591,34 @@ tests, and no fault injection.
   later protocol change costs another until step 2 exists.
 - **A resident agent,** a daemon on each machine. It would make liveness and
   progress easy, and it is exactly what 0010 and 0032 chose not to be.
+- **Recovery by reading alone, without pending entries.** Since 0042 the next read
+  resolves most of what a lost completion leaves. Not chosen: it cannot tell a
+  person what the last run left unconfirmed, and a resource whose identity the
+  machine mints is not found by its declaration.
+- **One failure policy for everyone.** Not chosen, by the owner's decision.
+- **Checking a replacement on the machine,** as 0010 words it. Not chosen now: the
+  first replacement cannot, and a check a compromised engine can route around
+  protects nothing.
 
 ## 7. What this costs
 
 - **The provider trait changes.** Today that means the `os` provider and the test
   fakes; later it is paid by every provider author, which is why it happens now.
 - **The executor becomes threaded,** and so do the ways it can deadlock.
-- **The engine gains signal handling, a recorder thread and a streaming reader.**
-- **The wire grows by six frames,** and one previous protocol version is carried
-  for upgrades.
-- **A replacement runs as root, with no signature on the first one.**
-- **A person reading a plan sees a new kind of change:** replacing the executor.
+- **The engine gains signal handling, a recorder thread, and two threads per
+  conversation.** `Reach::ask` goes, and every transport implements a
+  conversation instead.
+- **State format 5,** and one more durable write per batch for its pending
+  entries.
+- **The wire grows** by six frames, sequence numbers and a bootstrap encoding that
+  can never change.
+- **A failure policy is a setting,** and one of its values leaves a fleet part
+  changed on purpose.
+- **A replacement runs as root, unsigned** until signing lands. Every release has
+  to carry the manifests of the releases before it, and a development build never
+  replaces anything.
+- **A person reading a plan sees new lines:** replacing the executor, and what the
+  last run left in doubt.
 
 ## 8. Open questions
 
@@ -415,12 +630,17 @@ tests, and no fault injection.
    a partition must not keep root processes alive for long.
 3. **Multiplexing through a jump host.** Is `MaxSessions` counted for forwarding
    channels?
-4. **The signing key:** where it lives, and how the version 5 executor learns the
-   public key. Built in, or in a file root installs?
+4. **Signing the manifest:** where the key lives, how nerpa verifies it, and how a
+   key is revoked.
 5. **Two engines against one machine.** Is a per-machine lock worth having, and
    where would it live?
-6. **Rolling out a change to part of a stage first** (`serial`, canaries). Out of
+6. **When the executor syncs what it writes:** per operation, per change or per
+   batch, measured on the targets.
+7. **P-6 on a machine.** Reproduce it on the Gentoo test machine, then decide
+   whether step 1 checks a machine's premises once at the start of its stage.
+8. **Rolling out a change to part of a stage first** (`serial`, canaries). Out of
    scope; it deserves its own RFC.
+9. **A failure policy per group.** Not proposed; revisited when a fleet needs it.
 
 ## 9. Review log
 
@@ -545,3 +765,57 @@ read, so the state format did not change.
 | C-5 | major | D | One failed `prepare` blocks its siblings | Changed from the reviewer's proposal: prepare every change of a stage before sending anything, and if any fails, send nothing in that stage and report them all, as a refusal before action |
 | C-6 | minor | D | Idempotency is not enforced | A shared in-memory executor that interprets operations, and a replay test per provider |
 | C-7 | nit | D | Facts are decoded in three places | A helper |
+
+### Revision 1, 2026-09-11
+
+What changed after the first review, finding by finding. "Fixed" points to the
+defects above; everything else points to where the design answers it.
+
+| Findings | Answered in | How |
+| --- | --- | --- |
+| P-1 | §5.5 | Transports in their own process group; a bounded wait, then kill |
+| P-2 | §5.5 | A conversation with separate send and receive halves replaces `Reach::ask`; `Alive` comes from the writer |
+| P-3, X-8 | §5.3 | Sequence numbers, one final frame per `Perform`, and a validated stream; answers are counted today (`37ae618`) |
+| P-4 | §5.7 | Superseded by writing ahead |
+| P-5, S-5 | §5.2, §5.7 | Record points declared by `prepare` |
+| P-6 | §5.8, §8 | The premise is checked once per batch, with the reasoning; the defect in step 1 is reproduced before anything is decided |
+| P-7 | §5.3, §5.4 | `Alive` for the whole conversation; `Stopped` carries a reason; liveness timed from the last byte |
+| P-8 | §5.4 | Said; `W-015` is not narrowed |
+| P-9 | §2.3 | Measured again |
+| P-10, X-9 | §5.3 | A frozen bootstrap for `Build` and replacement, carried by the next executor installed however it gets there |
+| P-11 | §5.3 | `Moved` names a premise and `Failed` an operation |
+| P-12 | Defects | Fixed |
+| P-13, S-6 | §5.7, §5.14 | The recorder, stop flag and group commit move into step 1 |
+| P-14 | §5.3 | Retry only before the first `Perform`; exit status and standard error kept |
+| S-1 | §5.7 | Pending entries written before a batch is sent and resolved by the next read; `INV-STATE-005` reworded; recovery by reading alone is logged as the alternative (§6) |
+| S-2 | Defects | Fixed; adoption is recovery again |
+| S-3 | §5.1, §5.8 | Duplicate identity refused (`7aed616`); a change is never split; the premise is checked once per batch rather than per change, with the reasoning |
+| S-4 | Defects | Fixed |
+| S-7 | §5.6 | Owner's decision: `stop` by default, `continue` on request, dependents found through the edges the plan carries |
+| S-8 | §5.1, §5.5 | Control-domain changes are never timed out; the second Ctrl-C prints what is in flight and removes the lock |
+| S-9, X-5 | §5.10 | Replacement is a plan of its own before reading; that machine's changes wait for the next run |
+| S-10 | §5.7, §5.12 | The property for completed runs and for interrupted ones |
+| S-11 | Throughout | Taken |
+| X-1, X-2 | §5.10 | Owner's decision: a manifest verified on the engine, opt-in per machine, never a downgrade; signing later |
+| X-3 | §5.10 | The fleet's path is fixed (`e2ca0f8`); parents checked, an exclusive `.new`, `ln -nf --` and `mv -Tf --` |
+| X-4 | §5.10 | A unique name, a premise on `P`, a sync before the rename, and restoring through the old conversation |
+| X-6 | §5.10 | A timeout, labels compared, restoring, and what the check proves |
+| X-7 | §5.1, §5.3 | Stopping only at change boundaries |
+| X-10 | Defects | Fixed |
+| B-1 | §5.7 | The cost of a write is stated; a watchlist entry for the format at scale |
+| B-2, B-9 | §2.1 | Measured; taken |
+| B-3 | §5.5 | Borrowed when sealing, a consumed answer body, a streamed digest |
+| B-4 | Defects | Fixed |
+| B-5 | §5.11 | A limit per first hop inside the global one, configurable, with a simulated fleet |
+| B-6 | §5.13, §8 | The reboot row says what is lost; when to sync is open |
+| B-7 | §5.14 | A digest rather than the content when reading back a large file, in step 3 |
+| B-8 | §5.5 | A machine's threads never block on the recorder |
+| C-1, C-2, C-3 | §5.2 | `prepare` and `conclude` for every kind, removal included; `Prepared`; `one_at_a_time` takes it |
+| C-4 | §5.1 | One-at-a-time changes before the machine's batch |
+| C-5 | §5.2, §5.6 | A stage is prepared whole first; the policy decides what a failure to prepare does |
+| C-6 | §5.12 | An in-memory executor and a replay test per provider |
+| C-7 | §5.2 | One helper |
+
+Also new since the review, and folded in: an adoption or a reorder sends nothing
+and goes straight to the recorder (§5.1), and a debt is written before its cause
+is sent (§5.5). A second review is pending.
