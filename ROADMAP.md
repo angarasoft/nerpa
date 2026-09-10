@@ -53,11 +53,23 @@ here at all:
 a special case; that batching beats a round trip per task by enough to matter; and
 that a configuration file can be written, rendered and acted on end to end.
 
-**Exit:** a templated configuration file converges on three to five live Gentoo
-nodes through Teleport, twice, with the second run empty, and changing it restarts
-the service that reads it. The plan shows the file's contents before anything
-happens. A node taken offline produces a plan that says so and names the age of
-its data. Wall-clock time is recorded against the equivalent Ansible playbook.
+**Exit:** a templated configuration file converges on three to five live nodes —
+across at least two distribution families and both init systems, at least one of
+them reached through a proxy that carries an identity — twice, with the second run
+empty, and changing it restarts the service that reads it. The plan shows the
+file's contents before anything happens. A node taken offline produces a plan that
+says so and names the age of its data. Wall-clock time is recorded against the
+equivalent Ansible playbook.
+
+This clause used to read "three to five live Gentoo nodes through Teleport", and
+it was changed on 2026-09-10 rather than quietly met. Three Gentoo nodes would
+demonstrate one package manager and — as it turned out, since Gentoo ships both
+init systems — one of those too. The version above demonstrates two of each, which
+is more, and it is what the two real defects of that week required: quoting in
+`/etc/os-release` was found by the second distribution and nothing else, and
+`systemctl is-active` reporting an absent service as merely stopped was found by
+the second init system and nothing else. Moving an exit criterion is moving a
+goalpost, so it is recorded here with what it cost and what it bought.
 
 ## Stage 2 — what cannot be changed later
 
