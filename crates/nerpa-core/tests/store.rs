@@ -93,7 +93,10 @@ fn the_file_is_readable_by_a_person() {
     store::save(&scratch.file(), &populated(), &DIGEST_KEY).expect("writes");
 
     let text = fs::read_to_string(scratch.file()).expect("written");
-    assert!(text.contains("\"version\": 3"), "{text}");
+    assert!(
+        text.contains(&format!("\"version\": {}", store::FORMAT_VERSION)),
+        "{text}"
+    );
     assert!(
         text.contains("\"os:file.motd@web-01\""),
         "addresses are text: {text}"
@@ -141,7 +144,7 @@ fn an_address_the_model_refuses_is_refused_on_the_way_in_too() {
     let scratch = Scratch::new("address");
     fs::write(
         scratch.file(),
-        r#"{"version": 3, "digest_key": "0707070707070707070707070707070707070707070707070707070707070707", "resources": {"not-an-address": {"attributes": {}, "depends_on": [], "written": 0}}}"#,
+        r#"{"version": 4, "digest_key": "0707070707070707070707070707070707070707070707070707070707070707", "resources": {"not-an-address": {"attributes": {}, "depends_on": [], "written": 0}}}"#,
     )
     .expect("written");
 

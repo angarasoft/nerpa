@@ -155,6 +155,13 @@ pub fn plan_at(
                 .cloned()
                 .collect();
 
+            // A reaction an earlier run began and did not finish is owed, and
+            // stays owed until it is paid. See decision 0026.
+            let owed: Vec<Address> = state
+                .get(address)
+                .map(|record| record.owed().iter().cloned().collect())
+                .unwrap_or_default();
+
             if let Some(change) = change_for(
                 resource,
                 observed,
@@ -162,6 +169,7 @@ pub fn plan_at(
                 secrets,
                 &mut outdated,
                 roused_by,
+                owed,
             )? {
                 changing.insert(address.clone());
                 changes.push(change);
@@ -219,6 +227,7 @@ fn removals(graph: &Graph, state: &State) -> Vec<PlanStage> {
                         Vec::new(),
                         Vec::new(),
                         Vec::new(),
+                        Vec::new(),
                     )
                 })
                 .collect();
@@ -235,6 +244,7 @@ fn change_for(
     secrets: Secrets<'_>,
     outdated: &mut Vec<Outdated>,
     roused_by: Vec<Address>,
+    owed: Vec<Address>,
 ) -> Result<Option<Change>, PlanError> {
     let address = resource.address();
     let existing = observed.get(address);
@@ -290,18 +300,24 @@ fn change_for(
             desired,
             Vec::new(),
             roused_by,
+            owed,
         )),
         // It matches its declaration, and something it reacts to does not — so
         // it has to act anyway. The desired values go with it because the
         // provider still needs to be told which service this is.
-        Some(_) if deltas.is_empty() && !roused_by.is_empty() => Some(Change::new(
-            address.clone(),
-            ChangeKind::React,
-            Vec::new(),
-            desired,
-            observed.premise(address).to_vec(),
-            roused_by,
-        )),
+        // It matches its declaration, and either something it reacts to does not
+        // or an earlier run left a reaction unpaid.
+        Some(_) if deltas.is_empty() && !(roused_by.is_empty() && owed.is_empty()) => {
+            Some(Change::new(
+                address.clone(),
+                ChangeKind::React,
+                Vec::new(),
+                desired,
+                observed.premise(address).to_vec(),
+                roused_by,
+                owed,
+            ))
+        }
         Some(_) if deltas.is_empty() => None,
         Some(_) => {
             let kind = if deltas.iter().any(AttributeDelta::forces_replacement) {
@@ -316,6 +332,7 @@ fn change_for(
                 desired,
                 observed.premise(address).to_vec(),
                 roused_by,
+                owed,
             ))
         }
     })

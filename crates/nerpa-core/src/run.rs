@@ -275,10 +275,24 @@ pub fn apply(
                 premise = &[];
             }
 
+            // ENFORCES: INV-STATE-005
+            // Before the action, not after. A debt written afterwards is lost
+            // by exactly the run that failed to pay it, which leaves a new file,
+            // an old process and nothing recording that fact — the state 0026
+            // exists to make unreachable. The window between this write and the
+            // record below resolves toward reporting a debt that was in fact
+            // paid: one redundant restart against an outage nobody knows about.
+            if !change.roused_by().is_empty() {
+                state.owe(address, change.roused_by());
+                record(state).map_err(RunError::Record)?;
+            }
+
             let attributes = settle(change, &observed, secrets)?;
             let result =
                 provider.apply(address, change.kind(), &attributes, premise, facts, reach)?;
 
+            // A fresh record owes nothing, which is how a debt written above is
+            // cleared: paid by having got this far.
             state.record(
                 address.clone(),
                 Record::new(recording(&result, change, secrets), dependencies(change)),

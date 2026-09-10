@@ -276,6 +276,16 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A reaction that was triggered and did not complete is owed, and the next plan
+  says so with the reason. The debt is written before the action is attempted
+  and cleared by having got past it, so the window resolves toward reporting a
+  debt that was in fact paid — one redundant restart against an outage nobody
+  knows about. It survives the state file, which is the whole of being a debt.
+  Shown end to end: a run that could not write the file left `owed`, the next
+  plan raised it although nothing had changed, and paying it cleared it. The
+  state format is version 4, and an older nerpa refuses a newer file rather than
+  dropping a debt it does not understand.
+
 - `os:package` installs and removes, shown on a real machine through an
   identity-aware proxy with an installed executor under `sudo -n`: `app-misc/jq`
   installed, read back off the machine rather than echoed, a second run empty,

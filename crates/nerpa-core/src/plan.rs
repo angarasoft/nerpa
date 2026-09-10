@@ -171,6 +171,13 @@ pub struct Change {
     /// and the provider still has to be told why it is being asked.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     roused_by: Vec<Address>,
+    /// What roused it in an earlier run that did not finish paying.
+    ///
+    /// Separate from `roused_by` because they are different facts and a reader
+    /// is owed the difference: one says a file is changing now, the other says
+    /// a restart was owed since a run that stopped. See decision 0026.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    owed: Vec<Address>,
 }
 
 impl Change {
@@ -181,6 +188,7 @@ impl Change {
         desired: Vec<(String, Confidence)>,
         premise: Vec<nerpa_proto::Premise>,
         roused_by: Vec<Address>,
+        owed: Vec<Address>,
     ) -> Self {
         Self {
             address,
@@ -189,7 +197,14 @@ impl Change {
             desired,
             premise,
             roused_by,
+            owed,
         }
+    }
+
+    /// What roused it in an earlier run that did not finish paying.
+    #[must_use]
+    pub fn owed(&self) -> &[Address] {
+        &self.owed
     }
 
     /// What changed that this resource reacts to, in a stable order.
@@ -687,6 +702,13 @@ fn encode_stage(stage: &PlanStage, out: &mut Vec<u8>) {
         // of them is approving the reason as well as the act.
         out.extend_from_slice(&value::length(change.roused_by().len()));
         for cause in change.roused_by() {
+            value::text(&cause.to_string(), out);
+        }
+
+        // A debt carried in is part of what this plan intends to do, and a plan
+        // paying one is not the same plan as one that has nothing owed.
+        out.extend_from_slice(&value::length(change.owed().len()));
+        for cause in change.owed() {
             value::text(&cause.to_string(), out);
         }
 

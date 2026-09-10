@@ -239,6 +239,17 @@ fn one(change: &Change) -> String {
         let _ = writeln!(out, "               ↺ because {cause} changes");
     }
 
+    // Said differently, because it is a different fact. A restart owed since a
+    // run that stopped is not the same news as one a file is causing now, and
+    // the reader who is about to be woken deserves to know which. See 0026.
+    for cause in change.owed() {
+        let _ = writeln!(
+            out,
+            "               ↺ owed since an earlier run: {cause} changed and this \
+             did not follow"
+        );
+    }
+
     for delta in change.deltas() {
         let before = delta
             .before()

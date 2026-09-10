@@ -15,6 +15,7 @@ use nerpa_core::planner::plan;
 use nerpa_core::schema::Schema;
 use nerpa_core::secret::{Key, Remembered, Secrets};
 use nerpa_core::state::{Record, State};
+use nerpa_core::store;
 use nerpa_core::{ChangeKind, Graph, Observed, Resource, Value};
 
 static DIGEST_KEY: Key = Key::from_bytes([9; 32]);
@@ -123,4 +124,82 @@ fn a_reaction_comes_after_the_thing_that_caused_it() {
 fn a_service_is_not_roused_when_nothing_it_reacts_to_changed() {
     let plan = planned("as it was\n");
     assert!(plan.is_empty(), "nothing to do: {plan:?}");
+}
+
+/// The property no predecessor has, and the half that makes the rest worth
+/// having: a reaction that was triggered and did not complete is written down,
+/// and the next plan says so.
+///
+/// Ansible runs handlers at the end of a play, so a failure between the write
+/// and the end skips them and leaves a new file, an old process, and nothing
+/// recording that fact. `--force-handlers` changes when they run rather than
+/// whether the debt is remembered.
+#[test]
+fn a_reaction_that_did_not_finish_is_owed_and_the_next_plan_says_so() {
+    let (graph, observed, mut state) = world("as it was\n");
+
+    // A run that got as far as writing the debt down and no further.
+    state.owe(&address(SERVICE), &[address(CONF)]);
+
+    let plan = plan(&graph, &observed, &state, &Schema::new(), secrets()).expect("plannable");
+    let roused: Vec<_> = plan
+        .stages()
+        .iter()
+        .flat_map(nerpa_core::PlanStage::changes)
+        .filter(|change| change.kind() == ChangeKind::React)
+        .collect();
+
+    assert_eq!(
+        roused.len(),
+        1,
+        "the service is roused even though nothing changed this time: {plan:?}"
+    );
+    assert_eq!(roused[0].owed(), [address(CONF)], "and the plan says why");
+    assert!(
+        roused[0].roused_by().is_empty(),
+        "which is a different fact from a file changing now"
+    );
+}
+
+/// And a debt that was paid does not come back. State keeps a record per
+/// resource, and a fresh one owes nothing — which is how paying works.
+#[test]
+fn a_reaction_that_finished_leaves_nothing_owed() {
+    let (graph, observed, mut state) = world("as it was\n");
+    state.owe(&address(SERVICE), &[address(CONF)]);
+
+    // What `apply` writes once the reaction has been acted on.
+    state.record(
+        address(SERVICE),
+        Record::new(BTreeMap::new(), BTreeSet::default()),
+    );
+
+    let plan = plan(&graph, &observed, &state, &Schema::new(), secrets()).expect("plannable");
+    assert!(plan.is_empty(), "nothing is owed any more: {plan:?}");
+}
+
+/// A debt outlives the process that could not pay it, or it is not a debt.
+#[test]
+fn a_debt_survives_the_state_file() {
+    let scratch = std::env::temp_dir().join(format!("nerpa-owed-{}", std::process::id()));
+    let _ = std::fs::create_dir_all(&scratch);
+    let file = scratch.join("state.json");
+
+    let (_, _, mut state) = world("as it was\n");
+    state.owe(&address(SERVICE), &[address(CONF)]);
+
+    let key = Key::from_bytes([4; 32]);
+    store::save(&file, &state, &key).expect("writes");
+    let (read, _) = store::load(&file).expect("reads");
+
+    assert_eq!(
+        read.get(&address(SERVICE))
+            .expect("the service is remembered")
+            .owed()
+            .iter()
+            .collect::<Vec<_>>(),
+        vec![&address(CONF)],
+        "a debt a run could not pay has to outlive the run"
+    );
+    let _ = std::fs::remove_dir_all(&scratch);
 }

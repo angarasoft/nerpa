@@ -328,11 +328,23 @@ Not marked `!`: that mark means the change destroys what is there, and a restart
 destroys nothing. What makes it visible is the line naming the cause and the
 count in the summary.
 
-Not built: the debt. A reaction that was triggered and did not complete should be
-recorded in state as owed and appear as pending in the next plan — the state
-Ansible reaches when a play fails between the write and its handlers, with a new
-file, an old process and no record of it. Nor is there yet a provider for which
-being roused means anything beyond applying again; that arrives with services.
+A reaction that was triggered and did not complete is **owed**. The debt is
+written into state before the action is attempted and gone once it succeeds, so
+the window between the two resolves toward reporting a debt that was in fact
+paid: one redundant restart, against an outage nobody knows about. It outlives
+the process — a state file carries it — and the next plan says so with the
+reason:
+
+```text
+  [rouse    ] os:file.unit@localhost
+               ↺ owed since an earlier run: os:file.nginx@localhost changed and this did not follow
+```
+
+Said differently from a reaction firing now, because they are different facts
+and the reader about to be woken is owed the difference.
+
+Not built: a provider for which being roused means anything beyond applying
+again. That arrives with services.
 
 ## Parallelism — [0031](decisions/0031-parallelism-is-threads-and-providers-are-sync.md) · partly built
 

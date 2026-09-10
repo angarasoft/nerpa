@@ -50,7 +50,7 @@ use crate::state::{Record, Recording, State, Written};
 ///
 /// Read back and refused if it is not understood. A state file from a later
 /// version is not something to guess at.
-pub const FORMAT_VERSION: u32 = 3;
+pub const FORMAT_VERSION: u32 = 4;
 
 /// Why state could not be read or written.
 #[derive(Debug, thiserror::Error)]
@@ -113,6 +113,11 @@ struct StoredRecord {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     secrets: BTreeMap<String, Digest>,
     depends_on: Vec<String>,
+    /// Reactions this resource owes: what roused it, and was not paid before
+    /// the run stopped. Absent when there are none, so an ordinary state file
+    /// carries no sign of a mechanism that did not fire.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    owed: Vec<String>,
     /// Seconds since the epoch, and the only reason a clock is read at all: how
     /// old what we know about a machine is, when that machine will not answer.
     /// See decision 0020.
@@ -259,9 +264,19 @@ pub fn load(path: &Path) -> Result<(State, Key), StoreError> {
         for (name, digest) in record.secrets {
             attributes.insert(name, Recorded::Secret(digest));
         }
+        let owed = record
+            .owed
+            .iter()
+            .map(|text| {
+                text.parse::<Address>().map_err(|error| StoreError::Format {
+                    path: path.display().to_string(),
+                    problem: format!("{text:?}: {error}"),
+                })
+            })
+            .collect::<Result<_, _>>()?;
         state.record(
             address,
-            Record::written_at(attributes, depends_on, Written::at(record.written)),
+            Record::written_at(attributes, depends_on, Written::at(record.written)).owing(owed),
         );
     }
 
@@ -304,6 +319,7 @@ pub fn save(path: &Path, state: &State, key: &Key) -> Result<(), StoreError> {
                             .iter()
                             .map(ToString::to_string)
                             .collect(),
+                        owed: record.owed().iter().map(ToString::to_string).collect(),
                         written: record.written().seconds(),
                     },
                 ))

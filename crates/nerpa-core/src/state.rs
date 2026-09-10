@@ -37,6 +37,13 @@ pub type Recording = BTreeMap<String, Recorded>;
 pub struct Record {
     attributes: Recording,
     depends_on: BTreeSet<Address>,
+    /// What this resource was roused by and has not yet acted on.
+    ///
+    /// Written down before the action is attempted and gone once it succeeds.
+    /// A run that stops in between leaves the debt, and the next plan shows it
+    /// — because the alternative is a new file, an old process, and nothing
+    /// recording that fact. See decision 0026.
+    owed: BTreeSet<Address>,
     written: Written,
 }
 
@@ -90,6 +97,7 @@ impl Record {
         Self {
             attributes,
             depends_on,
+            owed: BTreeSet::new(),
             written: Written::now(),
         }
     }
@@ -105,8 +113,22 @@ impl Record {
         Self {
             attributes,
             depends_on,
+            owed: BTreeSet::new(),
             written,
         }
+    }
+
+    /// The same, owing a reaction that has not been paid.
+    #[must_use]
+    pub fn owing(mut self, owed: BTreeSet<Address>) -> Self {
+        self.owed = owed;
+        self
+    }
+
+    /// What this resource was roused by and has not yet acted on.
+    #[must_use]
+    pub fn owed(&self) -> &BTreeSet<Address> {
+        &self.owed
     }
 
     /// When this was written.
@@ -160,6 +182,20 @@ impl State {
     /// Records what a resource became.
     pub fn record(&mut self, address: Address, record: Record) {
         self.resources.insert(address, record);
+    }
+
+    /// Writes down that a resource owes a reaction, before it is attempted.
+    ///
+    /// The order is the whole point. A debt written after the action would be
+    /// lost by exactly the run that failed to pay it, which is the state
+    /// Ansible reaches: a new file, an old process, and no record. Written
+    /// first, the window between the two resolves toward reporting a debt that
+    /// was in fact paid — one redundant restart, against an outage nobody knows
+    /// about. See decision 0026.
+    pub fn owe(&mut self, address: &Address, causes: &[Address]) {
+        if let Some(record) = self.resources.get_mut(address) {
+            record.owed.extend(causes.iter().cloned());
+        }
     }
 
     /// Forgets a resource, once it is gone from the world too.
