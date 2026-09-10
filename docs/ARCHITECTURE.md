@@ -127,6 +127,12 @@ shows the adoption:
 Adoptions are written to state once for the run. They send nothing, so a run
 that stops before the write loses nothing, and the next plan adopts them again.
 
+A recorded resource whose edges changed since — an `after` written in, a
+reference added — is reordered the same way,
+[0043](decisions/0043-what-a-resource-comes-after-is-recorded-when-that-changes.md):
+shown with what it comes after, sent nowhere, and recorded again, so its removal
+is ordered by the edges it has now rather than the ones it was made with.
+
 ## Facts as values — [0029](decisions/0029-a-fact-is-a-value-not-a-branch.md) · built
 
 A fact may decide what an attribute says and never whether a resource exists.

@@ -211,7 +211,7 @@ pub fn plan_at(
                             .collect()
                     })
                     .unwrap_or_default(),
-                record.is_some(),
+                record.map(Record::depends_on),
             )? {
                 changing.insert(address.clone());
                 changes.push(change);
@@ -348,7 +348,7 @@ fn change_for(
     roused_by: Vec<Address>,
     owed: Vec<Address>,
     depends_on: Vec<Address>,
-    recorded: bool,
+    recorded: Option<&BTreeSet<Address>>,
 ) -> Result<Option<Change>, PlanError> {
     let address = resource.address();
     let existing = observed.get(address);
@@ -411,73 +411,60 @@ fn change_for(
         ));
     }
 
-    Ok(match existing {
+    // The kind first, in the order it is decided — whether anything differs, then
+    // why a resource that matches might still be work — and then the one change.
+    let kind = match existing {
         // Not there at all: it has to be made, whatever its attributes say.
-        // Nothing is there, so nothing was looked at that could move.
-        None => Some(Change::new(
-            address.clone(),
-            ChangeKind::Create,
-            deltas,
-            desired,
-            Vec::new(),
-            roused_by,
-            owed,
-            depends_on,
-        )),
-        // It matches its declaration, and something it reacts to does not — so
-        // it has to act anyway. The desired values go with it because the
-        // provider still needs to be told which service this is.
+        None => ChangeKind::Create,
+        Some(_) if deltas.iter().any(AttributeDelta::forces_replacement) => ChangeKind::Replace,
+        Some(_) if !deltas.is_empty() => ChangeKind::Update,
         // It matches its declaration, and either something it reacts to does not
-        // or an earlier run left a reaction unpaid.
-        Some(_) if deltas.is_empty() && !(roused_by.is_empty() && owed.is_empty()) => {
-            Some(Change::new(
-                address.clone(),
-                ChangeKind::React,
-                Vec::new(),
-                desired,
-                sealed_for_its_machine(observed.premise(address), address, secrets),
-                roused_by,
-                owed,
-                depends_on,
-            ))
-        }
+        // or an earlier run left a reaction unpaid. The desired values go with it
+        // because the provider still needs to be told which service this is.
+        Some(_) if !(roused_by.is_empty() && owed.is_empty()) => ChangeKind::React,
         // ENFORCES: INV-STATE-006
         // It matches its declaration and nothing records it: found on a machine
         // somebody configured before, or made by a run that stopped before it
         // could write that down. Nothing is done to it, and it is written down,
         // because from here on it is Nerpa's to remove. Planned as nothing, it
         // was never recorded, and taking its declaration away removed nothing.
-        // No premise: nothing is sent, so a machine that moved since cannot be
-        // made wrong by it, and the next reading corrects the record.
-        Some(_) if deltas.is_empty() && !recorded => Some(Change::new(
-            address.clone(),
-            ChangeKind::Adopt,
-            Vec::new(),
-            desired,
-            Vec::new(),
-            roused_by,
-            owed,
-            depends_on,
-        )),
-        Some(_) if deltas.is_empty() => None,
-        Some(_) => {
-            let kind = if deltas.iter().any(AttributeDelta::forces_replacement) {
-                ChangeKind::Replace
-            } else {
-                ChangeKind::Update
-            };
-            Some(Change::new(
-                address.clone(),
-                kind,
-                deltas,
-                desired,
-                sealed_for_its_machine(observed.premise(address), address, secrets),
-                roused_by,
-                owed,
-                depends_on,
-            ))
+        Some(_) if recorded.is_none() => ChangeKind::Adopt,
+        // ENFORCES: INV-STATE-002
+        // It matches and is recorded, and what it comes after is not what state
+        // remembers: an `after` written in, a reference added, a reaction. Nothing
+        // is done to it, and it is recorded again, because those edges are what
+        // its removal will be ordered by. Planned as nothing, a file given an
+        // `after` once it matched was removed with its directory in any order.
+        Some(_) if recorded.is_some_and(|edges| !edges.iter().eq(&depends_on)) => {
+            ChangeKind::Reorder
         }
-    })
+        Some(_) => return Ok(None),
+    };
+
+    // What was read, sealed, for a change that sends something to a machine that
+    // was looked at. A creation had nothing there to look at, a removal is decided
+    // from state, and an adoption or a reorder sends nothing for a machine that
+    // moved since to be made wrong by: the next reading corrects the record.
+    // Every kind is named, so a new one has to say which it is.
+    let premise = match kind {
+        ChangeKind::Update | ChangeKind::Replace | ChangeKind::React => {
+            sealed_for_its_machine(observed.premise(address), address, secrets)
+        }
+        ChangeKind::Create | ChangeKind::Delete | ChangeKind::Adopt | ChangeKind::Reorder => {
+            Vec::new()
+        }
+    };
+
+    Ok(Some(Change::new(
+        address.clone(),
+        kind,
+        deltas,
+        desired,
+        premise,
+        roused_by,
+        owed,
+        depends_on,
+    )))
 }
 
 // ENFORCES: INV-PREMISE-002

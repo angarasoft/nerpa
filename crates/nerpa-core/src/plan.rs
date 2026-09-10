@@ -62,6 +62,16 @@ pub enum ChangeKind {
     /// made. A resource that already matched on the first run used to be planned
     /// as nothing, never recorded, and never removable. See decision 0042.
     Adopt,
+    /// It exists, matches its declaration and is recorded, and what it comes
+    /// after is not what state remembers — so nothing is done to it, and it is
+    /// recorded again with the edges it has now.
+    ///
+    /// In the plan for the same reason as an adoption: it changes what a later
+    /// plan does, here the order its removal takes. State took edges only from
+    /// what was applied, so an `after` written in once a file matched was never
+    /// recorded, and the file went with its directory in any order. See decision
+    /// 0043.
+    Reorder,
 }
 
 impl ChangeKind {
@@ -73,7 +83,7 @@ impl ChangeKind {
         // hundred machines is entitled to see it before it happens.
         matches!(
             self,
-            ChangeKind::Create | ChangeKind::Update | ChangeKind::Adopt
+            ChangeKind::Create | ChangeKind::Update | ChangeKind::Adopt | ChangeKind::Reorder
         )
     }
 }
@@ -253,8 +263,8 @@ impl Change {
     /// What the machine looked like when this was decided.
     ///
     /// Empty for a resource nothing was looked at for — a creation has nothing
-    /// to have moved — and for an adoption, which sends a machine nothing to
-    /// check it against.
+    /// to have moved — and for an adoption or a reorder, which send a machine
+    /// nothing to check it against.
     #[must_use]
     pub fn premise(&self) -> &[nerpa_proto::Premise] {
         &self.premise
@@ -430,6 +440,7 @@ pub struct BlastRadius {
     deletes: usize,
     reacts: usize,
     adopts: usize,
+    reorders: usize,
     unresolved: usize,
     unreachable: usize,
     outdated: usize,
@@ -449,6 +460,13 @@ impl BlastRadius {
     #[must_use]
     pub fn adopts(&self) -> usize {
         self.adopts
+    }
+
+    /// Recorded resources whose edges changed, which will be recorded again
+    /// without anything being done to them.
+    #[must_use]
+    pub fn reorders(&self) -> usize {
+        self.reorders
     }
 
     /// Resources that will come into existence.
@@ -515,10 +533,17 @@ impl BlastRadius {
         self.replaces + self.deletes > 0
     }
 
-    /// How many resources the plan does something about, adoptions included.
+    /// How many resources the plan does something about, adoptions and reorders
+    /// included.
     #[must_use]
     pub fn total(&self) -> usize {
-        self.creates + self.updates + self.replaces + self.deletes + self.reacts + self.adopts
+        self.creates
+            + self.updates
+            + self.replaces
+            + self.deletes
+            + self.reacts
+            + self.adopts
+            + self.reorders
     }
 }
 
@@ -551,6 +576,7 @@ impl Plan {
                 ChangeKind::Delete => blast_radius.deletes += 1,
                 ChangeKind::React => blast_radius.reacts += 1,
                 ChangeKind::Adopt => blast_radius.adopts += 1,
+                ChangeKind::Reorder => blast_radius.reorders += 1,
             }
             blast_radius.unresolved += change
                 .desired()
@@ -739,6 +765,7 @@ fn encode_stage(stage: &PlanStage, out: &mut Vec<u8>) {
             ChangeKind::Delete => 4,
             ChangeKind::React => 5,
             ChangeKind::Adopt => 6,
+            ChangeKind::Reorder => 7,
         });
 
         // Why, not only what. Two plans that restart the same service for

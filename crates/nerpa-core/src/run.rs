@@ -284,7 +284,8 @@ pub fn apply(
             let address = change.address();
 
             // ENFORCES: INV-STATE-006
-            // Found as declared, and nothing recorded it. Nothing is sent: the
+            // Found as declared, and nothing recorded it — or recorded with other
+            // edges than it has now, which is a reorder. Nothing is sent: the
             // machine already is what the plan says, so no provider and no
             // connection are wanted, and what is written down is what was read
             // there — secrets reduced to digests, as for everything else.
@@ -296,7 +297,7 @@ pub fn apply(
             // machines already configured adopts everything it declares, and a
             // whole state file for each would be thousands of writes saying that
             // nothing happened.
-            if change.kind() == ChangeKind::Adopt {
+            if matches!(change.kind(), ChangeKind::Adopt | ChangeKind::Reorder) {
                 let found = observed.get(address);
                 requires!(
                     found.is_some(),

@@ -148,6 +148,7 @@ fn summary(radius: &BlastRadius) -> String {
         (radius.deletes(), "to remove"),
         (radius.reacts(), "to rouse"),
         (radius.adopts(), "to adopt"),
+        (radius.reorders(), "to reorder"),
     ] {
         if count > 0 {
             parts.push(format!("{count} {word}"));
@@ -212,6 +213,7 @@ fn action(kind: ChangeKind) -> &'static str {
         // Not marked either: nothing is done to it. What it changes is what
         // removing its declaration will do later, and the line under it says so.
         ChangeKind::Adopt => "[adopt    ]",
+        ChangeKind::Reorder => "[reorder  ]",
         _ => "[unknown !]",
     }
 }
@@ -262,6 +264,19 @@ fn one(change: &Change) -> String {
             "               = already as declared: nothing is sent, and removing its \
              declaration will remove it\n",
         );
+    }
+
+    // All that changes is what its removal will be ordered by, so that is what is
+    // shown: every edge it has now, not only the new ones, because the plan does
+    // not carry what state remembered. See 0043.
+    if change.kind() == ChangeKind::Reorder {
+        out.push_str(
+            "               = already as declared: nothing is sent, and its removal will be \
+             ordered by what it comes after now\n",
+        );
+        for dependency in change.depends_on() {
+            let _ = writeln!(out, "               · after {dependency}");
+        }
     }
 
     for delta in change.deltas() {
@@ -582,6 +597,43 @@ mod tests {
         let text = rendered(&graph, &observed, &state, &Schema::new());
         assert!(text.contains("nothing to do"), "{text}");
         assert!(!text.contains("stage"), "there is nothing to stage: {text}");
+    }
+
+    /// A recorded resource given an edge is reordered, and says what it comes after.
+    #[test]
+    fn a_reorder_is_counted_and_names_what_it_comes_after() {
+        let graph = graph_of(vec![
+            Resource::new(address("yandex:instance.db")).with("cores", 8),
+            Resource::new(address("yandex:instance.web"))
+                .with("cores", 2)
+                .after(address("yandex:instance.db")),
+        ]);
+        let mut observed = observed_with("yandex:instance.db", &[("cores", Value::Integer(8))]);
+        observed.record(
+            address("yandex:instance.web"),
+            [("cores".to_owned(), Value::Integer(2))]
+                .into_iter()
+                .collect(),
+        );
+        let mut state = State::new();
+        for named in ["yandex:instance.db", "yandex:instance.web"] {
+            state.record(
+                address(named),
+                Record::new(
+                    Recorded::all(Attributes::new()),
+                    std::collections::BTreeSet::new(),
+                ),
+            );
+        }
+
+        let text = rendered(&graph, &observed, &state, &Schema::new());
+        assert!(text.contains("1 changes: 1 to reorder"), "{text}");
+        assert!(text.contains("[reorder  ] yandex:instance.web"), "{text}");
+        assert!(text.contains("· after yandex:instance.db"), "{text}");
+        assert!(
+            !text.contains("irreversible"),
+            "nothing is destroyed: {text}"
+        );
     }
 
     /// Nothing is done to an adopted resource, and removing its declaration will

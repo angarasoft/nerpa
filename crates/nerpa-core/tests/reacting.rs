@@ -57,13 +57,16 @@ fn world(conf_says: &str) -> (Graph, Observed, State) {
             .collect(),
     );
 
+    // As the run that made them left it: the service came after its file.
     let mut state = State::new();
-    for named in [CONF, SERVICE] {
-        state.record(
-            address(named),
-            Record::new(BTreeMap::new(), BTreeSet::default()),
-        );
-    }
+    state.record(
+        address(CONF),
+        Record::new(BTreeMap::new(), BTreeSet::default()),
+    );
+    state.record(
+        address(SERVICE),
+        Record::new(BTreeMap::new(), [address(CONF)].into_iter().collect()),
+    );
     (graph, observed, state)
 }
 
@@ -171,7 +174,7 @@ fn a_reaction_that_finished_leaves_nothing_owed() {
     // What `apply` writes once the reaction has been acted on.
     state.record(
         address(SERVICE),
-        Record::new(BTreeMap::new(), BTreeSet::default()),
+        Record::new(BTreeMap::new(), [address(CONF)].into_iter().collect()),
     );
 
     let plan = plan(&graph, &observed, &state, &Schema::new(), secrets()).expect("plannable");

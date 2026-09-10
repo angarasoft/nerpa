@@ -50,18 +50,19 @@ fn observed_with(entries: &[(&str, &[(&str, Value)])]) -> Observed {
     observed
 }
 
-/// A state recording each of these, as the run that made them would have left it.
+/// A state recording each of these, with the edges `graph` gives them, as the run
+/// that made them would have left it.
 ///
 /// A world that matches its declaration is converged only once it is recorded as
-/// well: a resource that nothing records is adopted, and that is work. See
-/// decision 0042.
-fn recorded(addresses: &[&str]) -> State {
+/// well, and recorded with what each resource comes after: one that nothing
+/// records is adopted, and one recorded with other edges is reordered, and both
+/// are work. See decisions 0042 and 0043.
+fn recorded(graph: &Graph, addresses: &[&str]) -> State {
     let mut state = State::new();
     for address_text in addresses {
-        state.record(
-            address(address_text),
-            Record::new(BTreeMap::new(), BTreeSet::new()),
-        );
+        let address = address(address_text);
+        let edges = graph.dependencies_of(&address).expect("orderable");
+        state.record(address, Record::new(BTreeMap::new(), edges));
     }
     state
 }
@@ -103,13 +104,62 @@ fn a_resource_that_already_matches_produces_nothing() {
     let plan = plan(
         &graph,
         &observed,
-        &recorded(&["yandex:instance.db"]),
+        &recorded(&graph, &["yandex:instance.db"]),
         &Schema::new(),
         secrets(),
     )
     .expect("plannable");
     assert!(plan.is_empty(), "a converged world needs no plan: {plan:?}");
     assert_eq!(plan.blast_radius().total(), 0);
+}
+
+/// A recorded resource that matches and has been given an edge since is reordered:
+/// nothing is done to it, and it is recorded again with the edge, which is what
+/// its removal will be ordered by. Planned as nothing, the edge never reached
+/// state. Decision 0043.
+#[test]
+fn a_resource_given_a_new_edge_is_reordered_and_nothing_else() {
+    let graph = graph_of(vec![
+        Resource::new(address("yandex:instance.db")).with("cores", 8),
+        Resource::new(address("yandex:instance.web"))
+            .with("cores", 2)
+            .after(address("yandex:instance.db")),
+    ]);
+    let observed = observed_with(&[
+        ("yandex:instance.db", &[("cores", Value::Integer(8))]),
+        ("yandex:instance.web", &[("cores", Value::Integer(2))]),
+    ]);
+    // As a run from before the edge was written in left it.
+    let before_the_edge = recorded(
+        &Graph::new(),
+        &["yandex:instance.db", "yandex:instance.web"],
+    );
+
+    let reordering = plan(
+        &graph,
+        &observed,
+        &before_the_edge,
+        &Schema::new(),
+        secrets(),
+    )
+    .expect("plannable");
+    let changes: Vec<&Change> = reordering.changes().collect();
+    assert_eq!(
+        changes.len(),
+        1,
+        "only the one given an edge: {reordering:?}"
+    );
+    assert_eq!(changes[0].address(), &address("yandex:instance.web"));
+    assert_eq!(changes[0].kind(), ChangeKind::Reorder);
+    assert_eq!(changes[0].depends_on(), [address("yandex:instance.db")]);
+    assert!(changes[0].deltas().is_empty(), "nothing differs");
+    assert!(changes[0].premise().is_empty(), "and nothing is sent");
+    assert_eq!(reordering.blast_radius().reorders(), 1);
+
+    let with_the_edge = recorded(&graph, &["yandex:instance.db", "yandex:instance.web"]);
+    let settled =
+        plan(&graph, &observed, &with_the_edge, &Schema::new(), secrets()).expect("plannable");
+    assert!(settled.is_empty(), "once recorded, nothing: {settled:?}");
 }
 
 /// The same resource with nothing recording it is adopted: nothing is done to it,
@@ -222,7 +272,7 @@ fn a_reference_to_something_that_exists_is_already_known() {
     let settled = plan(
         &graph,
         &observed,
-        &recorded(&["yandex:instance.db", "yandex:instance.web"]),
+        &recorded(&graph, &["yandex:instance.db", "yandex:instance.web"]),
         &Schema::new(),
         secrets(),
     )
@@ -275,11 +325,14 @@ fn planning_after_applying_produces_an_empty_plan() {
     ]);
 
     // And the state it left behind.
-    let left = recorded(&[
-        "yandex:instance.db",
-        "os:package.nginx@web-01",
-        "os:file.nginx.conf@web-01",
-    ]);
+    let left = recorded(
+        &graph,
+        &[
+            "yandex:instance.db",
+            "os:package.nginx@web-01",
+            "os:file.nginx.conf@web-01",
+        ],
+    );
     let second = plan(&graph, &applied, &left, &Schema::new(), secrets()).expect("plannable");
     assert!(
         second.is_empty(),
@@ -336,7 +389,7 @@ fn stages_with_nothing_to_do_are_left_out_but_order_is_kept() {
     let plan = plan(
         &graph,
         &observed,
-        &recorded(&["yandex:network.main"]),
+        &recorded(&graph, &["yandex:network.main"]),
         &Schema::new(),
         secrets(),
     )
@@ -445,7 +498,7 @@ fn an_empty_plan_is_empty_and_a_plan_with_work_is_not() {
     let nothing = plan(
         &graph,
         &settled,
-        &recorded(&["yandex:instance.db"]),
+        &recorded(&graph, &["yandex:instance.db"]),
         &Schema::new(),
         secrets(),
     )

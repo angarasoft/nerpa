@@ -276,6 +276,15 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A resource that already matches and is recorded with edges other than the ones
+  it has now is reordered: the plan shows it as `[reorder  ]` with what it comes
+  after, nothing is sent, and it is recorded again. An `after` written in once a
+  file matched never reached state, so the file and its directory were removed
+  together in any order. The first plan after upgrading reorders, once, every
+  resource whose dependency already existed when it was made, because state kept
+  no edge for those. See
+  [0043](docs/decisions/0043-what-a-resource-comes-after-is-recorded-when-that-changes.md).
+
 - A resource that already matches its declaration and is not in state is
   adopted: the plan shows it as `[adopt    ]`, nothing is sent to the machine,
   and it is recorded with what was read and every edge it comes after. It used

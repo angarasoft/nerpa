@@ -432,6 +432,80 @@ fn what_came_after_a_thing_is_removed_before_the_thing() {
     );
 }
 
+/// An edge added to a resource that already matches is remembered too. State took
+/// its edges from what was applied, and a file that matched was not applied, so an
+/// `after` written in later was never recorded, and the file and its directory
+/// were removed together in any order.
+#[test]
+fn an_edge_added_to_a_resource_that_already_matches_is_remembered() {
+    let scratch = Scratch::new("order-added");
+    let providers = providers();
+    let mut state = State::new();
+    let directory = scratch.join("etc");
+    let file = format!("{directory}/app.conf");
+
+    let converge = |graph: &Graph, state: &mut State| {
+        let observed = observe(graph, &providers, &machines(), state).expect("readable");
+        apply(
+            &plan(graph, &observed, state, &providers.schema(), secrets()).expect("plannable"),
+            &providers,
+            &machines(),
+            &observed,
+            state,
+            secrets(),
+            &mut kept,
+        )
+        .expect("applies");
+    };
+    let directory_alone =
+        || Resource::new(address("os:directory.etc@localhost")).with("path", directory.clone());
+    let conf = || {
+        Resource::new(address("os:file.conf@localhost"))
+            .with("path", file.clone())
+            .with("content", "listen 80\n")
+    };
+
+    // The directory, then the file in it with nothing said about order.
+    converge(&graph_of(vec![directory_alone()]), &mut state);
+    converge(&graph_of(vec![directory_alone(), conf()]), &mut state);
+    // Then the order is written in, and nothing on the machine differs.
+    let long_ago = std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+    fs::File::options()
+        .write(true)
+        .open(&file)
+        .expect("writable")
+        .set_modified(long_ago)
+        .expect("a time can be set");
+    converge(
+        &graph_of(vec![
+            directory_alone(),
+            conf().after(address("os:directory.etc@localhost")),
+        ]),
+        &mut state,
+    );
+    assert_eq!(
+        fs::metadata(&file)
+            .expect("still there")
+            .modified()
+            .expect("a time"),
+        long_ago,
+        "and nothing was written to it"
+    );
+
+    let empty = Graph::new();
+    let observed = observe(&empty, &providers, &machines(), &state).expect("readable");
+    let plan = plan(&empty, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    assert_eq!(
+        plan.stages().len(),
+        2,
+        "what came after the directory cannot go with it: {plan:?}"
+    );
+    assert_eq!(
+        plan.stages()[0].changes()[0].address(),
+        &address("os:file.conf@localhost")
+    );
+}
+
 /// The same for a reference that was already resolved when planning, because the
 /// thing it points at existed. State kept no edge for it, since only a value
 /// still unknown was taken to mean a dependency. Review found it.
