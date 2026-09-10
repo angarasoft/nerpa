@@ -136,6 +136,14 @@ pub fn plan_at(
     one_thing_once(graph, schema)?;
 
     let mut stages = removals(graph, state);
+    // ENFORCES: INV-PLAN-009
+    // What those removals take away, by what names it on its machine. A declared
+    // resource naming the same thing is made again after the removal rather than
+    // read from before it: the reading describes a thing this plan is about to
+    // delete. Renaming an address and keeping its path, with no `moved`, used to
+    // remove the file and adopt the new resource from that reading, and the run
+    // ended with no file and a record saying there was one.
+    let taken = taken_away(&stages, state, schema);
     let mut unreachable = Vec::new();
     let mut outdated = Vec::new();
     // Marked as the walk goes. Stages are topological, so a resource's
@@ -212,6 +220,7 @@ pub fn plan_at(
                     })
                     .unwrap_or_default(),
                 record.map(Record::depends_on),
+                name_of(resource, schema).is_some_and(|name| taken.contains(&name)),
             )? {
                 // ENFORCES: INV-REACT-001
                 // Only what moves on the machine rouses anything. An adoption or
@@ -270,6 +279,44 @@ fn one_thing_once(graph: &Graph, schema: &Schema) -> Result<(), PlanError> {
         }
     }
     Ok(())
+}
+
+/// What the removals in `stages` take away, named as `name_of` names a declared
+/// resource: by machine, namespace and one spelling of the value.
+///
+/// Taken from state, because the configuration that named them is gone. A record
+/// whose naming attribute is not a plain value names nothing here.
+fn taken_away(
+    stages: &[PlanStage],
+    state: &State,
+    schema: &Schema,
+) -> BTreeSet<(Target, String, String)> {
+    stages
+        .iter()
+        .flat_map(PlanStage::changes)
+        .filter_map(|change| {
+            let address = change.address();
+            let node = address.target()?;
+            let (attribute, namespace) = schema.identity_of(address)?;
+            let Value::Text(value) = state.get(address)?.attributes().get(attribute)?.plain()?
+            else {
+                return None;
+            };
+            Some((node.clone(), namespace.to_owned(), one_spelling(value)))
+        })
+        .collect()
+}
+
+/// What a declared resource names on its machine, if its provider says and the
+/// value is known when planning.
+fn name_of(resource: &Resource, schema: &Schema) -> Option<(Target, String, String)> {
+    let address = resource.address();
+    let node = address.target()?;
+    let (attribute, namespace) = schema.identity_of(address)?;
+    let Some(Value::Text(value)) = resource.attribute(attribute).and_then(Attribute::known) else {
+        return None;
+    };
+    Some((node.clone(), namespace.to_owned(), one_spelling(value)))
 }
 
 /// A path without the spellings that name the same one: repeated separators, `.`
@@ -356,9 +403,16 @@ fn change_for(
     owed: Vec<Address>,
     depends_on: Vec<Address>,
     recorded: Option<&BTreeSet<Address>>,
+    takes_over: bool,
 ) -> Result<Option<Change>, PlanError> {
     let address = resource.address();
-    let existing = observed.get(address);
+    // Not read when it names what a removal in this plan takes away: see
+    // `taken_away`.
+    let existing = if takes_over {
+        None
+    } else {
+        observed.get(address)
+    };
 
     let mut deltas = Vec::new();
     let mut desired = Vec::new();

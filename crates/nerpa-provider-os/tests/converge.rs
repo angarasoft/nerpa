@@ -912,6 +912,58 @@ fn what_is_adopted_is_written_down_once_rather_than_once_for_each() {
     assert_eq!(seen, vec![3], "all three, in one write");
 }
 
+/// Renaming a resource that keeps its path, with no `moved`, converges in one run.
+///
+/// The old address is removed and the new one declared at the same path. The
+/// removal deleted the file, and the new resource was adopted from the reading
+/// taken before the delete, so the second run proposed making it again. Found by
+/// the second review of RFC 0001.
+#[test]
+fn a_resource_renamed_at_the_same_path_converges_in_one_run() {
+    let scratch = Scratch::new("rename-same-path");
+    let providers = providers();
+    let mut state = State::new();
+    let path = scratch.join("motd");
+
+    let converge = |graph: &Graph, state: &mut State| {
+        let observed = observe(graph, &providers, &machines(), state).expect("readable");
+        apply(
+            &plan(graph, &observed, state, &providers.schema(), secrets()).expect("plannable"),
+            &providers,
+            &machines(),
+            &observed,
+            state,
+            secrets(),
+            &mut kept,
+        )
+        .expect("applies");
+    };
+    let named = |name: &str| {
+        graph_of(vec![
+            Resource::new(address(&format!("os:file.{name}@localhost")))
+                .with("path", path.clone())
+                .with("content", "hello\n"),
+        ])
+    };
+
+    converge(&named("old"), &mut state);
+    converge(&named("new"), &mut state);
+
+    assert_eq!(
+        fs::read_to_string(&path).ok().as_deref(),
+        Some("hello\n"),
+        "the file is there after the rename"
+    );
+    let renamed = named("new");
+    let observed = observe(&renamed, &providers, &machines(), &state).expect("readable");
+    let again =
+        plan(&renamed, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    assert!(
+        again.is_empty(),
+        "the second run has nothing to do: {again:?}"
+    );
+}
+
 /// State is written as the run goes, not once when it finishes.
 ///
 /// A run that stops half way has made real changes. Recording them only at the

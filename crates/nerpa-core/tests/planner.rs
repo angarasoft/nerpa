@@ -162,6 +162,58 @@ fn a_resource_given_a_new_edge_is_reordered_and_nothing_else() {
     assert!(settled.is_empty(), "once recorded, nothing: {settled:?}");
 }
 
+/// A declared resource that names what a removal takes away is made again after
+/// the removal, not read from before it. Renaming an address and keeping its
+/// path used to remove the file and adopt the new resource from the reading taken
+/// before the removal. Found by the second review of RFC 0001.
+#[test]
+fn a_resource_naming_what_a_removal_takes_is_created_after_it() {
+    let schema = Schema::new().identity(
+        Provider::new("os").unwrap(),
+        Kind::new("file").unwrap(),
+        "path",
+        "path",
+    );
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.new@web-01"))
+            .with("path", "/etc/motd")
+            .with("content", "hello\n"),
+    ]);
+    let observed = observed_with(&[(
+        "os:file.new@web-01",
+        &[
+            ("path", Value::Text("/etc/motd".to_owned())),
+            ("content", Value::Text("hello\n".to_owned())),
+        ],
+    )]);
+    let mut state = State::new();
+    state.record(
+        address("os:file.old@web-01"),
+        Record::new(
+            Recorded::all(
+                [("path".to_owned(), Value::Text("/etc//motd".to_owned()))]
+                    .into_iter()
+                    .collect::<Attributes>(),
+            ),
+            BTreeSet::new(),
+        ),
+    );
+
+    let plan = plan(&graph, &observed, &state, &schema, secrets()).expect("plannable");
+    let kinds: Vec<(String, ChangeKind)> = plan
+        .changes()
+        .map(|change| (change.address().to_string(), change.kind()))
+        .collect();
+    assert_eq!(
+        kinds,
+        [
+            ("os:file.old@web-01".to_owned(), ChangeKind::Delete),
+            ("os:file.new@web-01".to_owned(), ChangeKind::Create),
+        ],
+        "removed, then made again rather than adopted from before: {plan:?}"
+    );
+}
+
 /// The same resource with nothing recording it is adopted: nothing is done to it,
 /// and it is written down, so that taking its declaration away later removes it.
 /// Planned as nothing, it never was. Decision 0042.

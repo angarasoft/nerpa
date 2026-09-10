@@ -93,6 +93,11 @@ migration is spent and its declaration can be deleted, instead of accumulating
 `moved` blocks forever. A rename changes nothing else: the plan for that resource
 is empty afterwards, and a real difference appears as an ordinary update.
 
+Until then, a rename that keeps what it names — the same path under a new
+address — is a removal and a creation after it, and the plan shows both. The
+creation is not read from the machine, because what is there is what the removal
+is about to take away.
+
 ## A single planning pass — [0006](decisions/0006-static-plan-staged-execution.md) · built
 
 Planning happens once, over the whole graph. Stages exist but belong to
