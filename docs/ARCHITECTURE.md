@@ -159,7 +159,7 @@ Load-bearing rather than an optimisation, because the plan is single-pass.
 
 ## The executor and transports — [0010](decisions/0010-static-executor-pluggable-transport.md) · partly built
 
-A static Rust binary — 832 192 bytes, built for `x86_64-unknown-linux-musl` —
+A static Rust binary — 864 960 bytes, built for `x86_64-unknown-linux-musl` —
 speaking framed CBOR over stdin and stdout: four bytes of length, then the body.
 Every frame carries the protocol version it was written by, because an executor
 installed once outlives the engine that put it there, and an unknown version is
