@@ -181,3 +181,21 @@ fn a_template_cannot_be_named_outside_the_configuration() {
         );
     }
 }
+
+/// A template's last newline is part of the file it looks like. Jinja drops it
+/// by default and Ansible keeps it, so the two rendered one template into two
+/// different files and each restarted `chronyd` after the other ran. Cron ignores
+/// a last line with no newline after it, which is what dropping one costs.
+#[test]
+fn a_templates_last_newline_is_kept_and_none_is_invented() {
+    assert_eq!(
+        rendered("server {{ name }}\n").unwrap(),
+        "server example.com\n"
+    );
+    assert_eq!(
+        rendered("server {{ name }}").unwrap(),
+        "server example.com",
+        "a template that ends without one renders without one"
+    );
+    assert_eq!(rendered("a\nb\n\n").unwrap(), "a\nb\n\n");
+}

@@ -269,6 +269,12 @@ impl Renderer {
         // configuration file the difference is a directive that silently
         // disappears.
         environment.set_undefined_behavior(minijinja::UndefinedBehavior::Strict);
+        // A template's last newline is part of the file it looks like. Jinja drops
+        // it by default, and a file without one is not always the same file: cron
+        // ignores a last line with no newline after it. Found by rendering one
+        // template with this and with Ansible, which keeps it, and watching each
+        // restart `chronyd` after the other.
+        environment.set_keep_trailing_newline(true);
         environment.set_fuel(Some(FUEL));
         environment.set_recursion_limit(DEPTH);
         // Jinja templates call Python methods on values — `.items()`,

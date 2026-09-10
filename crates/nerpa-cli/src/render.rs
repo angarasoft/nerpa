@@ -327,6 +327,13 @@ fn lines_of(text: &str) -> String {
     if let Some(rest) = all.len().checked_sub(SHOWN_LINES).filter(|rest| *rest > 0) {
         let _ = writeln!(out, "                   │ … and {rest} more lines");
     }
+    // `lines()` forgets whether the last line ended, and sometimes that is the
+    // whole change: two blocks that read the same above a restart. Outside the
+    // gutter, so it cannot be taken for a line of the file, and said even when
+    // the file was cut off, because the end is exactly what was cut.
+    if !text.ends_with('\n') {
+        let _ = writeln!(out, "                   ↳ no newline at the end");
+    }
     out
 }
 
@@ -417,6 +424,30 @@ mod tests {
 
     /// The plan says which store a credential comes from, because that is what a
     /// person approving the change needs, and never what it is.
+
+    #[test]
+    fn a_file_that_differs_only_by_its_last_newline_does_not_print_the_same() {
+        let without = super::lines_of("rtcsync\nmakestep 1.0 7");
+        let with = super::lines_of("rtcsync\nmakestep 1.0 7\n");
+
+        assert!(without.contains("no newline at the end"), "{without}");
+        assert!(!with.contains("no newline at the end"), "{with}");
+        assert_ne!(
+            without, with,
+            "two files that differ must not print alike: the plan that found this \
+             proposed a restart under two identical blocks"
+        );
+
+        let long = (0..super::SHOWN_LINES + 9)
+            .map(|at| format!("line {at}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let cut = super::lines_of(&long);
+        assert!(
+            cut.contains("more lines") && cut.contains("no newline at the end"),
+            "the end is what was cut, so it is said regardless: {cut}"
+        );
+    }
     #[test]
     fn a_secret_is_shown_as_where_it_comes_from() {
         let text = render(

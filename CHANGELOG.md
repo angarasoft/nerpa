@@ -276,6 +276,15 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A template's last newline is kept. Jinja drops it by default and nerpa had
+  inherited that, so every rendered file lost the newline its template ended with
+  — and cron ignores a last line with no newline after it. Found by rendering one
+  template with nerpa and with Ansible, which keeps it: each rewrote the file after
+  the other ran and restarted `chronyd`, under a plan whose `was` and `becomes`
+  read the same. The plan now says when a file has no newline at the end, outside
+  the gutter so it cannot be read as a line of the file. Every file nerpa rendered
+  before this changes once, by one byte, on the next run.
+
 - Every machine reached over `ssh` is asked which build its executor is before
   anything else, and one that names another build is left out and reported with
   both names. Found by accident while closing stage 1: all three machines ran the
