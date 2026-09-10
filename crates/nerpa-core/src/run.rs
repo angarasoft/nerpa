@@ -74,15 +74,21 @@ pub fn observe(
             observed.unreachable(node.clone());
             continue;
         };
+        // A question may take more than one look, so each one's answers are
+        // handed back to it in the order it asked for them.
+        let asking: Vec<Vec<nerpa_proto::Observation>> = crate::facts::ASKED
+            .iter()
+            .map(|asked| (asked.ask)())
+            .collect();
         match reach.ask(&nerpa_proto::Ask::Look {
-            observations: crate::facts::ASKED
-                .iter()
-                .map(|asked| (asked.ask)())
-                .collect(),
+            observations: asking.iter().flatten().cloned().collect(),
         }) {
             Ok(nerpa_proto::Answer::Found { seen }) => {
-                for (asked, answer) in crate::facts::ASKED.iter().zip(seen) {
-                    if let Some(said) = (asked.read)(&answer) {
+                let mut answered = seen.into_iter();
+                for (asked, wanted) in crate::facts::ASKED.iter().zip(&asking) {
+                    let mine: Vec<nerpa_proto::Seen> =
+                        answered.by_ref().take(wanted.len()).collect();
+                    if let Some(said) = (asked.read)(&mine) {
                         observed.learn(node.clone(), asked.name, said);
                     }
                 }

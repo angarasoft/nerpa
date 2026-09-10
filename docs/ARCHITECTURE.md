@@ -123,6 +123,13 @@ the value open — within a set the plan can print, which says more than "known
 after apply" does. A fact arriving outside the mapping fails at apply, naming the
 fact, the value and the line.
 
+Three facts are asked: `arch`, `os_family`, and `init`. A question may take more
+than one look — `init` takes two, because `/proc/1/comm` says `systemd` where
+there is one and `init` everywhere else, which is what sysvinit says too. What
+answers is what each leaves under `/run`. Reading it off the distribution's name
+would be wrong exactly where it matters: Gentoo ships both, and the Gentoo this
+was written against runs systemd.
+
 ## A machine that will not answer — [0020](decisions/0020-a-machine-that-cannot-be-reached.md) · built
 
 The unit of refusal is the resource, not the run. Everything readable is planned;

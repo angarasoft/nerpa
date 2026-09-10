@@ -276,6 +276,15 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A machine says which init system it runs, as the fact `init`. A question may
+  now take more than one look, because this one has no single file that answers
+  it: `/proc/1/comm` says `systemd` where there is one and `init` everywhere
+  else, which is what sysvinit says too, so what answers is what each leaves
+  under `/run`. Inferring it from the distribution would be wrong exactly where
+  it matters — Gentoo ships both, and the Gentoo this was written against runs
+  systemd. Read on two machines with different answers, and shown driving a
+  `select`.
+
 - A reaction that was triggered and did not complete is owed, and the next plan
   says so with the reason. The debt is written before the action is attempted
   and cleared by having got past it, so the window resolves toward reporting a

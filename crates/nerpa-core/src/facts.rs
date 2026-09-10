@@ -23,29 +23,73 @@ pub(crate) struct Question {
     /// What the fact is called in a configuration.
     pub(crate) name: &'static str,
     /// What to ask.
-    pub(crate) ask: fn() -> Observation,
-    /// What the answer means, or `None` if it means nothing usable.
-    pub(crate) read: fn(&Seen) -> Option<String>,
+    ///
+    /// A list, because some questions have no single file that answers them.
+    /// Which init system a machine runs is one: `/proc/1/comm` says `systemd`
+    /// where there is one and `init` everywhere else, which is also what
+    /// sysvinit says — so the answer takes two looks rather than one, and
+    /// pretending otherwise would mean reading the answer off a distribution's
+    /// name. Gentoo ships both, and the machine this was written against is a
+    /// Gentoo running systemd.
+    pub(crate) ask: fn() -> Vec<Observation>,
+    /// What the answers mean, or `None` if they mean nothing usable.
+    pub(crate) read: fn(&[Seen]) -> Option<String>,
 }
 
 /// Everything a machine is asked about itself.
-pub(crate) const ASKED: [Question; 2] = [
+pub(crate) const ASKED: [Question; 3] = [
     Question {
         name: "arch",
-        ask: || Observation::Output {
-            program: "uname".to_owned(),
-            arguments: vec!["-m".to_owned()],
+        ask: || {
+            vec![Observation::Output {
+                program: "uname".to_owned(),
+                arguments: vec!["-m".to_owned()],
+            }]
         },
-        read: |seen| said(seen).map(|text| text.trim().to_owned()),
+        read: |seen| said(seen.first()?).map(|text| text.trim().to_owned()),
     },
     Question {
         name: "os_family",
-        ask: || Observation::Contents {
-            path: "/etc/os-release".to_owned(),
+        ask: || {
+            vec![Observation::Contents {
+                path: "/etc/os-release".to_owned(),
+            }]
         },
-        read: |seen| family(seen),
+        read: |seen| family(seen.first()?),
+    },
+    Question {
+        name: "init",
+        ask: || {
+            // Both, and in this order. A running systemd puts a directory at the
+            // first; OpenRC puts one at the second. Measured on both rather than
+            // taken from a manual.
+            vec![
+                Observation::Path {
+                    path: "/run/systemd/system".to_owned(),
+                },
+                Observation::Path {
+                    path: "/run/openrc".to_owned(),
+                },
+            ]
+        },
+        read: |seen| init(seen),
     },
 ];
+
+/// Which init system is running, from what it leaves under `/run`.
+///
+/// Nothing is a real answer here: a machine running neither says so, and the
+/// provider refuses it by name rather than guessing at a third.
+fn init(seen: &[Seen]) -> Option<String> {
+    let there = |at: usize| matches!(seen.get(at), Some(Seen::Entry(_)));
+    if there(0) {
+        return Some("systemd".to_owned());
+    }
+    if there(1) {
+        return Some("openrc".to_owned());
+    }
+    None
+}
 
 /// What a program printed, if it ran and printed text.
 fn said(seen: &Seen) -> Option<String> {
