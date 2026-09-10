@@ -276,6 +276,14 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- `os:service` reads and settles, on `systemd` and on OpenRC, and a reaction
+  restarts. Shown on a real machine of each kind: a service stopped and taken out
+  of its runlevel and put back, and `chrony.conf` rewritten with `chronyd`
+  restarted — its process identifier different afterwards, and unchanged by a
+  second run that had nothing to do. `systemctl is-active` is not used: for a
+  service that does not exist it prints `inactive` and exits 3, exactly as for
+  one merely stopped.
+
 - A machine says which init system it runs, as the fact `init`. A question may
   now take more than one look, because this one has no single file that answers
   it: `/proc/1/comm` says `systemd` where there is one and `init` everywhere

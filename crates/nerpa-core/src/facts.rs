@@ -61,7 +61,7 @@ pub(crate) const ASKED: [Question; 3] = [
         name: "init",
         ask: || {
             // Both, and in this order. A running systemd puts a directory at the
-            // first; OpenRC puts one at the second. Measured on both rather than
+            // first; `OpenRC` puts one at the second. Measured on both rather than
             // taken from a manual.
             vec![
                 Observation::Path {

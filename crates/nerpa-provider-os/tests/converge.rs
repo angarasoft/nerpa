@@ -499,10 +499,9 @@ fn a_declaration_without_a_path_is_refused_rather_than_guessed_at() {
 fn a_kind_this_provider_does_not_own_is_refused() {
     let providers = providers();
     let state = State::new();
-    let graph = graph_of(vec![Resource::new(address("os:service.nginx@localhost"))]);
+    let graph = graph_of(vec![Resource::new(address("os:user.deploy@localhost"))]);
 
-    let refusal =
-        observe(&graph, &providers, &machines(), &state).expect_err("services arrive later");
+    let refusal = observe(&graph, &providers, &machines(), &state).expect_err("users arrive later");
     assert!(
         refusal.to_string().contains("does not know how to handle"),
         "{refusal}"

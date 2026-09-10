@@ -29,8 +29,10 @@
 
 use nerpa_core::address::{Address, Kind, Provider as ProviderName};
 mod package;
+mod service;
 
 use package::Family;
+use service::Init;
 
 use nerpa_core::observed::Facts;
 use nerpa_core::plan::ChangeKind;
@@ -132,25 +134,41 @@ enum Asked {
         atom: String,
         family: Family,
     },
+    Service {
+        address: Address,
+        name: String,
+        init: Init,
+    },
 }
 
 impl Asked {
     fn address(&self) -> &Address {
         match self {
-            Self::Path { address, .. } | Self::Package { address, .. } => address,
+            Self::Path { address, .. }
+            | Self::Package { address, .. }
+            | Self::Service { address, .. } => address,
         }
     }
 
-    fn observation(&self) -> Observation {
+    /// What to look at. A list, because `OpenRC` keeps "running" and "starts at
+    /// boot" in two places and there is no call that answers both.
+    fn observations(&self) -> Vec<Observation> {
         match self {
-            Self::Path { path, .. } => Observation::Path { path: path.clone() },
-            Self::Package { atom, family, .. } => family.query(atom),
+            Self::Path { path, .. } => vec![Observation::Path { path: path.clone() }],
+            Self::Package { atom, family, .. } => vec![family.query(atom)],
+            Self::Service { name, init, .. } => init.look(name),
         }
     }
 
-    fn understood(&self, seen: &Seen) -> Result<Option<Attributes>, ProviderError> {
+    fn understood(&self, seen: &[Seen]) -> Result<Option<Attributes>, ProviderError> {
+        let first = || {
+            seen.first().ok_or_else(|| ProviderError::World {
+                address: self.address().clone(),
+                problem: "the far end answered about nothing at all".to_owned(),
+            })
+        };
         match self {
-            Self::Path { address, path } => as_attributes(path, seen, address),
+            Self::Path { address, path } => as_attributes(path, first()?, address),
             Self::Package {
                 address,
                 atom,
@@ -158,15 +176,116 @@ impl Asked {
             } => {
                 let installed =
                     family
-                        .installed(atom, seen)
+                        .installed(atom, first()?)
                         .map_err(|problem| ProviderError::World {
                             address: address.clone(),
                             problem,
                         })?;
                 Ok(installed.map(|version| package::as_attributes(&version).into_iter().collect()))
             }
+            Self::Service {
+                address,
+                name,
+                init,
+            } => {
+                let found =
+                    init.understood(name, seen)
+                        .map_err(|problem| ProviderError::World {
+                            address: address.clone(),
+                            problem,
+                        })?;
+                Ok(found.map(|(running, enabled)| {
+                    service::as_attributes(running, enabled)
+                        .into_iter()
+                        .collect()
+                }))
+            }
         }
     }
+}
+
+/// Makes a service match what was declared, and reads back that it does.
+///
+/// A `React` change is a restart, not a start: being roused is what `reacts_to`
+/// asks for, and a service that is already running would otherwise be left
+/// exactly as it was by the change that exists to disturb it. See decision 0026.
+///
+/// A service that is not running is not restarted either — it was not running
+/// before the file changed, and starting it now would be a change nobody
+/// declared.
+fn settle_service(
+    address: &Address,
+    kind: ChangeKind,
+    attributes: &Attributes,
+    facts: Facts<'_>,
+    premise: &[Premise],
+    reach: &dyn Reach,
+) -> Result<Attributes, ProviderError> {
+    let init = init(address, facts)?;
+    let name = address.name().as_str();
+    let wanted = |what: &str| matches!(attributes.get(what), Some(Value::Boolean(true)));
+
+    let mut operations = if kind == ChangeKind::React {
+        vec![init.rouse(name)]
+    } else {
+        init.settle(name, wanted("running"), wanted("enabled"))
+    };
+    // Whether it is running is read back rather than echoed: `systemctl start`
+    // and `rc-service start` both report success for a service that came up and
+    // fell over a second later, which is the ordinary way a service fails.
+    operations.push(init.watch(name));
+
+    let became = all(
+        reach.ask(&Ask::Perform {
+            plan: None,
+            premise: premise.to_vec(),
+            operations,
+        })?,
+        address,
+    )?;
+    let Some(afterwards) = became.last() else {
+        return Err(ProviderError::World {
+            address: address.clone(),
+            problem: format!("the far end did not say what {name} became"),
+        });
+    };
+
+    match init.running(name, afterwards) {
+        Ok(Some(running)) => Ok(service::as_attributes(running, wanted("enabled"))
+            .into_iter()
+            .collect()),
+        Ok(None) => Err(ProviderError::World {
+            address: address.clone(),
+            problem: format!("there is no service {name} on this machine after asking for it"),
+        }),
+        Err(problem) => Err(ProviderError::World {
+            address: address.clone(),
+            problem,
+        }),
+    }
+}
+
+/// Which init system runs services on the machine this resource lives on.
+///
+/// Refused by name rather than guessed at, for the same reason a package family
+/// is: a machine calling itself something this has not been taught gets an error
+/// saying so, and nothing is sent on the chance that it works.
+fn init(address: &Address, facts: Facts<'_>) -> Result<Init, ProviderError> {
+    let Some(said) = facts.said("init") else {
+        return Err(ProviderError::World {
+            address: address.clone(),
+            problem: "the machine did not say which init system it runs, so nothing \
+                      knows how a service is started there"
+                .to_owned(),
+        });
+    };
+    Init::of(said).ok_or_else(|| ProviderError::World {
+        address: address.clone(),
+        problem: format!(
+            "the machine runs {said:?}, and nerpa manages services under systemd \
+             and openrc only"
+        ),
+    })
 }
 
 /// The read's own question, asked again as an operation so that a batch can
@@ -410,6 +529,8 @@ impl Provider for Os {
         Schema::new()
             .immutable(self.name.clone(), kind("file"), "path")
             .immutable(self.name.clone(), kind("directory"), "path")
+        // Nothing about a service is immutable: a stopped one starts, a
+        // disabled one is enabled, and neither needs the resource replaced.
     }
 
     /// One journey for the whole batch, which is the only reason the batch is
@@ -442,6 +563,11 @@ impl Provider for Os {
                     atom: atom(address),
                     family: family(address, facts)?,
                 }),
+                "service" => about.push(Asked::Service {
+                    address: address.clone(),
+                    name: address.name().as_str().to_owned(),
+                    init: init(address, facts)?,
+                }),
                 _ => {
                     return Err(ProviderError::UnknownKind {
                         provider: self.name.clone(),
@@ -457,26 +583,42 @@ impl Provider for Os {
             return Ok(Read::new());
         };
 
+        // Each entry says how many looks it needs, and gets exactly those back.
+        let wanted: Vec<Vec<Observation>> = about.iter().map(Asked::observations).collect();
         let seen = all(
             reach.ask(&Ask::Look {
-                observations: about.iter().map(Asked::observation).collect(),
+                observations: wanted.iter().flatten().cloned().collect(),
             })?,
             &first,
         )?;
 
+        let mut answered = seen.into_iter();
         let mut found = Read::new();
-        for (asked, answer) in about.into_iter().zip(seen) {
+        for (asked, mine) in about
+            .into_iter()
+            .zip(&wanted)
+            .map(|(asked, wanted)| {
+                let mine: Vec<Seen> = answered.by_ref().take(wanted.len()).collect();
+                (asked, mine)
+            })
+            .collect::<Vec<_>>()
+        {
             // ENFORCES: INV-PREMISE-001
             // What was looked at, and what it was when it was. The batch that
             // acts carries this back and the far end looks again before doing
             // anything — so a file that moved between the looking and the doing
             // stops the whole batch rather than being written over. Decision
             // 0034.
-            let premise = vec![Premise {
-                digest: nerpa_proto::digest(&answer),
-                observation: asked.observation(),
-            }];
-            if let Some(attributes) = asked.understood(&answer)? {
+            let premise = asked
+                .observations()
+                .into_iter()
+                .zip(&mine)
+                .map(|(observation, answer)| Premise {
+                    digest: nerpa_proto::digest(answer),
+                    observation,
+                })
+                .collect();
+            if let Some(attributes) = asked.understood(&mine)? {
                 found = found.with(asked.address().clone(), attributes, premise);
             }
         }
@@ -486,7 +628,7 @@ impl Provider for Os {
     fn apply(
         &self,
         address: &Address,
-        _kind: ChangeKind,
+        kind: ChangeKind,
         attributes: &Attributes,
         premise: &[Premise],
         facts: Facts<'_>,
@@ -494,6 +636,9 @@ impl Provider for Os {
     ) -> Result<Attributes, ProviderError> {
         if address.kind().as_str() == "package" {
             return install(address, attributes, facts, premise, reach);
+        }
+        if address.kind().as_str() == "service" {
+            return settle_service(address, kind, attributes, facts, premise, reach);
         }
 
         let path = required_path(attributes, address)?;
@@ -540,6 +685,20 @@ impl Provider for Os {
     ) -> Result<(), ProviderError> {
         if address.kind().as_str() == "package" {
             return uninstall(address, facts, premise, reach);
+        }
+        if address.kind().as_str() == "service" {
+            // No longer declared means no longer wanted running. The unit itself
+            // came from a package and stays: removing it is that package's
+            // business, not this one's.
+            return settle_service(
+                address,
+                ChangeKind::Update,
+                &Attributes::new(),
+                facts,
+                premise,
+                reach,
+            )
+            .map(|_| ());
         }
 
         let path = required_path(recorded, address)?;

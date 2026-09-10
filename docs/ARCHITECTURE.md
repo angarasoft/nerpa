@@ -350,8 +350,11 @@ reason:
 Said differently from a reaction firing now, because they are different facts
 and the reader about to be woken is owed the difference.
 
-Not built: a provider for which being roused means anything beyond applying
-again. That arrives with services.
+Being roused means a restart, and only for a service that was already running:
+one that was stopped before the file changed is not started by a change nobody
+declared. Shown on a real machine — `chrony.conf` rewritten, `chronyd` restarted,
+its process identifier different afterwards, and a second run with nothing to do
+and the same identifier.
 
 ## Parallelism — [0031](decisions/0031-parallelism-is-threads-and-providers-are-sync.md) · partly built
 
@@ -470,6 +473,33 @@ read-back says so rather than pretending.
 What a plan cannot know is whether the version it names can be installed at all —
 on a machine taking only binary packages, the binhost holds what it holds. See
 `W-019` and `W-020`.
+
+## Services — [0032](decisions/0032-provider-logic-stays-on-the-control-machine.md) · partly built
+
+Two init systems, `systemd` and OpenRC, and a refusal by name for anything else.
+Which one a machine runs is the fact `init`, read before any provider is asked —
+because provider logic is central, the question has to be formed before anything
+is sent. Every predecessor sidesteps this by running its own code on the machine:
+Ansible's module, Puppet's `confine`, Salt's `virtual()` all decide on the node.
+Terraform, the one other tool whose logic is central, declines the problem and
+has no service resource. What asking first buys is that the plan names the
+command before it runs, which a tool deciding on the machine cannot show.
+
+Measured on a machine of each kind, because none of it is guessable. OpenRC
+answers `rc-service <name> status` with 0 running, 3 stopped and 1 for no such
+service — three codes, three answers. `systemctl is-active` is the obvious
+instrument and the wrong one: for a service that does not exist it prints
+`inactive` and exits 3, exactly as for one merely stopped. `systemctl show`
+distinguishes them with `LoadState=not-found` and answers whether it starts at
+boot in the same call; OpenRC keeps that second answer as a symlink in a
+runlevel, so it is an ordinary look at a path.
+
+Whether a service is running is read back after acting, because `start` reports
+success for a service that came up and fell over. Whether it starts at boot is
+not: the protocol has no operation that merely looks, the set is closed on
+purpose, and asking the same question two different ways in two places would be
+two guesses that have to agree. Drift there is caught by the next plan's read,
+like drift in anything else.
 
 ## Drift, and the rest from Portage — [0013](decisions/0013-borrow-from-portage.md) · partly built
 
