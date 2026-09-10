@@ -196,3 +196,50 @@ fn a_far_end_that_cannot_say_which_build_it_is_is_not_taken_for_the_right_one() 
         "{refusal:?}"
     );
 }
+
+/// A conversation that broke part way is not asked again as though it were in
+/// step. A far end that answered with something unreadable and is still there
+/// would otherwise have the next ask wait for ever on an answer that will not
+/// come. Nothing but `Drop` used to end a conversation; review found that.
+#[test]
+fn a_conversation_that_broke_is_not_asked_again_as_though_it_were_in_step() {
+    use std::sync::{Arc, mpsc};
+    use std::time::Duration;
+
+    // One byte announced, one byte that is not CBOR, and then a far end that
+    // listens and never answers.
+    let reach = Arc::new(
+        Piped::running(
+            &node("web-01"),
+            "sh",
+            &[
+                "-c".to_owned(),
+                "printf '\\000\\000\\000\\001\\377'; cat > /dev/null".to_owned(),
+            ],
+        )
+        .expect("sh starts"),
+    );
+    let looking = || Ask::Look {
+        observations: Vec::new(),
+        seal: None,
+    };
+
+    let first = reach.ask(&looking()).expect_err("an unreadable answer");
+    assert!(
+        matches!(first, ProviderError::Unreachable { .. }),
+        "{first:?}"
+    );
+
+    let (tell, told) = mpsc::channel();
+    let again = Arc::clone(&reach);
+    std::thread::spawn(move || {
+        let _ = tell.send(again.ask(&looking()));
+    });
+    let second = told
+        .recv_timeout(Duration::from_secs(5))
+        .expect("the second ask returns rather than waiting for an answer that will not come");
+    let Err(ProviderError::Unreachable { problem, .. }) = second else {
+        panic!("a broken conversation is out of reach, and was answered {second:?}")
+    };
+    assert!(problem.contains("gone away"), "{problem}");
+}

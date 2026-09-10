@@ -276,6 +276,12 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A conversation with a machine that broke part way is ended, and every later
+  ask to that machine says it has gone away. It used to be kept: the next ask
+  would read the rest of the broken frame as its own answer, or wait for ever on
+  a far end still busy with the last one. Found by the review of RFC 0001; the
+  test is a far end that answers with one unreadable byte and then listens.
+
 - A plan's premise is sealed for the machine it describes. It had carried an
   unkeyed digest of everything it read, and `plan --json` wrote it out, so a
   secret already on disk and about to be rotated left an unkeyed digest of the

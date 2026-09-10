@@ -161,17 +161,44 @@ impl Reach for Piped {
             return Err(out_of_reach("the far end has gone away".to_owned()));
         };
 
-        nerpa_proto::write(&mut talking.sending, &Request::new(ask.clone()))
-            .map_err(|error| out_of_reach(error.to_string()))?;
-        talking
-            .sending
-            .flush()
-            .map_err(|error| out_of_reach(error.to_string()))?;
-
-        nerpa_proto::read_response(&mut talking.reading)
-            .map(|response| response.body().clone())
-            .map_err(|error| out_of_reach(error.to_string()))
+        let exchanged = exchange(talking, ask);
+        // A conversation that failed part way is out of step: what arrives next is
+        // the rest of the frame that broke, or an answer to a question nobody is
+        // waiting on. Kept, the next ask would read that as its own answer, or wait
+        // for ever on a far end still busy with the last one. So it ends here, and
+        // every later ask says so. Only `Drop` used to clear it; review found that.
+        if exchanged.is_err()
+            && let Some(broken) = held.take()
+        {
+            end(broken);
+        }
+        exchanged.map_err(out_of_reach)
     }
+}
+
+/// One request and its answer, on a conversation that is still in step.
+fn exchange(talking: &mut Talking, ask: &Ask) -> Result<Answer, String> {
+    nerpa_proto::write(&mut talking.sending, &Request::new(ask.clone()))
+        .map_err(|error| error.to_string())?;
+    talking.sending.flush().map_err(|error| error.to_string())?;
+    nerpa_proto::read_response(&mut talking.reading)
+        .map(|response| response.body().clone())
+        .map_err(|error| error.to_string())
+}
+
+/// Ends a conversation that cannot go on. Its input is closed and the far end is
+/// stopped rather than waited for, because it may be busy with something nobody
+/// will read.
+fn end(talking: Talking) {
+    let Talking {
+        mut child,
+        sending,
+        reading,
+    } = talking;
+    drop(sending);
+    drop(reading);
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 // ENFORCES: INV-WIRE-003
