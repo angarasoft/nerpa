@@ -276,6 +276,14 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A removal comes after the change of whatever state recorded after it, and waits
+  while that cannot be planned. Removals came first and waited only for other
+  removals, so a file moved out of a directory whose declaration went was still
+  inside when the directory was removed; the removal refused, and every later run
+  did the same. A removal that would have to come between a change and a resource
+  naming what it takes away is refused when planning. Found by the narrow review
+  of RFC 0001.
+
 - A declared resource naming what a held removal takes away is held with it. It
   was adopted from the reading while the removal waited for a machine that did not
   answer, and the removal, planned in a later run, took the file away from under

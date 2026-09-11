@@ -964,6 +964,66 @@ fn a_resource_renamed_at_the_same_path_converges_in_one_run() {
     );
 }
 
+/// A directory whose declaration goes, holding a file that moves out of it, is
+/// removed after the file has moved. Removals came first, so the directory was
+/// removed while the file was still in it, the removal refused, and every later run
+/// did the same. Found by the narrow review of RFC 0001.
+#[test]
+fn a_directory_is_removed_after_the_file_moved_out_of_it() {
+    let scratch = Scratch::new("move-out");
+    let providers = providers();
+    let mut state = State::new();
+    let directory = scratch.join("old");
+    let inside = format!("{directory}/app.conf");
+    let outside = scratch.join("app.conf");
+
+    let converge = |graph: &Graph, state: &mut State| {
+        let observed = observe(graph, &providers, &machines(), state).expect("readable");
+        apply(
+            &plan(graph, &observed, state, &providers.schema(), secrets()).expect("plannable"),
+            &providers,
+            &machines(),
+            &observed,
+            state,
+            secrets(),
+            &mut kept,
+        )
+        .expect("applies");
+    };
+
+    converge(
+        &graph_of(vec![
+            Resource::new(address("os:directory.old@localhost")).with("path", directory.clone()),
+            Resource::new(address("os:file.conf@localhost"))
+                .with("path", inside.clone())
+                .with("content", "listen 80\n")
+                .after(address("os:directory.old@localhost")),
+        ]),
+        &mut state,
+    );
+
+    // The directory's declaration goes, and the file moves out of it.
+    let moved = graph_of(vec![
+        Resource::new(address("os:file.conf@localhost"))
+            .with("path", outside.clone())
+            .with("content", "listen 80\n"),
+    ]);
+    converge(&moved, &mut state);
+
+    assert!(fs::metadata(&directory).is_err(), "the directory is gone");
+    assert_eq!(
+        fs::read_to_string(&outside).ok().as_deref(),
+        Some("listen 80\n"),
+        "and the file is where it moved to"
+    );
+    let observed = observe(&moved, &providers, &machines(), &state).expect("readable");
+    let again = plan(&moved, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    assert!(
+        again.is_empty(),
+        "the next run has nothing to do: {again:?}"
+    );
+}
+
 /// State is written as the run goes, not once when it finishes.
 ///
 /// A run that stops half way has made real changes. Recording them only at the

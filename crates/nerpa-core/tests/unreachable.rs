@@ -288,6 +288,54 @@ fn a_resource_naming_what_a_held_removal_takes_is_held_with_it() {
     );
 }
 
+/// And a removal waits while what state recorded after it cannot be planned:
+/// whether that is still in the way is not known until its machine answers.
+#[test]
+fn a_removal_waits_while_what_was_recorded_after_it_cannot_be_planned() {
+    let mut state = State::new();
+    state.record(
+        address("os:directory.old@web-02"),
+        Record::new(Recorded::all(Attributes::new()), BTreeSet::new()),
+    );
+    state.record(
+        address("os:file.conf@web-01"),
+        Record::new(
+            Recorded::all(Attributes::new()),
+            [address("os:directory.old@web-02")].into_iter().collect(),
+        ),
+    );
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.conf@web-01")).with("content", "moved\n"),
+    ]);
+    let mut observed = Observed::new();
+    observed.unreachable(node("web-01"));
+
+    let plan = plan_at(
+        &graph,
+        &observed,
+        &state,
+        &Schema::new(),
+        secrets(),
+        nothing_known(),
+    )
+    .unwrap();
+
+    assert!(plan.is_empty(), "{plan:?}");
+    let named: BTreeSet<String> = plan
+        .unreachable()
+        .iter()
+        .map(|entry| entry.address().to_string())
+        .collect();
+    assert_eq!(
+        named,
+        ["os:directory.old@web-02", "os:file.conf@web-01"]
+            .into_iter()
+            .map(str::to_owned)
+            .collect(),
+        "both said to wait"
+    );
+}
+
 #[test]
 fn nothing_at_all_is_said_about_what_could_not_be_read() {
     let graph = graph_of(vec![

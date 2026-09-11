@@ -22,7 +22,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::address::{Address, Target};
 use crate::attribute::Attribute;
-use crate::graph::{Graph, GraphError, StageKind};
+use crate::graph::{Graph, GraphError, Stage, StageKind};
 use crate::observed::Observed;
 use crate::plan::{
     AttributeDelta, Change, ChangeKind, Confidence, Outdated, Plan, PlanStage, Unreachable,
@@ -99,6 +99,18 @@ pub enum PlanError {
         /// Its kind.
         kind: String,
     },
+    /// A removal that would have to come after one change and before another.
+    #[error(
+        "{removal} would have to be removed after {after} changes, which state recorded after it, and before {before} is made, which names what it takes away; one run cannot do both, so let {after} change in a run before the one that declares {before}"
+    )]
+    RemovedBetween {
+        /// What is being removed.
+        removal: Address,
+        /// The change it has to come after.
+        after: Address,
+        /// The resource it has to come before.
+        before: Address,
+    },
 }
 
 /// Computes what would have to happen for the world to match the configuration.
@@ -146,128 +158,368 @@ pub fn plan_at(
     one_thing_once(graph, schema)?;
     reactions_allowed(graph, schema)?;
 
-    let mut unreachable = Vec::new();
-    let (mut stages, held) = removals(graph, state, observed, now, &mut unreachable);
-    // ENFORCES: INV-PLAN-009
-    // What those removals take away, by what names it on its machine. A declared
-    // resource naming the same thing is made again after the removal rather than
-    // read from before it: the reading describes a thing this plan is about to
-    // delete. Renaming an address and keeping its path, with no `moved`, used to
-    // remove the file and adopt the new resource from that reading, and the run
-    // ended with no file and a record saying there was one.
-    let taken = taken_away(
-        stages
-            .iter()
-            .flat_map(PlanStage::changes)
-            .map(Change::address),
+    let declared: BTreeSet<&Address> = state
+        .addresses()
+        .filter(|address| graph.get(address).is_some())
+        .collect();
+    let doomed = state.abandoned(&declared);
+    let planning = Planning {
+        graph,
+        observed,
         state,
         schema,
-    );
-    // ENFORCES: INV-PLAN-010
-    // And what the removals that cannot be planned yet will take away once they
-    // can. A declared resource naming one of those waits with it. Planned in the
-    // meantime, it was adopted from the reading, and the removal, planned in
-    // whichever later run its machine answered, took the thing away from under
-    // that record.
-    let withheld = taken_away(&held, state, schema);
-    let mut outdated = Vec::new();
-    // Marked as the walk goes. Stages are topological, so a resource's
-    // dependencies have already been decided by the time it is reached, and
-    // unreachability travels forward along the edges in a single pass.
-    let mut unplannable: BTreeSet<Address> = BTreeSet::new();
-    // What this plan is changing, so that a resource reacting to one of them
-    // knows. Filled stage by stage, and a stage is only reached after every
-    // stage its members depend on.
-    let mut changing: BTreeSet<Address> = BTreeSet::new();
+        secrets,
+        now,
+        stages: graph.stages()?,
+        taken: taken_away(&doomed, state, schema),
+        recorded_after: recorded_after(state),
+        doomed,
+        dependencies,
+    };
 
-    // One walk of the graph, in the order the work will happen. Stages are the
-    // order of execution; there is no second pass over any of them.
-    for stage in graph.stages()? {
-        let mut changes = Vec::new();
-        for address in stage.addresses() {
-            let Some(resource) = graph.get(address) else {
-                continue;
-            };
+    // Holding goes both ways. A removal waits while something recorded after it
+    // cannot be planned, and a declared resource waits while the removal of what
+    // it names does, so the walk is taken again when a removal it did not know was
+    // held turns out to be named. Once in the ordinary case, and at most once more
+    // for each removal held that way. It is still 0006's single pass in what that
+    // decision is about: one plan, made in full from one reading before anything
+    // runs, and no planning between stages.
+    let mut held: BTreeSet<Address> = BTreeSet::new();
+    loop {
+        let walk = planning.walk(&held)?;
+        let removals = planning.removals(&walk);
+        let named = removals
+            .held
+            .iter()
+            .any(|removal| !held.contains(removal) && walk.claims.contains_key(removal));
+        if !named {
+            return assemble(walk, removals);
+        }
+        held.extend(removals.held);
+    }
+}
 
-            // ENFORCES: INV-REACH-001
-            // Out of reach, or downstream of something that is. A resource whose
-            // dependency could not be read has nowhere to take its values from,
-            // so nothing can be said about it either.
-            let node = address.domain().target().cloned();
-            let out_of_reach = node.as_ref().is_some_and(|node| !observed.reached(node));
-            let blocked = dependencies.get(address).is_some_and(|of_this| {
-                of_this
+/// What a plan is computed from, and what is worked out from that before the
+/// graph is walked.
+struct Planning<'a> {
+    graph: &'a Graph,
+    observed: &'a Observed,
+    state: &'a State,
+    schema: &'a Schema,
+    secrets: Secrets<'a>,
+    now: Written,
+    dependencies: BTreeMap<&'a Address, BTreeSet<&'a Address>>,
+    stages: Vec<Stage>,
+    /// What state remembers and the configuration no longer declares, in the
+    /// order it can be removed in.
+    doomed: Vec<Vec<Address>>,
+    /// What each of those takes away, by what names it on its machine.
+    taken: BTreeMap<(Target, String, String), Vec<Address>>,
+    /// What state recorded as coming after each address.
+    recorded_after: BTreeMap<&'a Address, Vec<&'a Address>>,
+}
+
+/// What one walk of the graph decided, before the removals are put among it.
+#[derive(Default)]
+struct Walk {
+    /// The declared changes, a stage for each of the graph's, leaving out the
+    /// stages where nothing changes.
+    stages: Vec<(StageKind, Vec<Change>)>,
+    /// Which of those stages each change that sends anything is in.
+    at: BTreeMap<Address, usize>,
+    /// The declared resources nothing could be said about.
+    unplannable: BTreeSet<Address>,
+    unreachable: Vec<Unreachable>,
+    outdated: Vec<Outdated>,
+    /// For each removal, the declared resource naming what it takes away.
+    claims: BTreeMap<Address, Address>,
+}
+
+/// Where the removals go among one walk's changes.
+#[derive(Default)]
+struct Removals {
+    /// Before everything declared, level by level.
+    first: Vec<Vec<Change>>,
+    /// After the walk's stage with that index, level by level.
+    after: BTreeMap<usize, Vec<Vec<Change>>>,
+    /// For each removal put after a stage, that stage and the change that put it
+    /// there.
+    placed: BTreeMap<Address, (usize, Address)>,
+    /// What cannot be removed in this plan.
+    held: BTreeSet<Address>,
+    unreachable: Vec<Unreachable>,
+}
+
+impl Planning<'_> {
+    /// One walk of the graph, in the order the work will happen, knowing the
+    /// removals in `held` are held.
+    fn walk(&self, held: &BTreeSet<Address>) -> Result<Walk, PlanError> {
+        let mut walk = Walk::default();
+        // What this plan is changing, so that a resource reacting to one of them
+        // knows. Filled stage by stage, and a stage is only reached after every
+        // stage its members depend on.
+        let mut changing: BTreeSet<Address> = BTreeSet::new();
+
+        // Stages are the order of execution, and topological, so a resource's
+        // dependencies have been decided by the time it is reached, and
+        // unreachability travels forward along the edges as the walk goes.
+        for stage in &self.stages {
+            let mut changes = Vec::new();
+            for address in stage.addresses() {
+                let Some(resource) = self.graph.get(address) else {
+                    continue;
+                };
+
+                // ENFORCES: INV-REACH-001
+                // Out of reach, or downstream of something that is. A resource
+                // whose dependency could not be read has nowhere to take its
+                // values from, so nothing can be said about it either.
+                let node = address.domain().target().cloned();
+                let out_of_reach = node
+                    .as_ref()
+                    .is_some_and(|node| !self.observed.reached(node));
+                let blocked = self.dependencies.get(address).is_some_and(|of_this| {
+                    of_this
+                        .iter()
+                        .any(|dependency| walk.unplannable.contains(*dependency))
+                });
+
+                // ENFORCES: INV-PLAN-009
+                // What a removal takes away, by what names it on its machine. A
+                // declared resource naming the same thing is made again after the
+                // removal rather than read from before it: the reading describes a
+                // thing this plan is about to delete. Renaming an address and
+                // keeping its path, with no `moved`, used to remove the file and
+                // adopt the new resource from that reading, and the run ended with
+                // no file and a record saying there was one.
+                let claimed: &[Address] = name_of(resource, self.schema)
+                    .and_then(|name| self.taken.get(&name))
+                    .map(Vec::as_slice)
+                    .unwrap_or_default();
+                for removal in claimed {
+                    walk.claims.insert(removal.clone(), address.clone());
+                }
+                // ENFORCES: INV-PLAN-010
+                // And one naming what a removal that cannot be planned yet will
+                // take away once it can waits with it. Planned in the meantime, it
+                // was adopted from the reading, and the removal, planned in
+                // whichever later run its machine answered, took the thing away
+                // from under that record.
+                let waits_for_removal = claimed.iter().any(|removal| held.contains(removal));
+
+                if out_of_reach || blocked || waits_for_removal {
+                    walk.unplannable.insert(address.clone());
+                    if let Some(node) = node {
+                        let age = known_for(self.state, &node, self.now);
+                        walk.unreachable
+                            .push(Unreachable::new(address.clone(), node, age));
+                    }
+                    continue;
+                }
+
+                // A reaction's trigger is always in an earlier stage, because
+                // reacting to something implies coming after it — so by the time
+                // this resource is planned, whether its cause is changing is known.
+                let roused_by: Vec<Address> = resource
+                    .reacts_to()
                     .iter()
-                    .any(|dependency| unplannable.contains(*dependency))
-            });
-            let name = name_of(resource, schema);
-            let waits_for_removal = name.as_ref().is_some_and(|name| withheld.contains(name));
+                    .filter(|cause| changing.contains(*cause))
+                    .cloned()
+                    .collect();
 
-            if out_of_reach || blocked || waits_for_removal {
-                unplannable.insert(address.clone());
-                if let Some(node) = node {
-                    let age = known_for(state, &node, now);
-                    unreachable.push(Unreachable::new(address.clone(), node, age));
+                // A reaction an earlier run began and did not finish is owed, and
+                // stays owed until it is paid. See decision 0026.
+                let record = self.state.get(address);
+                let owed: Vec<Address> = record
+                    .map(|record| record.owed().iter().cloned().collect())
+                    .unwrap_or_default();
+
+                if let Some(change) = change_for(
+                    resource,
+                    self.observed,
+                    self.schema,
+                    self.secrets,
+                    &mut walk.outdated,
+                    roused_by,
+                    owed,
+                    self.dependencies
+                        .get(address)
+                        .map(|of_this| {
+                            of_this
+                                .iter()
+                                .map(|dependency| (*dependency).clone())
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                    record.map(Record::depends_on),
+                    !claimed.is_empty(),
+                )? {
+                    // ENFORCES: INV-REACT-001
+                    // Only what moves on the machine rouses anything. An adoption
+                    // or a reorder writes state and leaves the file as it was, and
+                    // counting one restarted every service reacting to a file that
+                    // a first run over configured machines adopted.
+                    if change.kind().sends_anything() {
+                        changing.insert(address.clone());
+                        walk.at.insert(address.clone(), walk.stages.len());
+                    }
+                    changes.push(change);
                 }
-                continue;
             }
-
-            // A reaction's trigger is always in an earlier stage, because
-            // reacting to something implies coming after it — so by the time
-            // this resource is planned, whether its cause is changing is known.
-            let roused_by: Vec<Address> = resource
-                .reacts_to()
-                .iter()
-                .filter(|cause| changing.contains(*cause))
-                .cloned()
-                .collect();
-
-            // A reaction an earlier run began and did not finish is owed, and
-            // stays owed until it is paid. See decision 0026.
-            let record = state.get(address);
-            let owed: Vec<Address> = record
-                .map(|record| record.owed().iter().cloned().collect())
-                .unwrap_or_default();
-
-            if let Some(change) = change_for(
-                resource,
-                observed,
-                schema,
-                secrets,
-                &mut outdated,
-                roused_by,
-                owed,
-                dependencies
-                    .get(address)
-                    .map(|of_this| {
-                        of_this
-                            .iter()
-                            .map(|dependency| (*dependency).clone())
-                            .collect()
-                    })
-                    .unwrap_or_default(),
-                record.map(Record::depends_on),
-                name.is_some_and(|name| taken.contains(&name)),
-            )? {
-                // ENFORCES: INV-REACT-001
-                // Only what moves on the machine rouses anything. An adoption or
-                // a reorder writes state and leaves the file as it was, and
-                // counting one restarted every service reacting to a file that a
-                // first run over configured machines adopted.
-                if change.kind().sends_anything() {
-                    changing.insert(address.clone());
-                }
-                changes.push(change);
+            // A stage where everything already matches is not a stage anybody
+            // needs to read about.
+            if !changes.is_empty() {
+                walk.stages.push((stage.kind().clone(), changes));
             }
         }
-        // A stage where everything already matches is not a stage anybody needs
-        // to read about.
-        if !changes.is_empty() {
-            stages.push(PlanStage::new(stage.kind().clone(), changes));
+        Ok(walk)
+    }
+
+    /// Where each removal goes among `walk`'s changes, or that it cannot be
+    /// planned.
+    ///
+    /// In reverse dependency order, taken from state because the configuration
+    /// that described a dependency is exactly what was deleted. Before everything
+    /// declared, because a resource on its way out can be holding something a new
+    /// one needs — a name, a port, a path — and nothing being created can want
+    /// something that is leaving. Unless something state recorded after it is
+    /// changing, and then after that change.
+    fn removals(&self, walk: &Walk) -> Removals {
+        let mut removals = Removals::default();
+        for level in &self.doomed {
+            let mut first = Vec::new();
+            let mut after: BTreeMap<usize, Vec<Change>> = BTreeMap::new();
+            for address in level {
+                let later = self
+                    .recorded_after
+                    .get(address)
+                    .map(Vec::as_slice)
+                    .unwrap_or_default();
+
+                // ENFORCES: INV-REACH-001
+                // A removal is planned from state rather than from a reading, so
+                // whether its machine answered is asked here. One that did not is
+                // reported and not planned, and so is every removal that has to
+                // wait for it: what a resource comes after is removed after it.
+                // Planned anyway, it sat in a plan that called itself complete,
+                // and apply stopped at the first stage, before touching the
+                // machines that did answer. The same for a removal waiting on a
+                // declared resource nothing can be said about, which may still be
+                // in the way.
+                let node = address.target().cloned();
+                let out_of_reach = node
+                    .as_ref()
+                    .is_some_and(|node| !self.observed.reached(node));
+                let waiting = later.iter().any(|other| {
+                    removals.held.contains(*other) || walk.unplannable.contains(*other)
+                });
+                if out_of_reach || waiting {
+                    if let Some(node) = node {
+                        let age = known_for(self.state, &node, self.now);
+                        removals
+                            .unreachable
+                            .push(Unreachable::new(address.clone(), node, age));
+                    }
+                    removals.held.insert(address.clone());
+                    continue;
+                }
+
+                // ENFORCES: INV-PLAN-011
+                // After the change of whatever state recorded after it, rather
+                // than before everything. A file recorded after its directory and
+                // moved out of it while the directory's declaration went was still
+                // inside when the directory was removed; the removal refused, and
+                // every later run did the same.
+                let placed = later
+                    .iter()
+                    .filter_map(|other| {
+                        walk.at
+                            .get(*other)
+                            .map(|at| (*at, (*other).clone()))
+                            .or_else(|| removals.placed.get(*other).cloned())
+                    })
+                    .max_by_key(|(at, _)| *at);
+
+                // Nothing was looked at: this resource is no longer declared, so
+                // the plan reasoned from state rather than from a reading, and
+                // there is nothing to have moved.
+                let change = Change::new(
+                    address.clone(),
+                    ChangeKind::Delete,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                );
+                if let Some((at, why)) = placed {
+                    after.entry(at).or_default().push(change);
+                    removals.placed.insert(address.clone(), (at, why));
+                } else {
+                    first.push(change);
+                }
+            }
+            if !first.is_empty() {
+                removals.first.push(first);
+            }
+            for (at, changes) in after {
+                removals.after.entry(at).or_default().push(changes);
+            }
+        }
+        removals
+    }
+}
+
+/// The plan: the removals put among the walk's changes.
+fn assemble(walk: Walk, removals: Removals) -> Result<Plan, PlanError> {
+    // ENFORCES: INV-PLAN-011
+    // A removal put after a change, taking away what a declared resource names.
+    // INV-PLAN-009 makes that resource after the removal, so when it does not come
+    // after the change as well, the removal would have to be in between, and one
+    // run cannot do both.
+    for (removal, (at, waits_for)) in &removals.placed {
+        if let Some(before) = walk.claims.get(removal)
+            && walk.at.get(before).is_some_and(|made| made <= at)
+        {
+            return Err(PlanError::RemovedBetween {
+                removal: removal.clone(),
+                after: waits_for.clone(),
+                before: before.clone(),
+            });
         }
     }
 
-    Ok(Plan::new(stages, unreachable, outdated))
+    let mut stages: Vec<PlanStage> = removals
+        .first
+        .into_iter()
+        .map(|changes| PlanStage::new(StageKind::Mixed, changes))
+        .collect();
+    let mut later = removals.after;
+    for (index, (kind, changes)) in walk.stages.into_iter().enumerate() {
+        stages.push(PlanStage::new(kind, changes));
+        for changes in later.remove(&index).unwrap_or_default() {
+            stages.push(PlanStage::new(StageKind::Mixed, changes));
+        }
+    }
+
+    let mut unreachable = removals.unreachable;
+    unreachable.extend(walk.unreachable);
+    Ok(Plan::new(stages, unreachable, walk.outdated))
+}
+
+/// What state recorded as coming after each address: each record's edges, the
+/// other way round.
+fn recorded_after(state: &State) -> BTreeMap<&Address, Vec<&Address>> {
+    let mut after: BTreeMap<&Address, Vec<&Address>> = BTreeMap::new();
+    for address in state.addresses() {
+        if let Some(record) = state.get(address) {
+            for dependency in record.depends_on() {
+                after.entry(dependency).or_default().push(address);
+            }
+        }
+    }
+    after
 }
 
 // ENFORCES: INV-PLAN-008
@@ -308,28 +560,38 @@ fn one_thing_once(graph: &Graph, schema: &Schema) -> Result<(), PlanError> {
     Ok(())
 }
 
-/// What removing each of `removed` takes away, named as `name_of` names a
-/// declared resource: by machine, namespace and one spelling of the value.
+/// What each removal takes away, named as `name_of` names a declared resource: by
+/// machine, namespace and one spelling of the value.
 ///
 /// Taken from state, because the configuration that named them is gone. A record
 /// whose naming attribute is not a plain value names nothing here.
-fn taken_away<'a>(
-    removed: impl IntoIterator<Item = &'a Address>,
+fn taken_away(
+    doomed: &[Vec<Address>],
     state: &State,
     schema: &Schema,
-) -> BTreeSet<(Target, String, String)> {
-    removed
-        .into_iter()
-        .filter_map(|address| {
-            let node = address.target()?;
-            let (attribute, namespace) = schema.identity_of(address)?;
-            let Value::Text(value) = state.get(address)?.attributes().get(attribute)?.plain()?
-            else {
-                return None;
-            };
-            Some((node.clone(), namespace.to_owned(), one_spelling(value)))
-        })
-        .collect()
+) -> BTreeMap<(Target, String, String), Vec<Address>> {
+    let mut taken: BTreeMap<(Target, String, String), Vec<Address>> = BTreeMap::new();
+    for address in doomed.iter().flatten() {
+        if let Some(name) = recorded_name(address, state, schema) {
+            taken.entry(name).or_default().push(address.clone());
+        }
+    }
+    taken
+}
+
+/// What a record names on its machine, if its provider says and state kept the
+/// value.
+fn recorded_name(
+    address: &Address,
+    state: &State,
+    schema: &Schema,
+) -> Option<(Target, String, String)> {
+    let node = address.target()?;
+    let (attribute, namespace) = schema.identity_of(address)?;
+    let Value::Text(value) = state.get(address)?.attributes().get(attribute)?.plain()? else {
+        return None;
+    };
+    Some((node.clone(), namespace.to_owned(), one_spelling(value)))
 }
 
 /// What a declared resource names on its machine, if its provider says and the
@@ -394,77 +656,6 @@ fn known_for(state: &State, node: &Target, now: Written) -> Option<u64> {
         .map(Record::written)
         .max()
         .map(|written| written.age(now).as_secs())
-}
-
-/// What state remembers and the configuration no longer declares.
-///
-/// Removals come first, in reverse dependency order. First because a resource on
-/// its way out can be holding something a new one needs — a name, a port, a path
-/// — and because nothing being created can want something that is leaving.
-///
-/// Returned with the removals that cannot be planned yet, so that a declared
-/// resource naming what one of them takes away can wait as well.
-fn removals(
-    graph: &Graph,
-    state: &State,
-    observed: &Observed,
-    now: Written,
-    unreachable: &mut Vec<Unreachable>,
-) -> (Vec<PlanStage>, BTreeSet<Address>) {
-    let declared: BTreeSet<&Address> = state
-        .addresses()
-        .filter(|address| graph.get(address).is_some())
-        .collect();
-
-    // ENFORCES: INV-REACH-001
-    // A removal is planned from state rather than from a reading, so whether its
-    // machine answered is asked here. One that did not is reported and not
-    // planned, and so is every removal that has to wait for it: what a resource
-    // comes after is removed after it. Planned anyway, it sat in a plan that
-    // called itself complete, and apply stopped at the first stage, before
-    // touching the machines that did answer.
-    let mut held: BTreeSet<Address> = BTreeSet::new();
-    let stages = state
-        .abandoned(&declared)
-        .into_iter()
-        .filter_map(|level| {
-            let changes: Vec<Change> = level
-                .into_iter()
-                .filter_map(|address| {
-                    let node = address.target().cloned();
-                    let out_of_reach = node.as_ref().is_some_and(|node| !observed.reached(node));
-                    let waiting = held.iter().any(|earlier| {
-                        state
-                            .get(earlier)
-                            .is_some_and(|record| record.depends_on().contains(&address))
-                    });
-                    if out_of_reach || waiting {
-                        if let Some(node) = node {
-                            let age = known_for(state, &node, now);
-                            unreachable.push(Unreachable::new(address.clone(), node, age));
-                        }
-                        held.insert(address);
-                        return None;
-                    }
-                    // Nothing was looked at: this resource is no longer
-                    // declared, so the plan reasoned from state rather than
-                    // from a reading, and there is nothing to have moved.
-                    Some(Change::new(
-                        address,
-                        ChangeKind::Delete,
-                        Vec::new(),
-                        Vec::new(),
-                        Vec::new(),
-                        Vec::new(),
-                        Vec::new(),
-                        Vec::new(),
-                    ))
-                })
-                .collect();
-            (!changes.is_empty()).then(|| PlanStage::new(StageKind::Mixed, changes))
-        })
-        .collect();
-    (stages, held)
 }
 
 /// What has to happen to one resource, or nothing if it already matches and is

@@ -214,6 +214,129 @@ fn a_resource_naming_what_a_removal_takes_is_created_after_it() {
     );
 }
 
+/// A removal comes after the change of whatever state recorded after it, not
+/// before everything. A file recorded after its directory and moved out of it
+/// while the directory's declaration went was still inside when the directory was
+/// removed; the removal refused, and every later run did the same. Found by the
+/// narrow review of RFC 0001.
+#[test]
+fn a_removal_comes_after_the_change_of_what_was_recorded_after_it() {
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.conf@web-01")).with("content", "moved\n"),
+        Resource::new(address("os:file.motd@web-01")).with("content", "hello\n"),
+    ]);
+    let observed = observed_with(&[
+        (
+            "os:file.conf@web-01",
+            &[("content", Value::Text("where it was\n".to_owned()))],
+        ),
+        (
+            "os:file.motd@web-01",
+            &[("content", Value::Text("old\n".to_owned()))],
+        ),
+    ]);
+    let mut state = State::new();
+    for doomed in ["os:directory.old@web-01", "os:directory.spare@web-01"] {
+        state.record(
+            address(doomed),
+            Record::new(BTreeMap::new(), BTreeSet::new()),
+        );
+    }
+    state.record(
+        address("os:file.conf@web-01"),
+        Record::new(
+            BTreeMap::new(),
+            [address("os:directory.old@web-01")].into_iter().collect(),
+        ),
+    );
+    state.record(
+        address("os:file.motd@web-01"),
+        Record::new(BTreeMap::new(), BTreeSet::new()),
+    );
+
+    let plan = plan(&graph, &observed, &state, &Schema::new(), secrets()).expect("plannable");
+    let order: Vec<Vec<(String, ChangeKind)>> = plan
+        .stages()
+        .iter()
+        .map(|stage| {
+            stage
+                .changes()
+                .iter()
+                .map(|change| (change.address().to_string(), change.kind()))
+                .collect()
+        })
+        .collect();
+    assert_eq!(
+        order,
+        [
+            vec![("os:directory.spare@web-01".to_owned(), ChangeKind::Delete)],
+            vec![
+                ("os:file.conf@web-01".to_owned(), ChangeKind::Update),
+                ("os:file.motd@web-01".to_owned(), ChangeKind::Update),
+            ],
+            vec![("os:directory.old@web-01".to_owned(), ChangeKind::Delete)],
+        ],
+        "what waits for nothing first, and the directory after the file: {plan:?}"
+    );
+}
+
+/// A removal that would have to come after one change and before another is
+/// refused when the second does not come after the first: a resource that names
+/// what the removal takes away is made after it, and one run cannot do both.
+#[test]
+fn a_removal_that_has_to_come_between_two_changes_is_refused() {
+    let os = Provider::new("os").unwrap();
+    let schema = Schema::new()
+        .identity(os.clone(), Kind::new("file").unwrap(), "path", "path")
+        .identity(os, Kind::new("directory").unwrap(), "path", "path");
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.conf@web-01"))
+            .with("path", "/srv/app.conf")
+            .with("content", "moved\n"),
+        Resource::new(address("os:file.app@web-01"))
+            .with("path", "/srv/app")
+            .with("content", "a file now\n"),
+    ]);
+    let observed = observed_with(&[(
+        "os:file.conf@web-01",
+        &[
+            ("path", Value::Text("/srv/app.conf".to_owned())),
+            ("content", Value::Text("where it was\n".to_owned())),
+        ],
+    )]);
+    let mut state = State::new();
+    state.record(
+        address("os:directory.app@web-01"),
+        Record::new(
+            Recorded::all(
+                [("path".to_owned(), Value::Text("/srv/app".to_owned()))]
+                    .into_iter()
+                    .collect::<Attributes>(),
+            ),
+            BTreeSet::new(),
+        ),
+    );
+    state.record(
+        address("os:file.conf@web-01"),
+        Record::new(
+            BTreeMap::new(),
+            [address("os:directory.app@web-01")].into_iter().collect(),
+        ),
+    );
+
+    let refused = plan(&graph, &observed, &state, &schema, secrets()).unwrap_err();
+    assert!(
+        matches!(
+            &refused,
+            PlanError::RemovedBetween { removal, after, before }
+                if removal == &address("os:directory.app@web-01")
+                    && after == &address("os:file.conf@web-01")
+                    && before == &address("os:file.app@web-01")
+        ),
+        "{refused}"
+    );
+}
+
 /// The same resource with nothing recording it is adopted: nothing is done to it,
 /// and it is written down, so that taking its declaration away later removes it.
 /// Planned as nothing, it never was. Decision 0042.

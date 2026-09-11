@@ -971,6 +971,28 @@ bypass = "Asking only about the removals this plan carries, as INV-PLAN-009 does
 enforced_by = ["crates/nerpa-core/src/planner.rs"]
 tests = ["a_resource_naming_what_a_held_removal_takes_is_held_with_it"]
 adversarial = ["a_resource_naming_what_a_held_removal_takes_is_held_with_it"]
+
+[[invariant]]
+id = "INV-PLAN-011"
+status = "enforced"
+statement = "A removal comes after the change of whatever state recorded after it, and waits while that cannot be planned."
+rationale = """
+Removals came first and waited only for other removals. A file recorded after its \
+directory and moved out of it while the directory's declaration went was still \
+inside when the directory was removed; the removal refused, and every later run \
+did the same. The edge comes from state, as for INV-STATE-002, because the \
+configuration that described it is gone. A removal waits while what was recorded \
+after it cannot be planned, and one that would have to come between a change and \
+the resource INV-PLAN-009 makes after it is refused: one run cannot do both."""
+bypass = "Ordering removals among removals alone. A removal whose remembered dependent is changing and still in the way is refused by the machine, and the plan never converges."
+enforced_by = ["crates/nerpa-core/src/planner.rs"]
+tests = [
+  "a_directory_is_removed_after_the_file_moved_out_of_it",
+  "a_removal_comes_after_the_change_of_what_was_recorded_after_it",
+  "a_removal_waits_while_what_was_recorded_after_it_cannot_be_planned",
+  "a_removal_that_has_to_come_between_two_changes_is_refused",
+]
+adversarial = ["a_directory_is_removed_after_the_file_moved_out_of_it"]
 [[invariant]]
 id = "INV-TEMPLATE-001"
 status = "enforced"
