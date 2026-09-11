@@ -376,8 +376,10 @@ impl Planning<'_> {
                 // keeping its path, with no `moved`, used to remove the file and
                 // adopt the new resource from that reading, and the run ended with
                 // no file and a record saying there was one.
-                let claimed: &[Address] = name_of(resource, self.schema)
-                    .and_then(|name| self.taken.get(&name))
+                let name = name_of(resource, self.schema);
+                let claimed: &[Address] = name
+                    .as_ref()
+                    .and_then(|name| self.taken.get(name))
                     .map(Vec::as_slice)
                     .unwrap_or_default();
                 for removal in claimed {
@@ -392,6 +394,15 @@ impl Planning<'_> {
                 let waits_for_removal = claimed
                     .iter()
                     .any(|removal| held.removals.contains(removal));
+                // Its reading describes the thing a removal takes away only when
+                // it was taken where the resource is declared. One that state
+                // recorded somewhere else was read there, and is the resource's
+                // own: it is replaced after the removal, which removes the old one.
+                // Planned as a creation, it was made at the new path, and the old
+                // path stayed on the machine with nothing recording it.
+                let reads_what_is_taken = !claimed.is_empty()
+                    && recorded_name(address, self.state, self.schema)
+                        .is_none_or(|recorded| Some(&recorded) == name.as_ref());
                 // A cause rousing something that cannot be planned and has
                 // nowhere to owe the reaction, or a replacement waiting for what
                 // was recorded after it, found by a walk before this one.
@@ -465,7 +476,7 @@ impl Planning<'_> {
                         })
                         .unwrap_or_default(),
                     record.map(Record::depends_on),
-                    !claimed.is_empty(),
+                    reads_what_is_taken,
                 )? {
                     // ENFORCES: INV-REACT-001
                     // Only what moves on the machine rouses anything. An adoption

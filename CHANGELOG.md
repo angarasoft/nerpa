@@ -276,6 +276,13 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A recorded file moved onto the path a removal frees is replaced, which removes
+  the old one, rather than made again beside it. Naming what the removal takes away
+  dropped the file's reading, though it had been taken where state left the file,
+  so the move was planned as a creation: the old path stayed on the machine with
+  nothing recording it, and the next run had nothing to do. Found by the review of
+  RFC 0001's fourth revision.
+
 - A replacement comes after the removal, and the change, of what state recorded
   inside it, and whatever comes after moves later with it. Ordering a removal after
   the change of what was recorded after it had moved it past a replacement of the

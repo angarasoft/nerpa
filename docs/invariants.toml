@@ -283,7 +283,10 @@ Reading at the new declared location finds nothing and proposes making a second 
 resource, abandoning the first. Only state remembers where Nerpa left it, and \
 without that a change of location is silently a duplication."""
 enforced_by = ["crates/nerpa-core/src/run.rs"]
-tests = ["moving_a_file_replaces_it_and_takes_the_old_one_with_it"]
+tests = [
+  "moving_a_file_replaces_it_and_takes_the_old_one_with_it",
+  "a_file_moved_onto_a_path_a_removal_frees_leaves_nothing_at_the_old_path",
+]
 bypass = "A moved resource looked for where the declaration now points, found missing, and made a second time."
 adversarial = [
   "moving_a_file_replaces_it_and_takes_the_old_one_with_it",
@@ -954,6 +957,7 @@ enforced_by = ["crates/nerpa-core/src/planner.rs"]
 tests = [
   "a_resource_naming_what_a_removal_takes_is_created_after_it",
   "a_resource_renamed_at_the_same_path_converges_in_one_run",
+  "a_file_moved_onto_a_path_a_removal_frees_leaves_nothing_at_the_old_path",
 ]
 adversarial = ["a_resource_renamed_at_the_same_path_converges_in_one_run"]
 

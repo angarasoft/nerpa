@@ -1144,6 +1144,50 @@ fn a_replaced_directory_waits_for_the_file_moving_out_of_it() {
     );
 }
 
+/// A recorded file moved onto the path a removal frees is replaced, not made again
+/// beside the old one. Naming what a removal takes away dropped its reading, which
+/// had been taken where state left it, so it was planned as a creation: the old
+/// path stayed on the machine with nothing recording it, and the next run had
+/// nothing to do. Found by the review of RFC 0001's fourth revision.
+#[test]
+fn a_file_moved_onto_a_path_a_removal_frees_leaves_nothing_at_the_old_path() {
+    let scratch = Scratch::new("moved-onto-freed");
+    let (old, freed) = (scratch.join("x"), scratch.join("y"));
+    let mut state = State::new();
+    run_once(
+        &graph_of(vec![
+            Resource::new(address("os:directory.y@localhost")).with("path", freed.clone()),
+            Resource::new(address("os:file.a@localhost"))
+                .with("path", old.clone())
+                .with("content", "a\n"),
+        ]),
+        &mut state,
+    )
+    .expect("the first run applies");
+
+    let moved = graph_of(vec![
+        Resource::new(address("os:file.a@localhost"))
+            .with("path", freed.clone())
+            .with("content", "a\n"),
+    ]);
+    run_once(&moved, &mut state).expect("the second run applies");
+
+    assert!(
+        fs::metadata(&old).is_err(),
+        "nothing is left at the old path"
+    );
+    assert_eq!(
+        fs::read_to_string(&freed).ok().as_deref(),
+        Some("a\n"),
+        "and the file is where it moved to"
+    );
+    let again = next_plan(&moved, &state);
+    assert!(
+        again.is_empty(),
+        "and the next run has nothing to do: {again:?}"
+    );
+}
+
 /// State is written as the run goes, not once when it finishes.
 ///
 /// A run that stops half way has made real changes. Recording them only at the
