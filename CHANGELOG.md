@@ -276,6 +276,12 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A removal on a machine that did not answer is reported as out of reach and not
+  planned, and so is every removal that has to wait for it. It was planned from
+  state in a plan that called itself complete, and apply stopped at that first
+  stage, before touching the machines that did answer. Found by the third review
+  of RFC 0001.
+
 - A service roused while its own attributes change is restarted as well as
   settled. Providers are told whether a change was roused, and `Provider::apply`
   gains `roused`. The `os` provider restarted only a reaction on its own, so a

@@ -135,7 +135,8 @@ pub fn plan_at(
     let dependencies = graph.dependencies()?;
     one_thing_once(graph, schema)?;
 
-    let mut stages = removals(graph, state);
+    let mut unreachable = Vec::new();
+    let mut stages = removals(graph, state, observed, now, &mut unreachable);
     // ENFORCES: INV-PLAN-009
     // What those removals take away, by what names it on its machine. A declared
     // resource naming the same thing is made again after the removal rather than
@@ -144,7 +145,6 @@ pub fn plan_at(
     // remove the file and adopt the new resource from that reading, and the run
     // ended with no file and a record saying there was one.
     let taken = taken_away(&stages, state, schema);
-    let mut unreachable = Vec::new();
     let mut outdated = Vec::new();
     // Marked as the walk goes. Stages are topological, so a resource's
     // dependencies have already been decided by the time it is reached, and
@@ -354,23 +354,52 @@ fn known_for(state: &State, node: &Target, now: Written) -> Option<u64> {
 /// Removals come first, in reverse dependency order. First because a resource on
 /// its way out can be holding something a new one needs — a name, a port, a path
 /// — and because nothing being created can want something that is leaving.
-fn removals(graph: &Graph, state: &State) -> Vec<PlanStage> {
+fn removals(
+    graph: &Graph,
+    state: &State,
+    observed: &Observed,
+    now: Written,
+    unreachable: &mut Vec<Unreachable>,
+) -> Vec<PlanStage> {
     let declared: BTreeSet<&Address> = state
         .addresses()
         .filter(|address| graph.get(address).is_some())
         .collect();
 
+    // ENFORCES: INV-REACH-001
+    // A removal is planned from state rather than from a reading, so whether its
+    // machine answered is asked here. One that did not is reported and not
+    // planned, and so is every removal that has to wait for it: what a resource
+    // comes after is removed after it. Planned anyway, it sat in a plan that
+    // called itself complete, and apply stopped at the first stage, before
+    // touching the machines that did answer.
+    let mut held: BTreeSet<Address> = BTreeSet::new();
     state
         .abandoned(&declared)
         .into_iter()
-        .map(|level| {
-            let changes = level
+        .filter_map(|level| {
+            let changes: Vec<Change> = level
                 .into_iter()
-                .map(|address| {
+                .filter_map(|address| {
+                    let node = address.target().cloned();
+                    let out_of_reach = node.as_ref().is_some_and(|node| !observed.reached(node));
+                    let waiting = held.iter().any(|earlier| {
+                        state
+                            .get(earlier)
+                            .is_some_and(|record| record.depends_on().contains(&address))
+                    });
+                    if out_of_reach || waiting {
+                        if let Some(node) = node {
+                            let age = known_for(state, &node, now);
+                            unreachable.push(Unreachable::new(address.clone(), node, age));
+                        }
+                        held.insert(address);
+                        return None;
+                    }
                     // Nothing was looked at: this resource is no longer
                     // declared, so the plan reasoned from state rather than
                     // from a reading, and there is nothing to have moved.
-                    Change::new(
+                    Some(Change::new(
                         address,
                         ChangeKind::Delete,
                         Vec::new(),
@@ -379,10 +408,10 @@ fn removals(graph: &Graph, state: &State) -> Vec<PlanStage> {
                         Vec::new(),
                         Vec::new(),
                         Vec::new(),
-                    )
+                    ))
                 })
                 .collect();
-            PlanStage::new(StageKind::Mixed, changes)
+            (!changes.is_empty()).then(|| PlanStage::new(StageKind::Mixed, changes))
         })
         .collect()
 }

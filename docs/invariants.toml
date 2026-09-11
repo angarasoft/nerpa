@@ -491,12 +491,16 @@ tests = [
   "a_connection_that_fails_before_anything_is_read_does_not_end_the_run",
   "the_machine_that_would_not_open_is_named_once_and_says_why",
   "a_fleet_where_nothing_opens_is_empty_rather_than_fatal",
+  "a_removal_on_a_machine_that_did_not_answer_is_not_planned",
+  "a_removal_waiting_on_one_that_cannot_be_made_is_held",
 ]
 bypass = "One machine not answering refusing the whole run, or its resources being planned anyway from state that is out of date. Taken once, and not where the guarantee was tested: connections are opened for the whole fleet before anything is read, and a failure there ended the run without the planner being asked."
 adversarial = [
   "a_resource_on_a_machine_that_did_not_answer_is_not_planned",
   "nothing_at_all_is_said_about_what_could_not_be_read",
   "a_connection_that_fails_before_anything_is_read_does_not_end_the_run",
+  "a_removal_on_a_machine_that_did_not_answer_is_not_planned",
+  "a_removal_waiting_on_one_that_cannot_be_made_is_held",
 ]
 
 [[invariant]]

@@ -118,6 +118,101 @@ fn a_resource_on_a_machine_that_did_not_answer_is_not_planned() {
 }
 
 /// Nothing is claimed about it, and that includes not claiming it is unchanged.
+/// A removal is planned from state, and a machine that did not answer cannot be
+/// asked to remove anything. It was planned anyway, in a plan that called itself
+/// complete, and apply stopped at that first stage, before touching the machines
+/// that did answer. Found by the third review of RFC 0001.
+#[test]
+fn a_removal_on_a_machine_that_did_not_answer_is_not_planned() {
+    let mut state = State::new();
+    state.record(
+        address("os:file.gone@web-01"),
+        Record::new(Recorded::all(Attributes::new()), BTreeSet::new()),
+    );
+    let mut observed = Observed::new();
+    observed.unreachable(node("web-01"));
+
+    let plan = plan_at(
+        &Graph::new(),
+        &observed,
+        &state,
+        &Schema::new(),
+        secrets(),
+        nothing_known(),
+    )
+    .unwrap();
+
+    assert!(
+        plan.is_empty(),
+        "nothing is removed from a machine that did not answer: {plan:?}"
+    );
+    assert!(
+        !plan.is_complete(),
+        "and the plan does not call itself complete"
+    );
+    let named: BTreeSet<String> = plan
+        .unreachable()
+        .iter()
+        .map(|entry| entry.address().to_string())
+        .collect();
+    assert!(named.contains("os:file.gone@web-01"), "{named:?}");
+}
+
+/// And a removal that has to wait for one it cannot have waits with it, while a
+/// removal that waits for nothing still goes ahead. What a resource comes after is
+/// removed after it, so removing that first would take it away from under a
+/// resource still there.
+#[test]
+fn a_removal_waiting_on_one_that_cannot_be_made_is_held() {
+    let mut state = State::new();
+    state.record(
+        address("os:file.source@web-02"),
+        Record::new(Recorded::all(Attributes::new()), BTreeSet::new()),
+    );
+    state.record(
+        address("os:file.reader@web-01"),
+        Record::new(
+            Recorded::all(Attributes::new()),
+            [address("os:file.source@web-02")].into_iter().collect(),
+        ),
+    );
+    state.record(
+        address("os:file.alone@web-02"),
+        Record::new(Recorded::all(Attributes::new()), BTreeSet::new()),
+    );
+    let mut observed = Observed::new();
+    observed.unreachable(node("web-01"));
+
+    let plan = plan_at(
+        &Graph::new(),
+        &observed,
+        &state,
+        &Schema::new(),
+        secrets(),
+        nothing_known(),
+    )
+    .unwrap();
+
+    let planned: Vec<(String, ChangeKind)> = plan
+        .changes()
+        .map(|change| (change.address().to_string(), change.kind()))
+        .collect();
+    assert_eq!(
+        planned,
+        [("os:file.alone@web-02".to_owned(), ChangeKind::Delete)],
+        "only what waits for nothing: {plan:?}"
+    );
+    let named: BTreeSet<String> = plan
+        .unreachable()
+        .iter()
+        .map(|entry| entry.address().to_string())
+        .collect();
+    assert!(
+        named.contains("os:file.reader@web-01") && named.contains("os:file.source@web-02"),
+        "{named:?}"
+    );
+}
+
 #[test]
 fn nothing_at_all_is_said_about_what_could_not_be_read() {
     let graph = graph_of(vec![
