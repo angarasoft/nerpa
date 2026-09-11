@@ -276,6 +276,12 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A file declared where another moves away from is made after the move. The name
+  a move leaves was not taken, so the file was read there: adopted from the file
+  about to be deleted, which the move then deleted, or updated so that the move's
+  own premise moved. Either took more runs to come back. Found by the review of RFC
+  0001's fifth revision.
+
 - Only what can move out of a thing goes before its removal. The one order of
   684c024 put a removal, or a replacement's removal of what was there, after the
   change of anything state recorded after it: a moved configuration file and the

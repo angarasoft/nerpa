@@ -1237,6 +1237,55 @@ fn a_mode_beyond_the_permission_bits_is_refused_while_planning() {
     );
 }
 
+/// A file declared where another moves away from is made after the move, whether
+/// its content is the same or not. It was read there: adopted from the file about
+/// to be deleted, which the move then deleted, or updated so that the move's own
+/// premise moved; either took more runs to come back. Found by the review of RFC
+/// 0001's fifth revision.
+#[test]
+fn a_file_declared_where_a_replacement_moves_one_away_is_made_after_it() {
+    for (name, content) in [("same", "x\n"), ("other", "t\n")] {
+        let scratch = Scratch::new(&format!("freed-by-move-{name}"));
+        let (old, new) = (scratch.join("a"), scratch.join("b"));
+        let mut state = State::new();
+        run_once(
+            &graph_of(vec![
+                Resource::new(address("os:file.x@localhost"))
+                    .with("path", old.clone())
+                    .with("content", "x\n"),
+            ]),
+            &mut state,
+        )
+        .expect("the first run applies");
+
+        let second = graph_of(vec![
+            Resource::new(address("os:file.x@localhost"))
+                .with("path", new.clone())
+                .with("content", "x\n"),
+            Resource::new(address("os:file.t@localhost"))
+                .with("path", old.clone())
+                .with("content", content),
+        ]);
+        run_once(&second, &mut state).expect("the second run applies");
+
+        assert_eq!(
+            fs::read_to_string(&old).ok().as_deref(),
+            Some(content),
+            "{name}: the file declared where x was is there"
+        );
+        assert_eq!(
+            fs::read_to_string(&new).ok().as_deref(),
+            Some("x\n"),
+            "{name}: and x is where it moved"
+        );
+        let again = next_plan(&second, &state);
+        assert!(
+            again.is_empty(),
+            "{name}: the next run has nothing to do: {again:?}"
+        );
+    }
+}
+
 /// State is written as the run goes, not once when it finishes.
 ///
 /// A run that stops half way has made real changes. Recording them only at the

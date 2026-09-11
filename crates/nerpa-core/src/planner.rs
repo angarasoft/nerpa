@@ -145,6 +145,8 @@ pub enum Because {
     RemovedAfterChange,
     /// A resource made after the removal of what names the same thing.
     MadeAfterRemoval,
+    /// A resource made after what named the same thing moves away from it.
+    MadeAfterMove,
     /// A replacement after the removal of what state recorded after it.
     ReplacedAfterRemoval,
     /// A replacement after the change of what state recorded after it.
@@ -167,6 +169,10 @@ impl fmt::Display for Step {
             Because::MadeAfterRemoval => write!(
                 f,
                 "making {later} after removing {earlier}, which takes away what it names"
+            ),
+            Because::MadeAfterMove => write!(
+                f,
+                "making {later} after {earlier} moves away from what it names"
             ),
             Because::ReplacedAfterRemoval => write!(
                 f,
@@ -248,7 +254,7 @@ pub fn plan_at(
         secrets,
         now,
         stages: graph.stages()?,
-        taken: taken_away(&doomed, state, schema),
+        taken: taken_away(&doomed, graph, state, schema),
         recorded_after: recorded_after(state),
         doomed,
         dependencies,
@@ -271,6 +277,7 @@ pub fn plan_at(
         let named = removals
             .held
             .iter()
+            .chain(&walk.unplannable)
             .any(|removal| !held.removals.contains(removal) && walk.claims.contains_key(removal));
         let waiting = walk
             .hold
@@ -281,6 +288,13 @@ pub fn plan_at(
             return planning.assemble(walk, removals);
         }
         held.removals.extend(removals.held);
+        // A move that cannot be planned holds what names the thing it leaves.
+        held.removals.extend(
+            walk.unplannable
+                .iter()
+                .filter(|address| walk.claims.contains_key(*address))
+                .cloned(),
+        );
         held.changes.extend(walk.hold);
         held.changes.extend(replacing);
     }
@@ -289,7 +303,7 @@ pub fn plan_at(
 /// What a walk is told is held, by the walks before it.
 #[derive(Default)]
 struct Held {
-    /// Removals that cannot be planned.
+    /// Removals, and moves away from a name, that cannot be planned.
     removals: BTreeSet<Address>,
     /// Declared changes that wait, and what for: a cause rousing a resource that
     /// cannot be planned and has no record, or a replacement whose removal of what
@@ -774,6 +788,13 @@ impl Planning<'_> {
                 step(taker, address, Because::MadeAfterRemoval);
             }
         }
+        // And what names the thing a declared resource moves away from is made
+        // after the move.
+        for (moving, taker) in &walk.claims {
+            if !removing.contains(moving) && sending.contains_key(moving) {
+                step(taker, moving, Because::MadeAfterMove);
+            }
+        }
         for (address, kind) in &sending {
             if *kind != ChangeKind::Replace {
                 continue;
@@ -1006,13 +1027,16 @@ fn one_thing_once(graph: &Graph, schema: &Schema) -> Result<(), PlanError> {
     Ok(())
 }
 
-/// What each removal takes away, named as `name_of` names a declared resource: by
-/// machine, namespace and one spelling of the value.
+/// What each removal takes away, and what each declared resource moving away
+/// leaves, named as `name_of` names a declared resource: by machine, namespace and
+/// one spelling of the value.
 ///
-/// Taken from state, because the configuration that named them is gone. A record
-/// whose naming attribute is not a plain value names nothing here.
+/// Taken from state, because the configuration that named them is gone or names
+/// something else now. A record whose naming attribute is not a plain value names
+/// nothing here.
 fn taken_away(
     doomed: &[Vec<Address>],
+    graph: &Graph,
     state: &State,
     schema: &Schema,
 ) -> BTreeMap<(Target, String, String), Vec<Address>> {
@@ -1020,6 +1044,21 @@ fn taken_away(
     for address in doomed.iter().flatten() {
         if let Some(name) = recorded_name(address, state, schema) {
             taken.entry(name).or_default().push(address.clone());
+        }
+    }
+    // ENFORCES: INV-PLAN-009
+    // And the name a declared resource moves away from, which the change that moves
+    // it removes. A resource declared there was read there, adopted or updated from
+    // the thing about to be deleted, and the move deleted it after: state recorded a
+    // file that was not there.
+    for address in state.addresses() {
+        let (Some(resource), Some(recorded)) =
+            (graph.get(address), recorded_name(address, state, schema))
+        else {
+            continue;
+        };
+        if name_of(resource, schema).is_some_and(|declared| declared != recorded) {
+            taken.entry(recorded).or_default().push(address.clone());
         }
     }
     taken
