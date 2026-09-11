@@ -276,6 +276,12 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A read interrupted by a signal inside a frame carries on. The prefix was read
+  with `read_exact`, which asks again, and the body turned the interruption into a
+  lost connection, so a signal handler installed without restarting reads would
+  have lost a machine in the middle of its answer. Found by the review of RFC
+  0001's fourth revision.
+
 - A recorded file moved onto the path a removal frees is replaced, which removes
   the old one, rather than made again beside it. Naming what the removal takes away
   dropped the file's reading, though it had been taken where state left the file,

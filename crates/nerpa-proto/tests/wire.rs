@@ -210,6 +210,55 @@ fn a_pipe_that_ends_mid_frame_says_so() {
     assert_eq!(expected - read, 3, "and says exactly how much was missing");
 }
 
+/// A read interrupted by a signal inside a frame carries on, as one interrupted in
+/// its prefix already did. The body turned every error into a lost connection, so
+/// a signal handler installed without restarting reads would have lost a machine
+/// in the middle of its answer. Found by the review of RFC 0001's fourth revision.
+#[test]
+fn a_read_interrupted_inside_a_frame_carries_on() {
+    /// Gives the bytes up to `at`, is interrupted once there, then gives the rest.
+    struct Interrupting {
+        bytes: Cursor<Vec<u8>>,
+        at: u64,
+        interrupted: bool,
+    }
+
+    impl std::io::Read for Interrupting {
+        fn read(&mut self, into: &mut [u8]) -> std::io::Result<usize> {
+            let position = self.bytes.position();
+            if position == self.at && !self.interrupted {
+                self.interrupted = true;
+                return Err(std::io::ErrorKind::Interrupted.into());
+            }
+            let room = if position < self.at {
+                usize::try_from(self.at - position).unwrap()
+            } else {
+                into.len()
+            };
+            let take = into.len().min(room);
+            std::io::Read::read(&mut self.bytes, &mut into[..take])
+        }
+    }
+
+    let asked = Ask::Look {
+        observations: vec![Observation::Path {
+            path: "/etc/motd".to_owned(),
+        }],
+        seal: None,
+    };
+    let mut wire = Vec::new();
+    nerpa_proto::write(&mut wire, &Request::new(asked.clone())).unwrap();
+    let mut reader = Interrupting {
+        bytes: Cursor::new(wire),
+        at: 7,
+        interrupted: false,
+    };
+
+    let back = nerpa_proto::read_request(&mut reader).expect("the whole frame");
+    assert_eq!(back.body(), &asked);
+    assert!(reader.interrupted, "and the read was interrupted inside it");
+}
+
 #[test]
 fn a_pipe_that_ends_before_the_prefix_is_a_closed_connection() {
     let refusal: WireError =

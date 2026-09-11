@@ -645,6 +645,11 @@ fn frame<R: Read>(source: &mut R) -> Result<Vec<u8>, WireError> {
                 });
             }
             Ok(more) => read += more,
+            // A signal arrived before anything did, which is not the pipe ending.
+            // The prefix is read with `read_exact`, which asks again; the body
+            // called this a lost connection, so a run handling signals would have
+            // lost a machine in the middle of its answer to its own Ctrl-C.
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
             Err(error) => return Err(WireError::Connection(error.to_string())),
         }
     }
