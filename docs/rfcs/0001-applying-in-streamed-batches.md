@@ -1,6 +1,6 @@
 # RFC 0001. Applying machines in parallel, with state in shards
 
-- Status: in review; revision 4, after the narrow review of revision 3 (§9); a round of P and S pending
+- Status: in review; revision 4; its fifth review logged (§9)
 - Date: 2026-09-11
 - Revised: 2026-09-11, after each of four reviews
 - Scope: what was step 1. Replacing an installed executor is
@@ -1627,4 +1627,91 @@ What changed after the narrow review, finding by finding.
 | B4-6 | §5.11 | A gate with its configuration |
 | B4-7 | §5.4 | The rates labelled |
 
-A round of P and S is pending.
+The fifth review follows.
+
+## Fifth review, 2026-09-11
+
+P and S, both by Opus, on revision 4 (`d11060f`) and step 1 only. Every finding
+was checked before it was logged. The reviewer for P ran experiments against the
+executor through pipes, a harness built outside the tree, and `ssh -G`. The
+reviewer for S ran the planner on copies of `d11060f` and `1e04f62`.
+
+**The narrow review, as revision 4 left it.**
+
+- **P:** P4-4, P4-5, P4-9, P4-14 and P4-15 resolved; P4-1, P4-2, P4-3, P4-6, P4-7,
+  P4-8, P4-10, P4-11, P4-12, P4-13 and P4-16 partly. Of the other angles, B4-2 and
+  B4-3 resolved; B4-4, S4-12 and S4-13 partly.
+- **S:** S4-10 and S4-14 resolved; every other S4 finding partly.
+
+### Defects in the code, found by this round
+
+| From | How verified | Defect | Fixed |
+| --- | --- | --- | --- |
+| S5-1 | E | A regression from `3d2d383`. Ordering a removal after the change of what state recorded after it moved it past the replacement of the directory the removed file was in: the directory was deleted with the file still inside, and every run refused. Removals first had kept that order without the planner saying so. | `684c024`, `INV-PLAN-011` |
+| S5-3 | E | A directory replaced while a declared file recorded inside it moved out: one stage, the directory first, and every run refused. | `684c024`, `INV-PLAN-011` |
+| S5-15 | E | The refusal of a removal between two changes could name one resource as both sides. | `684c024`: a refusal names each step of a cycle |
+| S5-2 | E | A recorded file moved onto the path a removal frees was planned as a creation, because its reading was dropped; its old path stayed on the machine with no record. Since `842abcd`. | `d7b74fd`, `INV-PLAN-009` |
+| P5-4 | E, R | A read interrupted by a signal inside a frame was a lost connection. Latent: no signal handler is installed yet. | `93d3912` |
+| P5-6 | E, R | A file mode written other than as four octal digits never converged: "644", "0o644" and "100644" were updated on every run. Wider than the finding, which named only the last. | `0285b88`, `INV-PLAN-012` |
+| S5-13, S5-14 | E | A change held on a machine that answered was reported as that machine not answering, and a held change on no machine was not reported at all. | `d78c674`, `INV-REACH-004` |
+
+### Blockers
+
+| Id | How verified | Finding | Resolution |
+| --- | --- | --- | --- |
+| S5-6, P5-1 | D | A mark is at once a pending entry and a hold on its machine. A determinate failure after operations keeps a `SendAgain` mark, so a failed package holds its machine under either policy, and `release` keeps the mark as an entry, so a machine with an interrupted package cannot be freed. | A mark carries its state, in flight or entry, and only in flight holds. A determinate answer turns it into an entry or clears it in the write that records the outcome. `release` turns in flight into an entry for `SendAgain` and drops it for `Read` |
+
+### P: protocol and failures
+
+| Id | Severity | How verified | Finding | Goes to |
+| --- | --- | --- | --- | --- |
+| P5-1 | major | R, D | With S5-6. | Blocker, above |
+| P5-2 | major | R, D | Only a signal starts the bounded wait and the supervisor. A stop from a failure, with a request on another machine that never answers, never ends. | §5.8: any stop starts them |
+| P5-3 | major | R, D | A request that never answers holds a slot of the pool and its prepared change, not "nothing else". Sixteen machines waiting on a package manager's lock stop applying for the fleet. | §5.4, §5.10 |
+| P5-4 | major | E, R | A read interrupted inside a frame is a lost connection. | Built; see the defects above |
+| P5-5 | major | R, D | `Planned` does not say which attributes each write carries, so the engine cannot confirm attributes by a digest, nor require the secret flag on a write that carries a secret. | §5.2 |
+| P5-6 | minor | E, R, D | A mode beyond the permission bits never matches. | Built; see the defects above |
+| P5-7 | minor | E, D | Killing a transport does not free its standard error while a proxy it started holds the pipe; a raw pid killed after reaping can be another process. Measured: 2.8 s to end of file after killing the child, 1 µs after killing the group. | §5.8 |
+| P5-8 | minor | R, E | The answer of a private process has no named shape, and nothing refuses one without a seal. | §5.3 |
+| P5-9 | minor | E, R | `Look` refuses a sealed observation without a seal only on reaching it, after the observations before it ran. Measured: a file made by an earlier observation. | §5.3 |
+| P5-10 | minor | R, E | `Before` as a contract violation is not limited to a `Perform` while applying, where opening today leaves a machine out; `Seen::Written` must not be a wire shape. | §5.3, §5.5 |
+| P5-11 | minor | R | Outcome rows missing: a wait that ended with no answer, a shard write failing after `Done`, a premise or index out of place on a second `Perform`, a `Seen` of the wrong shape, whether a lost conversation stops the run under `stop`, and what "begins" means. | §5.5 |
+| P5-12 | minor | R, D | The decoding classes contradict each other; the engine sees end of file in both, and only `ssh`'s exit code tells them apart. | §5.5, §5.12 |
+| P5-13 | minor | E, R, D | Delivery's commands run before the handshake and are not retried; `proxyjump` is the whole chain, and one bastion spelt two ways is two routes; `Match exec` runs during `ssh -G`; a slot per route is fixed. | §5.3, §5.4, §5.10 |
+| P5-14 | minor | R | Where one-at-a-time and control-domain changes wait is unclear, and a queue in plan order would hold unrelated changes behind one waiting. | §5.1, §5.4 |
+| P5-15 | minor | R | `plan` takes the lock today, and is not named; beside a live apply it would read live marks as holds. | §5.8 |
+| P5-16 | nit | R | A stop can still leave a path removed: a failed shard write, a second signal, a lost conversation. | §5.8 |
+| P5-17 | nit | D | The window that merges HUP and TERM, a third signal, and a handler inherited through `fork` before `pre_exec` resets it. | §5.8 |
+
+### S: state and invariants
+
+| Id | Severity | How verified | Finding | Goes to |
+| --- | --- | --- | --- | --- |
+| S5-1 | major | E, R | A removal placed past a replacement of what its record names. | Built; see the defects above |
+| S5-2 | major | E, R | A move onto a freed path planned as a creation. | Built; see the defects above |
+| S5-3 | major | E, R | No edge from a replacement to the change of what was recorded inside it. | Built; see the defects above |
+| S5-4 | major | D, R | A resend refused at a premise withdraws the mark, and with it an entry an earlier run left: the post-install never runs, and nothing says so. | §5.6: what the shard held before this run's mark is put back |
+| S5-5 | major | D | "Resent when the reading finds the resource" still sends `dnf reinstall` of a version that is not installed, for an interrupted update or a replacement before its forget point. | §5.2, §5.6: resent only where the reading matches the declaration |
+| S5-6 | blocker | D | A mark is both an entry and a hold. | Blocker, above |
+| S5-7 | major | D | Group commit ties a finished change's record to the next mark on its machine, so a change waiting on another machine keeps a record another machine waits for from being written. | §5.6: a shard is written as soon as its machine has an outcome and no request ready |
+| S5-8 | major | D, R | The migration leaves a moment with no `<state>`, which a version 4 binary reads as an empty state; an unfinished directory is removed under no named lock, taking `lock` with it. | §5.13 |
+| S5-9 | minor | R, D | The property after an interrupted run is false for reactors, whose records gain a debt, or are made from a reading, before anything of theirs is begun. | §5.6 |
+| S5-10 | minor | D | Under `continue`, each failure after operations of a `Read` change leaves what it made unrecorded. | §5.6 |
+| S5-11 | minor | D | `INV-STATE-005`'s first clause asks for a mark only for kinds reading cannot confirm, while holding rests on every mark. | §5.6 |
+| S5-12 | major | D | `INV-APPLY-001`, stated negatively, lets a change begin after an unknown outcome, a stop at a forget point, or between a replacement's halves. | §5.5: stated positively |
+| S5-13 | minor | E, R | A held change on a machine that answered reported as out of reach. | Built; see the defects above |
+| S5-14 | minor | E, R | A held control-domain change named nowhere. | Built; see the defects above |
+| S5-15 | nit | E, R | A refusal naming one resource as both sides. | Built; see the defects above |
+| S5-16 | minor | R, D | `waits_for` exists only as places in stages; it has to be a list on each change, and §7 misses that it and `Held` change the plan's number. | §5.5, §7 |
+| S5-17 | minor | D | Ignoring names outside the hexadecimal alphabet would ignore `control`, `key`, `format` and `lock`. | §5.6 |
+| S5-18 | minor | D | "Or by a person" names no command for an entry whose resend cannot succeed. | §5.8 |
+| S5-19 | nit | D, R | Whether a plan with a hold has a number, and one `change` where a shard can hold several marks. | §5.8 |
+
+### Decided by the owner after the fifth review
+
+1. **A request that never answers holds its slot, and step 1 says so** (P5-3). One
+   synchronous conversation per machine stays; reading without a slot belongs to RFC
+   0003, and a budget per request stays `W-015`'s question.
+2. **Under `continue`, a change that failed after its operations leaves an entry
+   for removal only** (S5-10), so state loses nothing a later removal needs.
+3. **Revision 5, and a full round of P and S** before acceptance.
