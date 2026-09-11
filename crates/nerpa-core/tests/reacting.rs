@@ -533,13 +533,70 @@ fn a_cause_waits_while_what_it_rouses_cannot_be_planned_and_has_no_record() {
     let held = plan(&graph, &observed, &state, &Schema::new(), secrets()).expect("plannable");
 
     assert!(held.is_empty(), "the file waits: {held:?}");
-    let named: BTreeSet<String> = held
+    let out_of_reach: Vec<String> = held
         .unreachable()
         .iter()
         .map(|entry| entry.address().to_string())
         .collect();
-    assert!(
-        named.contains(CONF) && named.contains(FAR_SERVICE),
-        "{named:?}"
+    assert_eq!(
+        out_of_reach,
+        [FAR_SERVICE],
+        "only the service is out of reach"
+    );
+    let waiting: Vec<(String, String)> = held
+        .waiting()
+        .iter()
+        .map(|entry| (entry.address().to_string(), entry.on().to_string()))
+        .collect();
+    assert_eq!(
+        waiting,
+        [(CONF.to_owned(), FAR_SERVICE.to_owned())],
+        "and the file, on a machine that answered, says it waits for it"
+    );
+}
+
+/// And a cause on no machine, held for a reacting resource with no record on one
+/// that did not answer, is named as waiting. It was named nowhere, because only
+/// what is on a machine could be reported. Found by the review of RFC 0001's
+/// fourth revision.
+#[test]
+fn a_held_cause_on_no_machine_is_named_all_the_same() {
+    let mut graph = Graph::new();
+    graph.preexisting(nerpa_core::Target::new("web-02").unwrap());
+    graph
+        .insert(Resource::new(address("yandex:instance.db")).with("size", "large"))
+        .unwrap();
+    graph
+        .insert(
+            Resource::new(address(FAR_SERVICE))
+                .with("name", "nginx")
+                .reacting_to(address("yandex:instance.db")),
+        )
+        .unwrap();
+    let mut observed = Observed::new();
+    observed.record(
+        address("yandex:instance.db"),
+        [("size".to_owned(), Value::Text("small".to_owned()))]
+            .into_iter()
+            .collect(),
+    );
+    observed.unreachable(nerpa_core::Target::new("web-02").unwrap());
+    let mut state = State::new();
+    state.record(
+        address("yandex:instance.db"),
+        Record::new(BTreeMap::new(), BTreeSet::default()),
+    );
+
+    let held = plan(&graph, &observed, &state, &Schema::new(), secrets()).expect("plannable");
+
+    assert!(held.is_empty(), "{held:?}");
+    let waiting: Vec<(String, String)> = held
+        .waiting()
+        .iter()
+        .map(|entry| (entry.address().to_string(), entry.on().to_string()))
+        .collect();
+    assert_eq!(
+        waiting,
+        [("yandex:instance.db".to_owned(), FAR_SERVICE.to_owned())]
     );
 }

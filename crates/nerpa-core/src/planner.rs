@@ -26,7 +26,7 @@ use crate::attribute::Attribute;
 use crate::graph::{Graph, GraphError, Stage, StageKind};
 use crate::observed::Observed;
 use crate::plan::{
-    AttributeDelta, Change, ChangeKind, Confidence, Outdated, Plan, PlanStage, Unreachable,
+    AttributeDelta, Change, ChangeKind, Confidence, Outdated, Plan, PlanStage, Unreachable, Waiting,
 };
 use crate::resource::Resource;
 use crate::schema::Schema;
@@ -272,7 +272,11 @@ pub fn plan_at(
             .held
             .iter()
             .any(|removal| !held.removals.contains(removal) && walk.claims.contains_key(removal));
-        let waiting = !walk.hold.is_subset(&held.changes) || !replacing.is_subset(&held.changes);
+        let waiting = walk
+            .hold
+            .keys()
+            .chain(replacing.keys())
+            .any(|change| !held.changes.contains_key(change));
         if !named && !waiting {
             return planning.assemble(walk, removals);
         }
@@ -287,10 +291,10 @@ pub fn plan_at(
 struct Held {
     /// Removals that cannot be planned.
     removals: BTreeSet<Address>,
-    /// Declared changes that wait: a cause rousing a resource that cannot be
-    /// planned and has no record, or a replacement whose removal of what was there
-    /// waits for something that cannot be planned.
-    changes: BTreeSet<Address>,
+    /// Declared changes that wait, and what for: a cause rousing a resource that
+    /// cannot be planned and has no record, or a replacement whose removal of what
+    /// was there waits for something that cannot be planned.
+    changes: BTreeMap<Address, Address>,
 }
 
 /// What a plan is computed from, and what is worked out from that before the
@@ -327,8 +331,11 @@ struct Walk {
     /// For each cause, the resources it rouses that cannot be planned and have a
     /// record to owe the reaction on.
     owed_by: BTreeMap<Address, Vec<Address>>,
-    /// Causes rousing a resource that cannot be planned and has no record.
-    hold: BTreeSet<Address>,
+    /// Causes rousing a resource that cannot be planned and has no record, and
+    /// that resource.
+    hold: BTreeMap<Address, Address>,
+    /// What waits for something that cannot be planned, and what for.
+    waiting: Vec<Waiting>,
 }
 
 /// The removals one walk leaves: which this plan carries, and which it cannot.
@@ -344,6 +351,7 @@ struct Removals {
     /// What cannot be removed in this plan.
     held: BTreeSet<Address>,
     unreachable: Vec<Unreachable>,
+    waiting: Vec<Waiting>,
 }
 
 impl Planning<'_> {
@@ -418,37 +426,24 @@ impl Planning<'_> {
                 // A cause rousing something that cannot be planned and has
                 // nowhere to owe the reaction, or a replacement waiting for what
                 // was recorded after it, found by a walk before this one.
-                let waits = held.changes.contains(address);
+                let waits = held.changes.get(address);
 
-                if out_of_reach || blocked || waits_for_removal || waits {
+                if out_of_reach || blocked || waits_for_removal || waits.is_some() {
                     walk.unplannable.insert(address.clone());
-                    // ENFORCES: INV-REACT-006
-                    // What this plan sends that rouses this resource. The reaction
-                    // is owed on its record, written before the cause is sent and
-                    // paid in whichever later run this can be planned. With no
-                    // record there is nowhere to owe it, so the cause waits. Sent
-                    // anyway, the file changed, the service on a machine that did
-                    // not answer kept reading the old one, and when the machine came
-                    // back nothing was changing and nothing was owed.
-                    let record = self.state.get(address);
-                    for cause in resource
-                        .reacts_to()
-                        .iter()
-                        .filter(|cause| changing.contains(*cause))
-                    {
-                        if record.is_some() {
-                            walk.owed_by
-                                .entry(cause.clone())
-                                .or_default()
-                                .push(address.clone());
-                        } else {
-                            walk.hold.insert(cause.clone());
+                    self.owe_or_hold(&mut walk, resource, &changing);
+                    let on = if out_of_reach {
+                        None
+                    } else {
+                        self.waits_on(&walk, address, claimed, held)
+                    };
+                    match (on, node) {
+                        (Some(on), _) => walk.waiting.push(Waiting::new(address.clone(), on)),
+                        (None, Some(node)) => {
+                            let age = known_for(self.state, &node, self.now);
+                            walk.unreachable
+                                .push(Unreachable::new(address.clone(), node, age));
                         }
-                    }
-                    if let Some(node) = node {
-                        let age = known_for(self.state, &node, self.now);
-                        walk.unreachable
-                            .push(Unreachable::new(address.clone(), node, age));
+                        (None, None) => {}
                     }
                     continue;
                 }
@@ -505,6 +500,64 @@ impl Planning<'_> {
         Ok(walk)
     }
 
+    // ENFORCES: INV-REACT-006
+    /// What this plan sends that rouses `resource`, which cannot be planned.
+    ///
+    /// The reaction is owed on its record, written before the cause is sent and
+    /// paid in whichever later run it can be planned. With no record there is
+    /// nowhere to owe it, so the cause waits. Sent anyway, the file changed, the
+    /// service on a machine that did not answer kept reading the old one, and when
+    /// the machine came back nothing was changing and nothing was owed.
+    fn owe_or_hold(&self, walk: &mut Walk, resource: &Resource, changing: &BTreeSet<Address>) {
+        let address = resource.address();
+        let record = self.state.get(address);
+        for cause in resource
+            .reacts_to()
+            .iter()
+            .filter(|cause| changing.contains(*cause))
+        {
+            if record.is_some() {
+                walk.owed_by
+                    .entry(cause.clone())
+                    .or_default()
+                    .push(address.clone());
+            } else {
+                walk.hold.insert(cause.clone(), address.clone());
+            }
+        }
+    }
+
+    // ENFORCES: INV-REACH-004
+    /// What a resource that cannot be planned, and is not out of reach itself,
+    /// waits for.
+    ///
+    /// Said to wait, and for what. Listed as out of reach, a change held on a
+    /// machine that answered was reported as that machine not answering, and one on
+    /// no machine was not reported at all.
+    fn waits_on(
+        &self,
+        walk: &Walk,
+        address: &Address,
+        claimed: &[Address],
+        held: &Held,
+    ) -> Option<Address> {
+        self.dependencies
+            .get(address)
+            .and_then(|of_this| {
+                of_this
+                    .iter()
+                    .find(|dependency| walk.unplannable.contains(**dependency))
+            })
+            .map(|dependency| (*dependency).clone())
+            .or_else(|| {
+                claimed
+                    .iter()
+                    .find(|removal| held.removals.contains(*removal))
+                    .cloned()
+            })
+            .or_else(|| held.changes.get(address).cloned())
+    }
+
     /// Which removals this plan carries, and which it cannot.
     ///
     /// In reverse dependency order, taken from state because the configuration
@@ -529,15 +582,27 @@ impl Planning<'_> {
                 let out_of_reach = node
                     .as_ref()
                     .is_some_and(|node| !self.observed.reached(node));
-                let waiting = self.later(address).iter().any(|other| {
-                    removals.held.contains(*other) || walk.unplannable.contains(*other)
-                });
-                if out_of_reach || waiting {
-                    if let Some(node) = node {
-                        let age = known_for(self.state, &node, self.now);
-                        removals
-                            .unreachable
-                            .push(Unreachable::new(address.clone(), node, age));
+                let waiting = self
+                    .later(address)
+                    .iter()
+                    .find(|other| {
+                        removals.held.contains(**other) || walk.unplannable.contains(**other)
+                    })
+                    .map(|other| (*other).clone());
+                if out_of_reach || waiting.is_some() {
+                    // ENFORCES: INV-REACH-004
+                    // Out of reach only when its own machine did not answer.
+                    match (out_of_reach, waiting, node) {
+                        (false, Some(on), _) => {
+                            removals.waiting.push(Waiting::new(address.clone(), on));
+                        }
+                        (_, _, Some(node)) => {
+                            let age = known_for(self.state, &node, self.now);
+                            removals
+                                .unreachable
+                                .push(Unreachable::new(address.clone(), node, age));
+                        }
+                        _ => {}
                     }
                     removals.held.insert(address.clone());
                     continue;
@@ -566,19 +631,22 @@ impl Planning<'_> {
     }
 
     /// Replacements whose removal of what was there has to wait for something
-    /// that cannot be planned: what state recorded after them, declared and
-    /// nothing said about it, or a removal that is held.
-    fn waiting_replacements(&self, walk: &Walk, removals: &Removals) -> BTreeSet<Address> {
+    /// that cannot be planned, and what for: what state recorded after them,
+    /// declared and nothing said about it, or a removal that is held.
+    fn waiting_replacements(&self, walk: &Walk, removals: &Removals) -> BTreeMap<Address, Address> {
         walk.changes
             .iter()
             .filter(|change| change.kind() == ChangeKind::Replace)
-            .filter(|change| {
-                self.later(change.address()).iter().any(|other| {
-                    *other != change.address()
-                        && (walk.unplannable.contains(*other) || removals.held.contains(*other))
-                })
+            .filter_map(|change| {
+                self.later(change.address())
+                    .iter()
+                    .find(|other| {
+                        **other != change.address()
+                            && (walk.unplannable.contains(**other)
+                                || removals.held.contains(**other))
+                    })
+                    .map(|other| (change.address().clone(), (*other).clone()))
             })
-            .map(|change| change.address().clone())
             .collect()
     }
 
@@ -657,7 +725,9 @@ impl Planning<'_> {
 
         let mut unreachable = removals.unreachable;
         unreachable.extend(walk.unreachable);
-        Ok(Plan::new(stages, unreachable, walk.outdated))
+        let mut waiting = removals.waiting;
+        waiting.extend(walk.waiting);
+        Ok(Plan::new(stages, unreachable, waiting, walk.outdated))
     }
 
     /// Every edge between one plan's changes and removals, and why each is there.

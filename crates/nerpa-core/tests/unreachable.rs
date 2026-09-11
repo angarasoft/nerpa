@@ -75,6 +75,22 @@ fn graph_of(resources: Vec<Resource>) -> Graph {
     graph
 }
 
+/// What a plan says is out of reach.
+fn out_of_reach(plan: &nerpa_core::Plan) -> BTreeSet<String> {
+    plan.unreachable()
+        .iter()
+        .map(|entry| entry.address().to_string())
+        .collect()
+}
+
+/// What a plan says waits, and for what.
+fn waiting(plan: &nerpa_core::Plan) -> Vec<(String, String)> {
+    plan.waiting()
+        .iter()
+        .map(|entry| (entry.address().to_string(), entry.on().to_string()))
+        .collect()
+}
+
 fn nothing_known() -> Written {
     Written::at(1_700_000_000)
 }
@@ -204,14 +220,17 @@ fn a_removal_waiting_on_one_that_cannot_be_made_is_held() {
         [("os:file.alone@web-02".to_owned(), ChangeKind::Delete)],
         "only what waits for nothing: {plan:?}"
     );
-    let named: BTreeSet<String> = plan
-        .unreachable()
-        .iter()
-        .map(|entry| entry.address().to_string())
-        .collect();
-    assert!(
-        named.contains("os:file.reader@web-01") && named.contains("os:file.source@web-02"),
-        "{named:?}"
+    assert_eq!(
+        out_of_reach(&plan),
+        BTreeSet::from(["os:file.reader@web-01".to_owned()])
+    );
+    assert_eq!(
+        waiting(&plan),
+        [(
+            "os:file.source@web-02".to_owned(),
+            "os:file.reader@web-01".to_owned()
+        )],
+        "and the removal waiting for it says so"
     );
 }
 
@@ -277,14 +296,19 @@ fn a_resource_naming_what_a_held_removal_takes_is_held_with_it() {
         plan.is_empty(),
         "nothing on either side of a removal that cannot happen yet: {plan:?}"
     );
-    let named: BTreeSet<String> = plan
-        .unreachable()
-        .iter()
-        .map(|entry| entry.address().to_string())
-        .collect();
-    assert!(
-        named.contains("os:file.successor@web-02"),
-        "and the plan says it waits: {named:?}"
+    assert_eq!(
+        waiting(&plan),
+        [
+            (
+                "os:file.source@web-02".to_owned(),
+                "os:file.reader@web-01".to_owned()
+            ),
+            (
+                "os:file.successor@web-02".to_owned(),
+                "os:file.source@web-02".to_owned()
+            ),
+        ],
+        "and the plan says what each waits for"
     );
 }
 
@@ -321,18 +345,17 @@ fn a_removal_waits_while_what_was_recorded_after_it_cannot_be_planned() {
     .unwrap();
 
     assert!(plan.is_empty(), "{plan:?}");
-    let named: BTreeSet<String> = plan
-        .unreachable()
-        .iter()
-        .map(|entry| entry.address().to_string())
-        .collect();
     assert_eq!(
-        named,
-        ["os:directory.old@web-02", "os:file.conf@web-01"]
-            .into_iter()
-            .map(str::to_owned)
-            .collect(),
-        "both said to wait"
+        out_of_reach(&plan),
+        BTreeSet::from(["os:file.conf@web-01".to_owned()])
+    );
+    assert_eq!(
+        waiting(&plan),
+        [(
+            "os:directory.old@web-02".to_owned(),
+            "os:file.conf@web-01".to_owned()
+        )],
+        "both said, each as what it is"
     );
 }
 
@@ -388,14 +411,16 @@ fn a_replacement_waits_while_what_was_recorded_inside_it_cannot_be_planned() {
     .unwrap();
 
     assert!(plan.is_empty(), "{plan:?}");
-    let named: BTreeSet<String> = plan
-        .unreachable()
-        .iter()
-        .map(|entry| entry.address().to_string())
-        .collect();
-    assert!(
-        named.contains("os:directory.d@web-01") && named.contains("os:file.inside@web-02"),
-        "{named:?}"
+    assert_eq!(
+        out_of_reach(&plan),
+        BTreeSet::from(["os:file.inside@web-02".to_owned()])
+    );
+    assert_eq!(
+        waiting(&plan),
+        [(
+            "os:directory.d@web-01".to_owned(),
+            "os:file.inside@web-02".to_owned()
+        )]
     );
 }
 
@@ -456,17 +481,20 @@ fn a_resource_that_reads_from_an_unreachable_one_cannot_be_planned_either() {
     .unwrap();
 
     assert_eq!(
-        plan.blast_radius().unreachable(),
-        2,
-        "the reader has nowhere to read from"
+        out_of_reach(&plan),
+        BTreeSet::from(["os:directory.data@web-01".to_owned()]),
+        "only what is on the machine that did not answer"
     );
-    let named: BTreeSet<String> = plan
-        .unreachable()
-        .iter()
-        .map(|entry| entry.address().to_string())
-        .collect();
-    assert!(named.contains("os:file.marker@web-02"), "{named:?}");
-    assert!(plan.is_empty());
+    assert_eq!(
+        waiting(&plan),
+        [(
+            "os:file.marker@web-02".to_owned(),
+            "os:directory.data@web-01".to_owned()
+        )],
+        "the reader has nowhere to read from, and says what it waits for"
+    );
+    assert_eq!(plan.blast_radius().waiting(), 1);
+    assert!(plan.is_empty() && !plan.is_complete());
 }
 
 #[test]

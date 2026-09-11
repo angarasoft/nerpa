@@ -343,6 +343,38 @@ impl Change {
     }
 }
 
+// ENFORCES: INV-REACH-004
+/// A resource this plan says nothing about because it waits for another that
+/// cannot be planned.
+///
+/// Not a machine that did not answer: its own machine may well have answered, or
+/// it may be on none. Listed apart from [`Unreachable`], so that a plan never says
+/// a machine was silent when it was not, and names a change held on no machine at
+/// all. See `INV-REACH-004`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Waiting {
+    address: Address,
+    on: Address,
+}
+
+impl Waiting {
+    pub(crate) fn new(address: Address, on: Address) -> Self {
+        Self { address, on }
+    }
+
+    /// Which resource waits.
+    #[must_use]
+    pub fn address(&self) -> &Address {
+        &self.address
+    }
+
+    /// What it waits for: out of reach itself, or waiting in turn.
+    #[must_use]
+    pub fn on(&self) -> &Address {
+        &self.on
+    }
+}
+
 /// A resource nothing can be said about, because its machine did not answer.
 ///
 /// Not a change, and deliberately not inside a stage: putting it there would let
@@ -481,6 +513,8 @@ pub struct BlastRadius {
     reorders: usize,
     unresolved: usize,
     unreachable: usize,
+    #[serde(default)]
+    waiting: usize,
     outdated: usize,
     nodes: BTreeSet<Target>,
 }
@@ -562,6 +596,12 @@ impl BlastRadius {
         self.unreachable
     }
 
+    /// Resources that wait for something that cannot be planned.
+    #[must_use]
+    pub fn waiting(&self) -> usize {
+        self.waiting
+    }
+
     /// Whether anything here cannot be undone.
     ///
     /// A replacement destroys the resource that is there now, and a deletion
@@ -591,6 +631,8 @@ impl BlastRadius {
 pub struct Plan {
     stages: Vec<PlanStage>,
     unreachable: Vec<Unreachable>,
+    #[serde(default)]
+    waiting: Vec<Waiting>,
     outdated: Vec<Outdated>,
     blast_radius: BlastRadius,
 }
@@ -599,10 +641,12 @@ impl Plan {
     pub(crate) fn new(
         stages: Vec<PlanStage>,
         unreachable: Vec<Unreachable>,
+        waiting: Vec<Waiting>,
         outdated: Vec<Outdated>,
     ) -> Self {
         let mut blast_radius = BlastRadius {
             unreachable: unreachable.len(),
+            waiting: waiting.len(),
             outdated: outdated.len(),
             ..Default::default()
         };
@@ -628,6 +672,7 @@ impl Plan {
         Self {
             stages,
             unreachable,
+            waiting,
             outdated,
             blast_radius,
         }
@@ -649,6 +694,13 @@ impl Plan {
         &self.unreachable
     }
 
+    /// The resources that wait for something that cannot be planned, and what
+    /// for, in a stable order.
+    #[must_use]
+    pub fn waiting(&self) -> &[Waiting] {
+        &self.waiting
+    }
+
     // ENFORCES: INV-REACH-003
     /// Whether everything the configuration declares could be looked at.
     ///
@@ -657,7 +709,7 @@ impl Plan {
     /// answer rather than an inconvenience — see decision 0020.
     #[must_use]
     pub fn is_complete(&self) -> bool {
-        self.unreachable.is_empty()
+        self.unreachable.is_empty() && self.waiting.is_empty()
     }
 
     /// The stages, in execution order. Stages with nothing to do are not here.
@@ -757,7 +809,7 @@ impl Plan {
     /// every second, which is worse than not having one.
     // ENFORCES: INV-PLAN-006
     pub fn digest(&self) -> Result<PlanDigest, Unhashable> {
-        if !self.unreachable.is_empty() {
+        if !self.is_complete() {
             return Err(Unhashable {
                 machines: self.unreachable.len(),
             });
@@ -935,9 +987,10 @@ fn encode_source(source: &Source, out: &mut Vec<u8>) {
 impl serde::Serialize for Plan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap as _;
-        let mut map = serializer.serialize_map(Some(5))?;
+        let mut map = serializer.serialize_map(Some(6))?;
         map.serialize_entry("stages", &self.stages)?;
         map.serialize_entry("unreachable", &self.unreachable)?;
+        map.serialize_entry("waiting", &self.waiting)?;
         map.serialize_entry("outdated", &self.outdated)?;
         map.serialize_entry("blast_radius", &self.blast_radius)?;
         // `null` rather than absent when there is none: a reader that finds no

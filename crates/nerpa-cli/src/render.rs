@@ -14,7 +14,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use nerpa_core::plan::{Outdated, Unreachable};
+use nerpa_core::plan::{Outdated, Unreachable, Waiting};
 use nerpa_core::secret::Recorded;
 use nerpa_core::value::Value;
 use nerpa_core::{BlastRadius, Change, ChangeKind, Confidence, Plan, StageKind, Target};
@@ -32,6 +32,7 @@ pub(crate) fn plan(plan: &Plan) -> String {
         summary(plan.blast_radius())
     };
     out.push_str(&out_of_reach(plan.unreachable()));
+    out.push_str(&waits(plan.waiting()));
     out.push_str(&behind(plan.outdated()));
 
     for (number, stage) in plan.stages().iter().enumerate() {
@@ -126,6 +127,24 @@ fn out_of_reach(unreachable: &[Unreachable]) -> String {
         );
     }
     out.push_str("  this plan cannot be signed: it describes a world nobody could look at\n");
+    out
+}
+
+/// What waits for something that could not be planned, and what for.
+///
+/// Apart from what could not be looked at, because it could be: a change held on a
+/// machine that answered, or on none, is not that machine's silence.
+fn waits(waiting: &[Waiting]) -> String {
+    if waiting.is_empty() {
+        return String::new();
+    }
+    let mut out = format!(
+        "\n  {} resources wait for something that could not be planned:\n",
+        waiting.len()
+    );
+    for entry in waiting {
+        let _ = writeln!(out, "    {} waits for {}", entry.address(), entry.on());
+    }
     out
 }
 
@@ -853,6 +872,41 @@ mod tests {
             text.contains("[create   ] yandex:instance.db"),
             "the rest still is: {text}"
         );
+    }
+
+    /// A resource waiting on one that could not be planned says what it waits for,
+    /// and its own machine, which answered, is not said to have been silent. Found
+    /// by the review of RFC 0001's fourth revision.
+    #[test]
+    fn a_change_waiting_on_one_that_cannot_be_planned_says_what_for() {
+        let graph = graph_of(vec![
+            Resource::new(address("os:directory.data@web-01")).with("path", "/data"),
+            Resource::new(address("os:file.marker@web-02")).with(
+                "content",
+                Reference::to(address("os:directory.data@web-01"), "path"),
+            ),
+        ]);
+        let mut observed = Observed::new();
+        observed.unreachable(Target::new("web-01").unwrap());
+
+        let text = render(
+            &planner::plan_at(
+                &graph,
+                &observed,
+                &State::new(),
+                &Schema::new(),
+                secrets(),
+                Written::at(1_700_000_000),
+            )
+            .unwrap(),
+        );
+
+        assert!(text.contains("web-01 did not answer"), "{text}");
+        assert!(
+            text.contains("os:file.marker@web-02 waits for os:directory.data@web-01"),
+            "{text}"
+        );
+        assert!(!text.contains("web-02 did not answer"), "{text}");
     }
 
     /// Every band of the scale, and two resources on one machine so that counting

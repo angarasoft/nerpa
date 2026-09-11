@@ -276,6 +276,13 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- What waits for something that cannot be planned is listed as waiting, with what
+  it waits for, and only a machine that did not answer is reported as one. A change
+  held on a machine that answered was reported as that machine not answering, and
+  a held change on no machine was not reported at all. `Plan::waiting` and
+  `BlastRadius::waiting`; a plan with either list is incomplete. Found by the
+  review of RFC 0001's fourth revision.
+
 - A file mode is compared as the number it spells, and one no file can have is
   refused while planning. Written "644" or "0o644", a mode never matched the "0644"
   a reading reports, and "100644" never matched at all, because a machine keeps
