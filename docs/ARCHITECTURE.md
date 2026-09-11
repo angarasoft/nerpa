@@ -114,11 +114,13 @@ makes a second run empty, and a tool whose second run is not empty is not
 convergent.
 
 Removals come first, in reverse dependency order taken from what state recorded:
-the configuration that described the dependency is exactly what was deleted. One
-comes later only to follow the change of something state recorded after it, such
-as a file moving out of a directory whose declaration went. And a resource is
-looked for where state left it, not where the declaration now points — otherwise
-moving one reads as making a second and abandoning the first.
+the configuration that described the dependency is exactly what was deleted. A
+removal, or a replacement's removal of what was there, comes later only to follow
+what state recorded after it: a file moving out of a directory whose declaration
+went, or a file inside a directory being replaced. What comes after moves later
+with it, and an order no run can follow is refused, step by step. And a resource
+is looked for where state left it, not where the declaration now points —
+otherwise moving one reads as making a second and abandoning the first.
 
 A resource found as declared that state does not record is adopted —
 [0042](decisions/0042-a-resource-found-as-declared-is-adopted.md). Nothing is

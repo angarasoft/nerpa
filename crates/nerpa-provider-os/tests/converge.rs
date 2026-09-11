@@ -88,6 +88,33 @@ fn graph_of(resources: Vec<Resource>) -> Graph {
     graph
 }
 
+/// Reads, plans and applies once, and says what failed if anything did.
+fn run_once(graph: &Graph, state: &mut State) -> Result<(), String> {
+    let providers = providers();
+    let observed =
+        observe(graph, &providers, &machines(), state).map_err(|error| error.to_string())?;
+    let planned = plan(graph, &observed, state, &providers.schema(), secrets())
+        .map_err(|error| error.to_string())?;
+    apply(
+        &planned,
+        &providers,
+        &machines(),
+        &observed,
+        state,
+        secrets(),
+        &mut kept,
+    )
+    .map(|_| ())
+    .map_err(|error| error.to_string())
+}
+
+/// What the next run would do.
+fn next_plan(graph: &Graph, state: &State) -> nerpa_core::Plan {
+    let providers = providers();
+    let observed = observe(graph, &providers, &machines(), state).expect("readable");
+    plan(graph, &observed, state, &providers.schema(), secrets()).expect("plannable")
+}
+
 #[test]
 fn a_file_is_written_and_the_second_run_has_nothing_to_do() {
     let scratch = Scratch::new("write");
@@ -1021,6 +1048,99 @@ fn a_directory_is_removed_after_the_file_moved_out_of_it() {
     assert!(
         again.is_empty(),
         "the next run has nothing to do: {again:?}"
+    );
+}
+
+/// A directory whose path changes is replaced after the removal of a file state
+/// recorded inside it, whatever else that removal waits for. Removals first had
+/// kept that order without the planner saying so; once a removal could wait for
+/// the change of what was recorded after it, it moved past the replacement, the
+/// old directory was deleted with the file still inside, and every run refused.
+/// Found by the review of RFC 0001's fourth revision.
+#[test]
+fn a_replaced_directory_waits_for_the_removal_of_what_was_inside_it() {
+    let scratch = Scratch::new("replaced-after-removal");
+    let (old, new) = (scratch.join("d"), scratch.join("e"));
+    let later = scratch.join("z");
+    let mut state = State::new();
+    run_once(
+        &graph_of(vec![
+            Resource::new(address("os:directory.d@localhost")).with("path", old.clone()),
+            Resource::new(address("os:file.inner@localhost"))
+                .with("path", format!("{old}/inner"))
+                .with("content", "x\n")
+                .after(address("os:directory.d@localhost")),
+            Resource::new(address("os:file.z@localhost"))
+                .with("path", later.clone())
+                .with("content", "one\n")
+                .after(address("os:file.inner@localhost")),
+        ]),
+        &mut state,
+    )
+    .expect("the first run applies");
+
+    let second = graph_of(vec![
+        Resource::new(address("os:directory.d@localhost")).with("path", new.clone()),
+        Resource::new(address("os:file.z@localhost"))
+            .with("path", later)
+            .with("content", "two\n"),
+    ]);
+    run_once(&second, &mut state).expect("the second run applies");
+
+    assert!(
+        fs::metadata(&old).is_err() && fs::metadata(&new).is_ok(),
+        "the directory moved"
+    );
+    let again = next_plan(&second, &state);
+    assert!(
+        again.is_empty(),
+        "and the next run has nothing to do: {again:?}"
+    );
+}
+
+/// And a directory whose path changes is replaced after a declared file recorded
+/// inside it moves out, rather than beside it in one stage, where the directory
+/// came first and every run refused. Found by the review of RFC 0001's fourth
+/// revision.
+#[test]
+fn a_replaced_directory_waits_for_the_file_moving_out_of_it() {
+    let scratch = Scratch::new("replaced-after-change");
+    let (old, new) = (scratch.join("d"), scratch.join("e"));
+    let outside = scratch.join("z");
+    let mut state = State::new();
+    run_once(
+        &graph_of(vec![
+            Resource::new(address("os:directory.d@localhost")).with("path", old.clone()),
+            Resource::new(address("os:file.z@localhost"))
+                .with("path", format!("{old}/z"))
+                .with("content", "z\n")
+                .after(address("os:directory.d@localhost")),
+        ]),
+        &mut state,
+    )
+    .expect("the first run applies");
+
+    let second = graph_of(vec![
+        Resource::new(address("os:directory.d@localhost")).with("path", new.clone()),
+        Resource::new(address("os:file.z@localhost"))
+            .with("path", outside.clone())
+            .with("content", "z\n"),
+    ]);
+    run_once(&second, &mut state).expect("the second run applies");
+
+    assert!(
+        fs::metadata(&old).is_err() && fs::metadata(&new).is_ok(),
+        "the directory moved"
+    );
+    assert_eq!(
+        fs::read_to_string(&outside).ok().as_deref(),
+        Some("z\n"),
+        "and the file moved out of it"
+    );
+    let again = next_plan(&second, &state);
+    assert!(
+        again.is_empty(),
+        "and the next run has nothing to do: {again:?}"
     );
 }
 

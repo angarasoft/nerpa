@@ -6,7 +6,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use nerpa_core::address::address;
-use nerpa_core::planner::{PlanError, plan};
+use nerpa_core::planner::{Because, PlanError, Step, plan};
 use nerpa_core::provider::Attributes;
 use nerpa_core::secret::Recorded;
 use nerpa_core::secret::{Key, Remembered, Secrets};
@@ -280,11 +280,11 @@ fn a_removal_comes_after_the_change_of_what_was_recorded_after_it() {
     );
 }
 
-/// A removal that would have to come after one change and before another is
-/// refused when the second does not come after the first: a resource that names
-/// what the removal takes away is made after it, and one run cannot do both.
+/// A declared resource naming what a removal takes away moves after it, and the
+/// removal moves after the change of what state recorded after it: one order keeps
+/// both, where the removal used to be refused for having to come between them.
 #[test]
-fn a_removal_that_has_to_come_between_two_changes_is_refused() {
+fn a_resource_naming_what_a_removal_takes_moves_after_it() {
     let os = Provider::new("os").unwrap();
     let schema = Schema::new()
         .identity(os.clone(), Kind::new("file").unwrap(), "path", "path")
@@ -324,15 +324,90 @@ fn a_removal_that_has_to_come_between_two_changes_is_refused() {
         ),
     );
 
-    let refused = plan(&graph, &observed, &state, &schema, secrets()).unwrap_err();
-    assert!(
-        matches!(
-            &refused,
-            PlanError::RemovedBetween { removal, after, before }
-                if removal == &address("os:directory.app@web-01")
-                    && after == &address("os:file.conf@web-01")
-                    && before == &address("os:file.app@web-01")
+    let plan = plan(&graph, &observed, &state, &schema, secrets()).expect("plannable");
+    let order: Vec<Vec<(String, ChangeKind)>> = plan
+        .stages()
+        .iter()
+        .map(|stage| {
+            stage
+                .changes()
+                .iter()
+                .map(|change| (change.address().to_string(), change.kind()))
+                .collect()
+        })
+        .collect();
+    assert_eq!(
+        order,
+        [
+            vec![("os:file.conf@web-01".to_owned(), ChangeKind::Update)],
+            vec![("os:directory.app@web-01".to_owned(), ChangeKind::Delete)],
+            vec![("os:file.app@web-01".to_owned(), ChangeKind::Create)],
+        ],
+        "{plan:?}"
+    );
+}
+
+/// An order no run can follow is refused, naming each step round it. A file
+/// recorded inside a directory whose declaration goes is declared at the
+/// directory's own path: the directory is removed after the file changes, and the
+/// file is made after the directory is removed. Found by the review of RFC 0001's
+/// fourth revision, where the refusal named the file as both sides.
+#[test]
+fn an_order_no_run_can_follow_is_refused_step_by_step() {
+    let os = Provider::new("os").unwrap();
+    let schema = Schema::new()
+        .identity(os.clone(), Kind::new("file").unwrap(), "path", "path")
+        .identity(os, Kind::new("directory").unwrap(), "path", "path");
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.conf@web-01"))
+            .with("path", "/srv/app")
+            .with("content", "x\n"),
+    ]);
+    let observed = observed_with(&[(
+        "os:file.conf@web-01",
+        &[
+            ("path", Value::Text("/srv/app/app.conf".to_owned())),
+            ("content", Value::Text("x\n".to_owned())),
+        ],
+    )]);
+    let path = |value: &str| {
+        Recorded::all(
+            [("path".to_owned(), Value::Text(value.to_owned()))]
+                .into_iter()
+                .collect::<Attributes>(),
+        )
+    };
+    let mut state = State::new();
+    state.record(
+        address("os:directory.app@web-01"),
+        Record::new(path("/srv/app"), BTreeSet::new()),
+    );
+    state.record(
+        address("os:file.conf@web-01"),
+        Record::new(
+            path("/srv/app/app.conf"),
+            [address("os:directory.app@web-01")].into_iter().collect(),
         ),
+    );
+
+    let refused = plan(&graph, &observed, &state, &schema, secrets()).unwrap_err();
+    let PlanError::Unorderable { cycle } = &refused else {
+        panic!("{refused}")
+    };
+    assert_eq!(
+        cycle,
+        &[
+            Step {
+                later: address("os:directory.app@web-01"),
+                earlier: address("os:file.conf@web-01"),
+                because: Because::RemovedAfterChange,
+            },
+            Step {
+                later: address("os:file.conf@web-01"),
+                earlier: address("os:directory.app@web-01"),
+                because: Because::MadeAfterRemoval,
+            },
+        ],
         "{refused}"
     );
 }

@@ -18,7 +18,8 @@
 //! never converge — the second run would never be empty, which is the one thing
 //! it has to be.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::fmt;
 
 use crate::address::{Address, Target};
 use crate::attribute::Attribute;
@@ -99,18 +100,82 @@ pub enum PlanError {
         /// Its kind.
         kind: String,
     },
-    /// A removal that would have to come after one change and before another.
-    #[error(
-        "{removal} would have to be removed after {after} changes, which state recorded after it, and before {before} is made, which names what it takes away; one run cannot do both, so let {after} change in a run before the one that declares {before}"
-    )]
-    RemovedBetween {
-        /// What is being removed.
-        removal: Address,
-        /// The change it has to come after.
-        after: Address,
-        /// The resource it has to come before.
-        before: Address,
+    /// Changes that each have to come after the next, round to the first. One run
+    /// cannot order them.
+    #[error("one run cannot order these, each after the next: {}", steps(.cycle))]
+    Unorderable {
+        /// Each step round the cycle.
+        cycle: Vec<Step>,
     },
+}
+
+/// One step round an order a run cannot follow: `later` has to come after
+/// `earlier`, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Step {
+    /// What has to come after.
+    pub later: Address,
+    /// What it has to come after.
+    pub earlier: Address,
+    /// Why.
+    pub because: Because,
+}
+
+/// Why one thing in a plan has to come after another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Because {
+    /// It is declared after it, reads from it, or reacts to it.
+    Declared,
+    /// A removal after the removal of what state recorded after it.
+    RemovedAfterRemoval,
+    /// A removal after the change of what state recorded after it.
+    RemovedAfterChange,
+    /// A resource made after the removal of what names the same thing.
+    MadeAfterRemoval,
+    /// A replacement after the removal of what state recorded after it.
+    ReplacedAfterRemoval,
+    /// A replacement after the change of what state recorded after it.
+    ReplacedAfterChange,
+}
+
+impl fmt::Display for Step {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (later, earlier) = (&self.later, &self.earlier);
+        match self.because {
+            Because::Declared => write!(f, "{later} after {earlier}, as declared"),
+            Because::RemovedAfterRemoval => write!(
+                f,
+                "removing {later} after removing {earlier}, which state recorded after it"
+            ),
+            Because::RemovedAfterChange => write!(
+                f,
+                "removing {later} after changing {earlier}, which state recorded after it"
+            ),
+            Because::MadeAfterRemoval => write!(
+                f,
+                "making {later} after removing {earlier}, which takes away what it names"
+            ),
+            Because::ReplacedAfterRemoval => write!(
+                f,
+                "replacing {later} after removing {earlier}, which state recorded after it"
+            ),
+            Because::ReplacedAfterChange => write!(
+                f,
+                "replacing {later} after changing {earlier}, which state recorded after it"
+            ),
+        }
+    }
+}
+
+/// The steps of a refusal, and what a person can do about it.
+fn steps(cycle: &[Step]) -> String {
+    let joined = cycle
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join("; ");
+    format!("{joined}. Change one of them in a run of its own first")
 }
 
 /// Computes what would have to happen for the world to match the configuration.
@@ -179,26 +244,29 @@ pub fn plan_at(
 
     // Holding goes both ways. A removal waits while something recorded after it
     // cannot be planned, and a declared resource waits while the removal of what
-    // it names does; and a cause waits while a resource reacting to it cannot be
-    // planned and has no record to owe the reaction on. So the walk is taken again
-    // when it finds something held that it did not know was. Once in the ordinary
-    // case, and at most once more for each thing held that way. It is still 0006's
-    // single pass in what that decision is about: one plan, made in full from one
-    // reading before anything runs, and no planning between stages.
+    // it names does. A cause waits while a resource reacting to it cannot be
+    // planned and has no record to owe the reaction on, and a replacement waits
+    // while what was recorded after it cannot be planned. So the walk is taken
+    // again when it finds something held that it did not know was. Once in the
+    // ordinary case, and at most once more for each thing held that way. It is
+    // still 0006's single pass in what that decision is about: one plan, made in
+    // full from one reading before anything runs, and no planning between stages.
     let mut held = Held::default();
     loop {
         let walk = planning.walk(&held)?;
         let removals = planning.removals(&walk);
+        let replacing = planning.waiting_replacements(&walk, &removals);
         let named = removals
             .held
             .iter()
             .any(|removal| !held.removals.contains(removal) && walk.claims.contains_key(removal));
-        let unowed = !walk.hold.is_subset(&held.causes);
-        if !named && !unowed {
-            return assemble(walk, removals);
+        let waiting = !walk.hold.is_subset(&held.changes) || !replacing.is_subset(&held.changes);
+        if !named && !waiting {
+            return planning.assemble(walk, removals);
         }
         held.removals.extend(removals.held);
-        held.causes.extend(walk.hold);
+        held.changes.extend(walk.hold);
+        held.changes.extend(replacing);
     }
 }
 
@@ -207,8 +275,10 @@ pub fn plan_at(
 struct Held {
     /// Removals that cannot be planned.
     removals: BTreeSet<Address>,
-    /// Changes rousing a resource that cannot be planned and has no record.
-    causes: BTreeSet<Address>,
+    /// Declared changes that wait: a cause rousing a resource that cannot be
+    /// planned and has no record, or a replacement whose removal of what was there
+    /// waits for something that cannot be planned.
+    changes: BTreeSet<Address>,
 }
 
 /// What a plan is computed from, and what is worked out from that before the
@@ -234,11 +304,8 @@ struct Planning<'a> {
 /// What one walk of the graph decided, before the removals are put among it.
 #[derive(Default)]
 struct Walk {
-    /// The declared changes, a stage for each of the graph's, leaving out the
-    /// stages where nothing changes.
-    stages: Vec<(StageKind, Vec<Change>)>,
-    /// Which of those stages each change that sends anything is in.
-    at: BTreeMap<Address, usize>,
+    /// The declared changes, in the order of the walk.
+    changes: Vec<Change>,
     /// The declared resources nothing could be said about.
     unplannable: BTreeSet<Address>,
     unreachable: Vec<Unreachable>,
@@ -252,16 +319,16 @@ struct Walk {
     hold: BTreeSet<Address>,
 }
 
-/// Where the removals go among one walk's changes.
+/// The removals one walk leaves: which this plan carries, and which it cannot.
 #[derive(Default)]
 struct Removals {
-    /// Before everything declared, level by level.
-    first: Vec<Vec<Change>>,
-    /// After the walk's stage with that index, level by level.
-    after: BTreeMap<usize, Vec<Vec<Change>>>,
-    /// For each removal put after a stage, that stage and the change that put it
-    /// there.
-    placed: BTreeMap<Address, (usize, Address)>,
+    /// The removals this plan carries, in reverse dependency order.
+    planned: Vec<Change>,
+    /// Which of state's levels of removal each of those is in.
+    level: BTreeMap<Address, usize>,
+    /// How many levels those take: the first rank anything declared can have, so
+    /// that what can be removed first is.
+    levels: usize,
     /// What cannot be removed in this plan.
     held: BTreeSet<Address>,
     unreachable: Vec<Unreachable>,
@@ -277,11 +344,11 @@ impl Planning<'_> {
         // stage its members depend on.
         let mut changing: BTreeSet<Address> = BTreeSet::new();
 
-        // Stages are the order of execution, and topological, so a resource's
-        // dependencies have been decided by the time it is reached, and
-        // unreachability travels forward along the edges as the walk goes.
+        // The graph's stages are topological, so a resource's dependencies have
+        // been decided by the time it is reached, and unreachability travels
+        // forward along the edges as the walk goes. Where each change goes is
+        // decided afterwards, with the removals.
         for stage in &self.stages {
-            let mut changes = Vec::new();
             for address in stage.addresses() {
                 let Some(resource) = self.graph.get(address) else {
                     continue;
@@ -326,10 +393,11 @@ impl Planning<'_> {
                     .iter()
                     .any(|removal| held.removals.contains(removal));
                 // A cause rousing something that cannot be planned and has
-                // nowhere to owe the reaction, found by a walk before this one.
-                let waits_for_reaction = held.causes.contains(address);
+                // nowhere to owe the reaction, or a replacement waiting for what
+                // was recorded after it, found by a walk before this one.
+                let waits = held.changes.contains(address);
 
-                if out_of_reach || blocked || waits_for_removal || waits_for_reaction {
+                if out_of_reach || blocked || waits_for_removal || waits {
                     walk.unplannable.insert(address.clone());
                     // ENFORCES: INV-REACT-006
                     // What this plan sends that rouses this resource. The reaction
@@ -406,41 +474,24 @@ impl Planning<'_> {
                     // a first run over configured machines adopted.
                     if change.kind().sends_anything() {
                         changing.insert(address.clone());
-                        walk.at.insert(address.clone(), walk.stages.len());
                     }
-                    changes.push(change);
+                    walk.changes.push(change);
                 }
-            }
-            // A stage where everything already matches is not a stage anybody
-            // needs to read about.
-            if !changes.is_empty() {
-                walk.stages.push((stage.kind().clone(), changes));
             }
         }
         Ok(walk)
     }
 
-    /// Where each removal goes among `walk`'s changes, or that it cannot be
-    /// planned.
+    /// Which removals this plan carries, and which it cannot.
     ///
     /// In reverse dependency order, taken from state because the configuration
-    /// that described a dependency is exactly what was deleted. Before everything
-    /// declared, because a resource on its way out can be holding something a new
-    /// one needs — a name, a port, a path — and nothing being created can want
-    /// something that is leaving. Unless something state recorded after it is
-    /// changing, and then after that change.
+    /// that described a dependency is exactly what was deleted. Where each goes is
+    /// decided with everything else, in `assemble`.
     fn removals(&self, walk: &Walk) -> Removals {
         let mut removals = Removals::default();
-        for level in &self.doomed {
-            let mut first = Vec::new();
-            let mut after: BTreeMap<usize, Vec<Change>> = BTreeMap::new();
+        for (index, level) in self.doomed.iter().enumerate() {
+            let before = removals.planned.len();
             for address in level {
-                let later = self
-                    .recorded_after
-                    .get(address)
-                    .map(Vec::as_slice)
-                    .unwrap_or_default();
-
                 // ENFORCES: INV-REACH-001
                 // A removal is planned from state rather than from a reading, so
                 // whether its machine answered is asked here. One that did not is
@@ -455,7 +506,7 @@ impl Planning<'_> {
                 let out_of_reach = node
                     .as_ref()
                     .is_some_and(|node| !self.observed.reached(node));
-                let waiting = later.iter().any(|other| {
+                let waiting = self.later(address).iter().any(|other| {
                     removals.held.contains(*other) || walk.unplannable.contains(*other)
                 });
                 if out_of_reach || waiting {
@@ -469,26 +520,11 @@ impl Planning<'_> {
                     continue;
                 }
 
-                // ENFORCES: INV-PLAN-011
-                // After the change of whatever state recorded after it, rather
-                // than before everything. A file recorded after its directory and
-                // moved out of it while the directory's declaration went was still
-                // inside when the directory was removed; the removal refused, and
-                // every later run did the same.
-                let placed = later
-                    .iter()
-                    .filter_map(|other| {
-                        walk.at
-                            .get(*other)
-                            .map(|at| (*at, (*other).clone()))
-                            .or_else(|| removals.placed.get(*other).cloned())
-                    })
-                    .max_by_key(|(at, _)| *at);
-
                 // Nothing was looked at: this resource is no longer declared, so
                 // the plan reasoned from state rather than from a reading, and
                 // there is nothing to have moved.
-                let change = Change::new(
+                removals.level.insert(address.clone(), index);
+                removals.planned.push(Change::new(
                     address.clone(),
                     ChangeKind::Delete,
                     Vec::new(),
@@ -497,75 +533,280 @@ impl Planning<'_> {
                     Vec::new(),
                     Vec::new(),
                     Vec::new(),
-                );
-                if let Some((at, why)) = placed {
-                    after.entry(at).or_default().push(change);
-                    removals.placed.insert(address.clone(), (at, why));
-                } else {
-                    first.push(change);
-                }
+                ));
             }
-            if !first.is_empty() {
-                removals.first.push(first);
-            }
-            for (at, changes) in after {
-                removals.after.entry(at).or_default().push(changes);
+            if removals.planned.len() > before {
+                removals.levels += 1;
             }
         }
         removals
     }
+
+    /// Replacements whose removal of what was there has to wait for something
+    /// that cannot be planned: what state recorded after them, declared and
+    /// nothing said about it, or a removal that is held.
+    fn waiting_replacements(&self, walk: &Walk, removals: &Removals) -> BTreeSet<Address> {
+        walk.changes
+            .iter()
+            .filter(|change| change.kind() == ChangeKind::Replace)
+            .filter(|change| {
+                self.later(change.address()).iter().any(|other| {
+                    *other != change.address()
+                        && (walk.unplannable.contains(*other) || removals.held.contains(*other))
+                })
+            })
+            .map(|change| change.address().clone())
+            .collect()
+    }
+
+    /// The plan: every change and removal in one order that keeps every edge
+    /// between them, or a refusal naming an order no run can follow.
+    ///
+    /// Each gets a rank above the ranks of everything it has to come after, and
+    /// the stages are the ranks. Removals start at the first rank, and what is
+    /// declared after the removals state can take first, so a removal that waits
+    /// for nothing still comes before everything declared: a resource on its way
+    /// out can be holding something a new one needs — a name, a port, a path.
+    fn assemble(&self, walk: Walk, removals: Removals) -> Result<Plan, PlanError> {
+        let steps = self.edges(&walk, &removals);
+
+        // Everything declared takes part, changing or not, so an order the graph
+        // gives through something that does not change is kept.
+        let mut nodes: BTreeMap<Address, usize> = BTreeMap::new();
+        for stage in &self.stages {
+            for address in stage.addresses() {
+                nodes.insert(address.clone(), removals.levels);
+            }
+        }
+        for removal in &removals.planned {
+            nodes.insert(removal.address().clone(), 0);
+        }
+        let rank = ranked(&nodes, &steps)?;
+
+        // ENFORCES: INV-REACT-006
+        // Each cause carries the debts it leaves on records this plan cannot
+        // reach, so that apply writes them before sending it.
+        let mut declared: BTreeMap<Address, Change> = walk
+            .changes
+            .into_iter()
+            .map(|change| (change.address().clone(), change))
+            .collect();
+        for (cause, reactors) in walk.owed_by {
+            if let Some(change) = declared.get_mut(&cause) {
+                change.leave_owed(reactors);
+            }
+        }
+
+        let mut leaving: BTreeMap<usize, Vec<Change>> = BTreeMap::new();
+        for removal in removals.planned {
+            let at = rank.get(removal.address()).copied().unwrap_or_default();
+            leaving.entry(at).or_default().push(removal);
+        }
+        // In the graph's order within a rank, with a rank's kind taken from
+        // everything declared in it, as the graph takes a stage's.
+        let mut arriving: BTreeMap<usize, (Vec<Address>, Vec<Change>)> = BTreeMap::new();
+        for stage in &self.stages {
+            for address in stage.addresses() {
+                let at = rank.get(address).copied().unwrap_or_default();
+                let (all, changes) = arriving.entry(at).or_default();
+                all.push(address.clone());
+                if let Some(change) = declared.remove(address) {
+                    changes.push(change);
+                }
+            }
+        }
+
+        let mut stages = Vec::new();
+        let ranks: BTreeSet<usize> = leaving.keys().chain(arriving.keys()).copied().collect();
+        for at in ranks {
+            // What leaves before what arrives at the same rank.
+            if let Some(changes) = leaving.remove(&at) {
+                stages.push(PlanStage::new(StageKind::Mixed, changes));
+            }
+            // A rank where everything already matches is not a stage anybody
+            // needs to read about.
+            if let Some((all, changes)) = arriving.remove(&at)
+                && !changes.is_empty()
+            {
+                stages.push(PlanStage::new(StageKind::of(&all), changes));
+            }
+        }
+
+        let mut unreachable = removals.unreachable;
+        unreachable.extend(walk.unreachable);
+        Ok(Plan::new(stages, unreachable, walk.outdated))
+    }
+
+    /// Every edge between one plan's changes and removals, and why each is there.
+    fn edges(&self, walk: &Walk, removals: &Removals) -> BTreeMap<(Address, Address), Because> {
+        let removing: BTreeSet<&Address> = removals.planned.iter().map(Change::address).collect();
+        let sending: BTreeMap<&Address, ChangeKind> = walk
+            .changes
+            .iter()
+            .filter(|change| change.kind().sends_anything())
+            .map(|change| (change.address(), change.kind()))
+            .collect();
+
+        let mut steps: BTreeMap<(Address, Address), Because> = BTreeMap::new();
+        let mut step = |later: &Address, earlier: &Address, because: Because| {
+            steps
+                .entry((later.clone(), earlier.clone()))
+                .or_insert(because);
+        };
+        for (dependent, of) in &self.dependencies {
+            for dependency in of {
+                step(dependent, dependency, Because::Declared);
+            }
+        }
+        for address in removing.iter().copied() {
+            for other in self.later(address).iter().copied() {
+                // ENFORCES: INV-STATE-002
+                // What a resource came after is removed after it. Not within a
+                // level state could not order, which it removes together.
+                let earlier_level = removals
+                    .level
+                    .get(other)
+                    .is_some_and(|level| removals.level.get(address) > Some(level));
+                if removing.contains(other) && earlier_level {
+                    step(address, other, Because::RemovedAfterRemoval);
+                }
+                // ENFORCES: INV-PLAN-011
+                // After the change of whatever state recorded after it. A file
+                // recorded after its directory and moved out of it while the
+                // directory's declaration went was still inside when the directory
+                // was removed; the removal refused, and every later run did the
+                // same.
+                if sending.contains_key(other) {
+                    step(address, other, Because::RemovedAfterChange);
+                }
+            }
+            // ENFORCES: INV-PLAN-009
+            // What names the thing a removal takes away is made after it.
+            if let Some(taker) = walk.claims.get(address) {
+                step(taker, address, Because::MadeAfterRemoval);
+            }
+        }
+        for (address, kind) in &sending {
+            if *kind != ChangeKind::Replace {
+                continue;
+            }
+            for other in self.later(address).iter().copied() {
+                if other == *address {
+                    continue;
+                }
+                // ENFORCES: INV-PLAN-011
+                // A replacement's removal of what was there likewise. Removals
+                // first had kept a directory replaced after the removal of a file
+                // recorded inside it without the planner saying so, and ordering
+                // that removal after something else moved it past the replacement:
+                // the directory was deleted with the file still in it.
+                if removing.contains(other) {
+                    step(address, other, Because::ReplacedAfterRemoval);
+                } else if sending.contains_key(other) {
+                    step(address, other, Because::ReplacedAfterChange);
+                }
+            }
+        }
+        steps
+    }
+
+    /// What state recorded as coming after `address`.
+    fn later(&self, address: &Address) -> &[&Address] {
+        self.recorded_after
+            .get(address)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    }
 }
 
-/// The plan: the removals put among the walk's changes.
-fn assemble(walk: Walk, removals: Removals) -> Result<Plan, PlanError> {
-    // ENFORCES: INV-PLAN-011
-    // A removal put after a change, taking away what a declared resource names.
-    // INV-PLAN-009 makes that resource after the removal, so when it does not come
-    // after the change as well, the removal would have to be in between, and one
-    // run cannot do both.
-    for (removal, (at, waits_for)) in &removals.placed {
-        if let Some(before) = walk.claims.get(removal)
-            && walk.at.get(before).is_some_and(|made| made <= at)
+/// Each address's rank: its own, raised above the rank of everything it has to
+/// come after. Refused, naming a cycle, when there is no such order.
+fn ranked(
+    nodes: &BTreeMap<Address, usize>,
+    steps: &BTreeMap<(Address, Address), Because>,
+) -> Result<BTreeMap<Address, usize>, PlanError> {
+    let mut waiting: BTreeMap<&Address, usize> = nodes.keys().map(|address| (address, 0)).collect();
+    let mut after: BTreeMap<&Address, Vec<&Address>> = BTreeMap::new();
+    for (later, earlier) in steps.keys() {
+        if nodes.contains_key(earlier)
+            && let Some(count) = waiting.get_mut(later)
         {
-            return Err(PlanError::RemovedBetween {
-                removal: removal.clone(),
-                after: waits_for.clone(),
-                before: before.clone(),
-            });
+            *count += 1;
+            after.entry(earlier).or_default().push(later);
         }
     }
 
-    // ENFORCES: INV-REACT-006
-    // Each cause carries the debts it leaves on records this plan cannot reach, so
-    // that apply writes them before sending it.
-    let mut walked = walk.stages;
-    for (cause, reactors) in walk.owed_by {
-        if let Some(change) = walk
-            .at
-            .get(&cause)
-            .and_then(|at| walked.get_mut(*at))
-            .and_then(|(_, changes)| changes.iter_mut().find(|change| change.address() == &cause))
-        {
-            change.leave_owed(reactors);
-        }
-    }
-
-    let mut stages: Vec<PlanStage> = removals
-        .first
-        .into_iter()
-        .map(|changes| PlanStage::new(StageKind::Mixed, changes))
+    let mut rank: BTreeMap<&Address, usize> =
+        nodes.iter().map(|(address, own)| (address, *own)).collect();
+    let mut ready: VecDeque<&Address> = waiting
+        .iter()
+        .filter(|(_, count)| **count == 0)
+        .map(|(address, _)| *address)
         .collect();
-    let mut later = removals.after;
-    for (index, (kind, changes)) in walked.into_iter().enumerate() {
-        stages.push(PlanStage::new(kind, changes));
-        for changes in later.remove(&index).unwrap_or_default() {
-            stages.push(PlanStage::new(StageKind::Mixed, changes));
+    let mut placed = 0usize;
+    while let Some(earlier) = ready.pop_front() {
+        placed += 1;
+        let at = rank.get(earlier).copied().unwrap_or_default();
+        for later in after.get(earlier).into_iter().flatten().copied() {
+            if let Some(own) = rank.get_mut(later) {
+                *own = (*own).max(at + 1);
+            }
+            if let Some(count) = waiting.get_mut(later) {
+                *count -= 1;
+                if *count == 0 {
+                    ready.push_back(later);
+                }
+            }
         }
     }
 
-    let mut unreachable = removals.unreachable;
-    unreachable.extend(walk.unreachable);
-    Ok(Plan::new(stages, unreachable, walk.outdated))
+    if placed < nodes.len() {
+        return Err(PlanError::Unorderable {
+            cycle: cycle(&waiting, steps),
+        });
+    }
+    Ok(rank
+        .into_iter()
+        .map(|(address, at)| (address.clone(), at))
+        .collect())
+}
+
+/// One cycle among what could not be placed, as the steps round it.
+///
+/// Everything still waiting waits for something else still waiting, so walking
+/// back from any of them comes round again.
+fn cycle(
+    waiting: &BTreeMap<&Address, usize>,
+    steps: &BTreeMap<(Address, Address), Because>,
+) -> Vec<Step> {
+    let stuck: BTreeSet<&Address> = waiting
+        .iter()
+        .filter(|(_, count)| **count > 0)
+        .map(|(address, _)| *address)
+        .collect();
+    let Some(mut at) = stuck.iter().next().copied() else {
+        return Vec::new();
+    };
+    let mut path: Vec<Step> = Vec::new();
+    let mut seen: Vec<&Address> = Vec::new();
+    loop {
+        if let Some(start) = seen.iter().position(|visited| *visited == at) {
+            return path.split_off(start);
+        }
+        seen.push(at);
+        let Some(((later, earlier), because)) = steps
+            .iter()
+            .find(|((later, earlier), _)| later == at && stuck.contains(earlier))
+        else {
+            return path;
+        };
+        path.push(Step {
+            later: later.clone(),
+            earlier: earlier.clone(),
+            because: *because,
+        });
+        at = earlier;
+    }
 }
 
 /// What state recorded as coming after each address: each record's edges, the

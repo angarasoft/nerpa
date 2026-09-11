@@ -93,6 +93,28 @@ pub enum StageKind {
     Mixed,
 }
 
+impl StageKind {
+    /// What sort of work a set of resources is: all through an API, all on
+    /// nodes, or both.
+    pub(crate) fn of<'a>(addresses: impl IntoIterator<Item = &'a Address>) -> Self {
+        let mut targets = BTreeSet::new();
+        let mut has_control = false;
+        for address in addresses {
+            match address.domain() {
+                ExecutionDomain::Control => has_control = true,
+                ExecutionDomain::Target(target) => {
+                    targets.insert(target);
+                }
+            }
+        }
+        match (has_control, targets.is_empty()) {
+            (true, true) => Self::Control,
+            (false, false) => Self::Target(targets),
+            _ => Self::Mixed,
+        }
+    }
+}
+
 /// One topological level of the graph.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stage {
@@ -401,23 +423,7 @@ impl Graph {
     }
 
     fn stage_from(level: Vec<&Address>) -> Stage {
-        let mut targets = BTreeSet::new();
-        let mut has_control = false;
-
-        for address in &level {
-            match address.domain() {
-                ExecutionDomain::Control => has_control = true,
-                ExecutionDomain::Target(target) => {
-                    targets.insert(target);
-                }
-            }
-        }
-
-        let kind = match (has_control, targets.is_empty()) {
-            (true, true) => StageKind::Control,
-            (false, false) => StageKind::Target(targets),
-            _ => StageKind::Mixed,
-        };
+        let kind = StageKind::of(level.iter().copied());
 
         Stage {
             kind,

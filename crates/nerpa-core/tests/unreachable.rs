@@ -336,6 +336,69 @@ fn a_removal_waits_while_what_was_recorded_after_it_cannot_be_planned() {
     );
 }
 
+/// And a replacement waits while what state recorded after it cannot be planned:
+/// removing what was there could take it away from under something still in it.
+#[test]
+fn a_replacement_waits_while_what_was_recorded_inside_it_cannot_be_planned() {
+    let schema = Schema::new().immutable(
+        nerpa_core::Provider::new("os").unwrap(),
+        Kind::new("directory").unwrap(),
+        "path",
+    );
+    let mut state = State::new();
+    state.record(
+        address("os:directory.d@web-01"),
+        Record::new(
+            Recorded::all(
+                [("path".to_owned(), Value::Text("/d".to_owned()))]
+                    .into_iter()
+                    .collect::<Attributes>(),
+            ),
+            BTreeSet::new(),
+        ),
+    );
+    state.record(
+        address("os:file.inside@web-02"),
+        Record::new(
+            Recorded::all(Attributes::new()),
+            [address("os:directory.d@web-01")].into_iter().collect(),
+        ),
+    );
+    let graph = graph_of(vec![
+        Resource::new(address("os:directory.d@web-01")).with("path", "/e"),
+        Resource::new(address("os:file.inside@web-02")).with("content", "x\n"),
+    ]);
+    let mut observed = Observed::new();
+    observed.unreachable(node("web-02"));
+    observed.record(
+        address("os:directory.d@web-01"),
+        [("path".to_owned(), Value::Text("/d".to_owned()))]
+            .into_iter()
+            .collect(),
+    );
+
+    let plan = plan_at(
+        &graph,
+        &observed,
+        &state,
+        &schema,
+        secrets(),
+        nothing_known(),
+    )
+    .unwrap();
+
+    assert!(plan.is_empty(), "{plan:?}");
+    let named: BTreeSet<String> = plan
+        .unreachable()
+        .iter()
+        .map(|entry| entry.address().to_string())
+        .collect();
+    assert!(
+        named.contains("os:directory.d@web-01") && named.contains("os:file.inside@web-02"),
+        "{named:?}"
+    );
+}
+
 #[test]
 fn nothing_at_all_is_said_about_what_could_not_be_read() {
     let graph = graph_of(vec![

@@ -276,6 +276,16 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A replacement comes after the removal, and the change, of what state recorded
+  inside it, and whatever comes after moves later with it. Ordering a removal after
+  the change of what was recorded after it had moved it past a replacement of the
+  directory it was in: the directory was deleted with the file still inside, and
+  every run refused. A directory replaced while a file recorded inside it moved out
+  failed the same way. Changes and removals are now placed in one order over every
+  edge, and only an order no run can follow is refused, naming each step
+  (`PlanError::Unorderable`, which replaces `RemovedBetween`). Found by the review
+  of RFC 0001's fourth revision.
+
 - A resource reacting to a change, on a machine that did not answer or held
   behind one, is owed the reaction on its record before the change is sent, and a
   change whose reactor has no record waits. Nothing was owed: when the machine
