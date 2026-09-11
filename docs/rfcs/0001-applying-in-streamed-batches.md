@@ -1,6 +1,6 @@
 # RFC 0001. Applying in streamed batches, and an executor that replaces itself
 
-- Status: in review; revised after the first review (§9), second review pending
+- Status: in review; second review logged (§9), revision 2 waits on the owner's decisions
 - Date: 2026-09-11
 - Revised: 2026-09-11
 - Touches: 0006, 0010, 0011, 0020, 0026, 0031, 0032, 0033, 0034, 0040, 0041,
@@ -669,7 +669,7 @@ These are true today, whatever becomes of this RFC.
 | S-3 | E | Two addresses with one path are accepted. Both are created, the last write wins, and every later plan proposes the other again. | `7aed616`: refused while planning |
 | S-4 | R | A reaction's debt is written only when the reacting resource's own stage runs (`run.rs:348`). A run stopped between the cause's stage and that one leaves the new file recorded and the reaction lost. | `a8f55b6`: owed before the cause is sent |
 | B-4 | R | Nothing checks an operation's size before sending. A file over `MAX_FRAME` plans cleanly and fails at apply. | `1856bc3`: refused while planning |
-| P-6 | R | A package's premise is its query output. Installing A pulls in B and changes B's premise, so a B declared separately in the same stage is refused with `Moved`. Not reproduced on a machine. | Not yet: to be reproduced on the Gentoo test machine first |
+| P-6 | R | A package's premise is its query output. Installing A pulls in B and changes B's premise, so a B declared separately in the same stage is refused with `Moved`. Not reproduced on a machine. | Not reproduced, and narrower than stated: see the second review |
 | P-12 | R | A conversation is not dropped after a wire error; only `Drop` clears it. A later ask would read out of step. Latent: nothing asks again today. | `74db388` |
 | X-3 | R | The fleet accepts a relative or `~` executor path. `plainly` checks characters, not that the path is absolute. With `become`, that is the executor 0039 exists to refuse. | `e2ca0f8` |
 | X-8 | R | The number of answers is not checked against the number of operations (`provider-os/src/lib.rs:86-88`). | `37ae618` |
@@ -819,3 +819,148 @@ defects above; everything else points to where the design answers it.
 Also new since the review, and folded in: an adoption or a reorder sends nothing
 and goes straight to the recorder (§5.1), and a debt is written before its cause
 is sent (§5.5). A second review is pending.
+
+## Second review, 2026-09-11
+
+The same five angles and models, on revision 1 (`a59c0b0`). Every finding was
+checked before it was logged, in the same three ways.
+
+**The first round, as revision 1 left it.**
+
+- **P:** P-1, P-2, P-3, P-4 (superseded), P-8, P-12 and P-14 resolved; P-5, P-6,
+  P-7, P-9, P-10, P-11 and P-13 partly.
+- **S:** S-2, S-4, S-6 and S-9 resolved; S-1, S-3, S-5, S-7, S-8, S-10 and S-11
+  partly.
+- **X:** X-2 and X-8 resolved; X-1, X-5 and X-7 resolved in the design only; X-3,
+  X-4, X-6, X-9 and X-10 partly.
+- **B:** B-2, B-4 and B-9 resolved; B-1, B-3, B-5, B-7 and B-8 partly; B-6 not.
+- **C:** C-1, C-3, C-4 and C-5 resolved; C-2, C-6 and C-7 partly.
+
+### Defects in the code, found by this round
+
+| From | How verified | Defect | Fixed |
+| --- | --- | --- | --- |
+| S2-2 | E | Renaming an address and keeping its path, with no `moved`, deleted the file and adopted the new resource from the reading taken before the removal. The run ended with no file and a record saying there was one. | `842abcd`, `INV-PLAN-009` |
+| S2-10 | R, E | Rousing sent a plain restart, which starts a stopped service, while the comments and the architecture said it stays down. | `ae25cac`, `INV-REACT-003`; shown on the Gentoo test machine |
+| S2-10 | R | A roused service whose own attributes changed was one `Update` that never restarted it, and the fresh record cleared the debt. | `4db7ffd`, `INV-REACT-004` |
+
+True today and not fixed. S-3: absence is not kept as a premise, so a file that
+appears between reading and applying is overwritten; a create carries no premise.
+P2-11: `Failed.at` indexes premises and operations alike, which only confuses
+messages.
+
+**P-6 on a machine.** Not reproduced. A package that is not installed plans as a
+create and carries no premise, so it cannot be refused with `Moved`: the case
+needs a second package planned as an update whose version the first one's install
+changes. The attempt on the Gentoo test machine declared one that was not
+installed, and stopped earlier anyway, because its binary host has no package for
+the first. The defect is narrower than first stated.
+
+### Blockers
+
+| Id | How verified | Finding | Resolution |
+| --- | --- | --- | --- |
+| C2-1 | R | `Prepared` has one set of attributes. A replacement needs what state recorded, to remove the old one, and the settled values, to make the new one. | `Prepared` carries what state recorded as well, for replacements and removals; one `prepare` per change, with a record point between the halves |
+| B2-1 | E | State is rewritten whole on every write. Reproduced: 13 ms at 100 resources, 20 ms at 1000, 60 ms at 10 000 (3.5 MB) and 538 ms at 100 000 (35.6 MB), with loading at 842 ms. At the fleet size 0031 aims at, one record costs more than a `Perform`. | **Decision needed** |
+| P2-1 | R, D | Every way out of a run releases the state lock while executors may still be inside a change: Ctrl-C twice removes it, and a bounded wait returns normally. The next run then reads a machine that is still moving. | **Decision needed** |
+
+### P: protocol and failures
+
+| Id | Severity | How verified | Finding | Resolution |
+| --- | --- | --- | --- | --- |
+| P2-2 | major | E, R | The frozen bootstrap has no recognition rule. Today's decoders accept unknown fields, so a bootstrap decoder tried first reads a later frame as a subset. The replacement sequence freezes far more than `Build` | A disjoint envelope decoded exactly; list what is frozen, with byte vectors and adversarial tests |
+| P2-3 | major | R, D | §5.6 does not place an unasked `Stopped`, a stream protocol error, an expired wait or an endless `Working` | A table of every final frame, reason and stream error: failure, unreachable or contract violation; conversation kept or ended; pending entries kept or cleared |
+| P2-4 | major | R, D | Under `continue`, the rest of a batch after `Failed` is undefined, and resending it meets the premise checked once per batch | Resend the remainder without premises and widen the bounded risk; map `Moved` to the changes owning the premise |
+| P2-5 | major | D | Liveness expiry is not sticky: a `Perform` delivered after silence restarts the clock and runs | Once silence passed `L` or input ended, the conversation is over; checks run after the premise as well |
+| P2-6 | major | R, D | Resolving by reading creates again what a machine or a cloud mints; "never timed out" contradicts both Ctrl-C paths | Never recreated from a pending entry without a client token or a person; say what the bounded wait does to control-domain changes |
+| P2-7 | major | R, D | One thread of a three-thread executor can die and leave the conversation alive | The executor exits when any thread ends |
+| P2-8 | major | R, D, E | Several failure-table rows are wrong, and events the design introduces have none | Correct them; add protocol errors, unasked `Stopped`, `conclude` refusing, the write-ahead failing, other signals, a version 4 executor, a dead thread |
+| P2-9 | major | R, D | Only SIGINT is designed, and a separate process group changes what SIGTERM, SIGHUP, SIGTSTP and SIGTTIN do | INT, TERM and HUP alike; TSTP blocked during apply; `setsid`, so a prompt fails at once; delivery as well |
+| P2-10 | minor | R, D | The stream rules miss gaps and reject a legal `Working` race | One state machine in `nerpa-proto`, shared by the writer and the validator |
+| P2-11 | minor | R | No final frame for a `Perform` refused before anything runs | `Refused { seq, problem }` |
+| P2-12 | minor | R, D | Nothing on the engine consumes `Working`, and X-8's stage deadline was dropped | A silence limit on the engine; `E`, `L`, `H` and `ServerAlive*` related in §8 |
+| P2-13 | minor | E, R | An `Alive` before `Build` kills a version 4 executor; `Reach::ask` is both kept and removed | State the opening order; a synchronous ask over the two halves; an id on every request |
+| P2-14 | minor | R, D | Writing ahead blocks a machine's thread, against "never blocks on the recorder" | A machine waits only for its own write-ahead; once per machine per stage in step 1 |
+| P2-15 | minor | D | "Nothing is sent" contradicts `Stop` and `Alive`; a `Stop` can cross a `Finished` | "No `Perform` begins to be written"; a `Stop` for another `seq` is ignored |
+| P2-16 | minor | R, D | Captured standard error needs a drainer, or `ssh` stalls | A bounded drainer per conversation |
+| P2-17 | minor | D | An `Alive` queued behind a long operation makes a healthy batch look silent | The reader handles `Alive` and `Stop` itself |
+| P2-18 | minor | R | §5.8 leans on `INV-PLAN-008` beyond its bypass | Name the bypass in §5.8's risk |
+| P2-19 | minor | D | Restoring through the old conversation needs it alive across the reconnect | `Alive` on it throughout; a row for a restore that could not be sent |
+
+### S: state and invariants
+
+| Id | Severity | How verified | Finding | Resolution |
+| --- | --- | --- | --- | --- |
+| S2-1 | major | R, D | Under `continue`, refusal does not reach removals, and follows the wrong direction for them | A removal carries the removals that wait for it; the invariant is stated over those edges |
+| S2-2 | major | E | Above | Fixed |
+| S2-3 | major | R, D | Adopting what is found as declared hides a half-applied change reading cannot see: a package before its postinst, an undeclared mode, a restart | Resolved per kind: an observed change concludes from the reading, one that cannot be observed is sent again; an address owing a reaction resolves through its debt |
+| S2-4 | major | R | A pending entry that reading finds matching and recorded has nothing to clear it | **Decision needed** |
+| S2-5 | major | R, D | What a pending entry holds is unspecified, and an address with a time cannot find an orphan | Address, kind, the locator sent, edges, time and the record point passed; read at that locator |
+| S2-6 | major | R, D | Minted identity is created again; control-domain and one-at-a-time changes get no entry | An entry for everything sent; a client token, or a refusal until a person decides |
+| S2-7 | major | R | A record point says where, not what is recorded or what becomes of the entry | Points as index and what; the entry survives until the final record |
+| S2-8 | major | R | The property for interrupted runs is false as written | Stated per address, with pending entries and a superset of debts |
+| S2-9 | major | D, R | Only half of the reworded `INV-STATE-005` can be kept | Split: nothing is sent before a durable write names it pending; clearing is its own invariant; latency a stated bound |
+| S2-10 | major | R, E | Above | Fixed |
+| S2-11 | minor | R, D | Under `continue` the postcondition in `apply` panics, and `Applied` has nowhere to put refusals | Changed, failed and refused add up to the plan; `Applied` carries them |
+| S2-12 | minor | D, R | Debts and pending entries are written for changes never sent | Withdrawn in the write that records the stop or refusal |
+| S2-13 | minor | D | The rest of a batch after `Failed` or `Moved` is undefined | With P2-4 |
+| S2-14 | minor | D, R | A second Ctrl-C releases the lock while executors act | With P2-1 |
+| S2-15 | minor | R, D | The replacement plan conflicts with `INV-REACH-001` and `INV-REACH-003`, and with the stop invariant | That machine's resources listed as unread; restoring named as an exception |
+| S2-16 | minor | R | How a pending removal resolves is undefined | The removal concludes from the reading, then is forgotten or planned again |
+| S2-17 | nit | R | The migration from state format 4 is one-way | Say so; a downgrade that refuses while anything is pending |
+| S2-18 | nit | R, D | The invariant for applying has no id; the in-doubt list's place in the plan's number is unsaid | An id, bypass and test; a stored time, never an age |
+
+### X: security of self-replacement
+
+| Id | Severity | How verified | Finding | Resolution |
+| --- | --- | --- | --- | --- |
+| X2-1 | major | R, E | The ownership and label checks cannot be expressed: what the executor reports carries mode, content and target, no owner and no label | Owner and label reported, inside the bootstrap |
+| X2-2 | major | E | `mv -Tf --` and `ln -nf --` protect only the last component: reproduced, a symlinked parent is followed, and a symlink `P` gives a symlink `P.previous` | No symlink anywhere on the path, checked by the executor walking without following; `P` a regular file |
+| X2-3 | major | D | A compromised executor performs and reports every step of its own replacement | Said: replacement is not recovery for a suspect executor, which stays a reinstall by root |
+| X2-4 | minor | D, R | The trigger is a digest the machine reports about itself | Full digests; the trigger is the far end's choice, bounded to genuine builds |
+| X2-5 | major | D | Fleet settings change what a run may do without the command line showing it | The plan's header shows the failure policy and every machine allowed to replace; **decision needed** on a command-line flag for a first replacement |
+| X2-6 | minor | D, E | The health check does not prove a start through the transport, and restoring needs the old conversation | A probe through the transport after the switch; a row for a restore that could not be sent |
+| X2-7 | minor | D | The bootstrap is a permanent decoding surface with no framing | With P2-2 |
+| X2-8 | minor | D | Cleaning up `.new` and `P.previous`; two replacements at once | Bounded retention; `P`'s content pinned in the premise |
+
+### B: performance
+
+| Id | Severity | How verified | Finding | Resolution |
+| --- | --- | --- | --- | --- |
+| B2-1 | blocker | E | Above | **Decision needed** |
+| B2-2 | major | R, D | Whether writing ahead shares group commit is unsaid; opening a stage could pay one write per machine | It shares; measured under concurrent writers |
+| B2-3 | major | R, D | A limit per first hop inside the pool strands workers on a saturated hop | A slot per route taken before a worker commits to a machine |
+| B2-4 | major | R | The memory row uses 8 MiB where one change may carry `MAX_CONTENT`, and a change's total size is not bounded while planning | Row corrected; a change's encoded total bounded while planning |
+| B2-5 | major | E, D | Liveness tests on real timers cost seconds each | An injectable clock, or a slower layer for real timers |
+| B2-6 | minor | R | Nothing holds the numbers about applying | A gate for recorder throughput and the simulated fleet |
+| B2-7 | minor | R, D | Nothing says what step 1 alone buys | Step 1 measured on its own, before and after |
+| B2-8 | nit | E | 100 against 1000 resources sits inside the fsync floor | Cite 10 000 and above |
+| B2-9 | minor | D | The recorder's backlog is unbounded under load | A bound, and pending entries said to grow with its lag |
+
+### C: the provider contract
+
+| Id | Severity | How verified | Finding | Resolution |
+| --- | --- | --- | --- | --- |
+| C2-1 | blocker | R | Above | As above |
+| C2-2 | major | R | A service's removal ignores what was recorded and settles it stopped, against "for a removal, what state recorded" | With C2-1: a removal is given both, and the provider decides per kind |
+| C2-3 | major | R, D | Handing `conclude` the same `Prepared` keeps secret values alive across threads; 0027 is not among what this touches | `conclude` never sees secret values; 0027 and `INV-SECRET-*` named |
+| C2-4 | major | D | Being one at a time does not let a provider branch | The claim dropped; branching splits across stages |
+| C2-5 | minor | R, D | `Prepared.kind` can hold kinds that never reach a provider | A narrower kind |
+| C2-6 | major | R | Replay tests are concrete for files only; the provider has no service test and one package test that only reads | Files and directories promised; a stateful fake for packages and services specified first |
+| C2-7 | major | R | A `conclude` refusal follows operations that already ran, and the failure table has no row for it | A row, and §5.6 says so |
+| C2-8 | minor | D | Facts are decoded twice per change | Accepted as bounded |
+| C2-9 | nit | D | Which provider errors the policy governs is unsaid | Every one; what always stops is internal to the engine |
+
+### Decisions needed before revision 2
+
+1. **The state format** (B2-1): stop rewriting it whole, as shards per machine or a
+   log with compaction, or state the fleet size where this design stops helping.
+2. **The lock after a stop** (P2-1, S2-14): keep it, naming the machines and
+   changes in flight, and refuse those machines until opening shows nothing
+   running there or a person unlocks.
+3. **A first executor replacement** (X2-5): whether it needs a command-line flag
+   as well as the fleet's opt-in.
+4. **Clearing a pending entry that matches and is recorded** (S2-4): a kind that
+   confirms it, so the first run after an interrupted one is not empty, or treating
+   the address as unrecorded, so it is adopted.
+
