@@ -209,14 +209,25 @@ pub trait Provider: Send + Sync {
     /// Every value here is settled: whatever was unresolved at plan time has been
     /// resolved from what earlier stages produced.
     ///
+    /// `roused` says whether something this resource reacts to changes in this
+    /// plan, or an earlier run left that reaction unpaid. A `React` always is; an
+    /// `Update` can be as well, because a service whose own attributes change in
+    /// the same plan as its file is one change, and a provider that acts on being
+    /// roused has to do it then too. See decision 0026.
+    ///
     /// # Errors
     ///
     /// Returns [`ProviderError`] if the declaration is unusable or the world
     /// refuses the change.
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "what a provider is told about one change, one argument each"
+    )]
     fn apply(
         &self,
         address: &Address,
         kind: ChangeKind,
+        roused: bool,
         attributes: &Attributes,
         premise: &[Premise],
         facts: Facts<'_>,

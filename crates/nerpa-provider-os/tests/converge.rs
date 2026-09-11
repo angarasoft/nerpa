@@ -1046,6 +1046,7 @@ fn one_provider_serves_two_threads_at_once() {
                     .apply(
                         &address("os:file.subject@localhost"),
                         ChangeKind::Create,
+                        false,
                         &wanted,
                         &[],
                         Observed::new().facts_of(None),

@@ -226,6 +226,7 @@ impl Asked {
 fn settle_service(
     address: &Address,
     kind: ChangeKind,
+    roused: bool,
     attributes: &Attributes,
     facts: Facts<'_>,
     premise: &[Premise],
@@ -238,7 +239,16 @@ fn settle_service(
     let mut operations = if kind == ChangeKind::React {
         vec![init.rouse(name)]
     } else {
-        init.settle(name, wanted("running"), wanted("enabled"))
+        let mut settling = init.settle(name, wanted("running"), wanted("enabled"));
+        // ENFORCES: INV-REACT-004
+        // Roused as well as changed: settled first, then restarted if it is
+        // running. This used to settle and stop there; `start` does nothing to a
+        // running unit, and the fresh record cleared the debt, which left a new
+        // file, an old process and nothing owed.
+        if roused {
+            settling.push(init.rouse(name));
+        }
+        settling
     };
     // Whether it is running is read back rather than echoed: `systemctl start`
     // and `rc-service start` both report success for a service that came up and
@@ -674,6 +684,7 @@ impl Provider for Os {
         &self,
         address: &Address,
         kind: ChangeKind,
+        roused: bool,
         attributes: &Attributes,
         premise: &[Premise],
         facts: Facts<'_>,
@@ -683,7 +694,7 @@ impl Provider for Os {
             return install(address, attributes, facts, premise, reach);
         }
         if address.kind().as_str() == "service" {
-            return settle_service(address, kind, attributes, facts, premise, reach);
+            return settle_service(address, kind, roused, attributes, facts, premise, reach);
         }
 
         let path = required_path(attributes, address)?;
@@ -739,6 +750,7 @@ impl Provider for Os {
             return settle_service(
                 address,
                 ChangeKind::Update,
+                false,
                 &Attributes::new(),
                 facts,
                 premise,

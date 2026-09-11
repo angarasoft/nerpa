@@ -1173,3 +1173,22 @@ bypass = "A restart that starts what is stopped: `systemctl restart`, or `rc-ser
 enforced_by = ["crates/nerpa-provider-os/src/service.rs"]
 tests = ["being_roused_restarts_a_service_only_if_it_is_running"]
 adversarial = ["being_roused_restarts_a_service_only_if_it_is_running"]
+
+[[invariant]]
+id = "INV-REACT-004"
+status = "enforced"
+statement = "A change that was roused is acted on as roused, whatever else changed."
+rationale = """
+A service whose own attributes change in the same plan as the file it reacts to \
+is one Update, not an update and a restart, so the provider has to be told it was \
+roused. It was not: the os provider restarted only a React, an Update settled \
+`enable` and `start`, `start` does nothing to a running unit, and the fresh record \
+cleared the debt. A new file, an old process, and nothing owed: the state 0026 \
+exists to make unreachable."""
+bypass = "Deciding a restart from the kind of change alone, in the engine or in a provider. A roused Update then applies cleanly, clears its debt and restarts nothing."
+enforced_by = ["crates/nerpa-core/src/run.rs", "crates/nerpa-provider-os/src/lib.rs"]
+tests = [
+  "a_service_owed_a_restart_is_restarted_when_it_changes_as_well",
+  "a_service_changing_and_roused_is_settled_then_restarted",
+]
+adversarial = ["a_service_owed_a_restart_is_restarted_when_it_changes_as_well"]

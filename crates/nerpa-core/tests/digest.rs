@@ -50,6 +50,7 @@ impl Provider for Empty {
         &self,
         _address: &Address,
         _kind: nerpa_core::ChangeKind,
+        _roused: bool,
         attributes: &Attributes,
         _premise: &[nerpa_proto::Premise],
         _facts: nerpa_core::observed::Facts<'_>,

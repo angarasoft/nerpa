@@ -386,8 +386,20 @@ pub fn apply(
             }
 
             let attributes = settle(change, &observed, secrets)?;
-            let result =
-                provider.apply(address, change.kind(), &attributes, premise, facts, reach)?;
+            // ENFORCES: INV-REACT-004
+            // Told whether it was roused, whatever else changed. A service whose own
+            // attributes change in the same plan as its file is one Update, and the
+            // provider has to know to restart it as well.
+            let roused = !(change.roused_by().is_empty() && change.owed().is_empty());
+            let result = provider.apply(
+                address,
+                change.kind(),
+                roused,
+                &attributes,
+                premise,
+                facts,
+                reach,
+            )?;
 
             // A fresh record owes nothing, which is how a debt written before
             // its cause was sent is cleared: paid by having got this far.

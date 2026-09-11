@@ -402,7 +402,9 @@ declared. Shown on a real machine — `chrony.conf` rewritten, `chronyd` restart
 its process identifier different afterwards, and a second run with nothing to do
 and the same identifier. The stopped case was only claimed until 2026-09-11, when
 review found the command was a plain restart, which starts a stopped service; it
-is `systemctl try-restart` and `rc-service --ifstarted ... restart` now.
+is `systemctl try-restart` and `rc-service --ifstarted ... restart` now. A service
+whose own attributes change in the same run is settled and then restarted if it is
+running: a provider is told whether a change was roused, whatever its kind.
 
 ## Parallelism — [0031](decisions/0031-parallelism-is-threads-and-providers-are-sync.md) · partly built
 

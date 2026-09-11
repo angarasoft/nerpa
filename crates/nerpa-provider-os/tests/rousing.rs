@@ -6,21 +6,26 @@
 // Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
-use std::sync::Mutex;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, Mutex};
 
 use nerpa_core::address::address;
 use nerpa_core::plan::ChangeKind;
-use nerpa_core::provider::{Attributes, Provider, ProviderError, Reach};
+use nerpa_core::planner::plan;
+use nerpa_core::provider::{Attributes, Machines, Provider, ProviderError, Providers, Reach};
+use nerpa_core::run::apply;
+use nerpa_core::secret::{Key, Remembered, Secrets};
+use nerpa_core::state::{Record, State};
 use nerpa_core::value::Value;
-use nerpa_core::{Observed, Target};
+use nerpa_core::{Graph, Observed, Resource, Target};
 use nerpa_proto::{Answer, Ask, Operation, Seen};
 use nerpa_provider_os::Os;
 
 /// Answers every batch as though each operation succeeded, and keeps what it
 /// was asked to do.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 struct Obliging {
-    asked: Mutex<Vec<Vec<Operation>>>,
+    asked: Arc<Mutex<Vec<Vec<Operation>>>>,
 }
 
 impl Obliging {
@@ -60,7 +65,7 @@ impl Reach for Obliging {
 }
 
 /// What a service change on a machine running `init` sends.
-fn sent_for(init: &str, kind: ChangeKind) -> Vec<Vec<String>> {
+fn sent_for(init: &str, kind: ChangeKind, roused: bool) -> Vec<Vec<String>> {
     let node = Target::new("web-01").unwrap();
     let mut observed = Observed::new();
     observed.learn(node.clone(), "init", init);
@@ -72,6 +77,7 @@ fn sent_for(init: &str, kind: ChangeKind) -> Vec<Vec<String>> {
     let _ = Os::new().apply(
         &address("os:service.nginx@web-01"),
         kind,
+        roused,
         &attributes,
         &[],
         observed.facts_of(Some(&node)),
@@ -89,11 +95,119 @@ fn sent_for(init: &str, kind: ChangeKind) -> Vec<Vec<String>> {
 #[test]
 fn being_roused_restarts_a_service_only_if_it_is_running() {
     assert_eq!(
-        sent_for("systemd", ChangeKind::React)[0],
+        sent_for("systemd", ChangeKind::React, true)[0],
         ["systemctl", "try-restart", "nginx"]
     );
     assert_eq!(
-        sent_for("openrc", ChangeKind::React)[0],
+        sent_for("openrc", ChangeKind::React, true)[0],
         ["rc-service", "--ifstarted", "nginx", "restart"]
+    );
+}
+
+/// Roused as well as changed: settled, then restarted if it is running. Not
+/// roused: settled and nothing more, because a restart nobody asked for is still
+/// a restart.
+#[test]
+fn a_service_changing_and_roused_is_settled_then_restarted() {
+    let lines = |sent: Vec<Vec<String>>| -> Vec<String> {
+        sent.into_iter().map(|program| program.join(" ")).collect()
+    };
+    let show = "systemctl show nginx -p LoadState -p ActiveState -p UnitFileState";
+    assert_eq!(
+        lines(sent_for("systemd", ChangeKind::Update, true)),
+        [
+            "systemctl enable nginx",
+            "systemctl start nginx",
+            "systemctl try-restart nginx",
+            show,
+        ]
+    );
+    assert_eq!(
+        lines(sent_for("systemd", ChangeKind::Update, false)),
+        ["systemctl enable nginx", "systemctl start nginx", show]
+    );
+}
+
+static DIGEST_KEY: Key = Key::from_bytes([3; 32]);
+static NO_STORE: Remembered = Remembered::EMPTY;
+
+/// A service owed a restart since an earlier run, and changing an attribute of
+/// its own in this one, is restarted as well as settled.
+///
+/// It is one `Update`, not an update and a restart. The provider was never told
+/// it was roused, restarted only a reaction on its own, and settled `enable` and
+/// `start` instead; `start` does nothing to a running unit, and the fresh record
+/// cleared the debt. Found by the second review of RFC 0001.
+#[test]
+fn a_service_owed_a_restart_is_restarted_when_it_changes_as_well() {
+    const CONF: &str = "os:file.nginx-conf@web-01";
+    const SERVICE: &str = "os:service.nginx@web-01";
+    let node = Target::new("web-01").unwrap();
+
+    let mut graph = Graph::new();
+    graph.preexisting(node.clone());
+    graph
+        .insert(Resource::new(address(CONF)).with("content", "as it is\n"))
+        .unwrap();
+    graph
+        .insert(
+            Resource::new(address(SERVICE))
+                .with("running", Value::Boolean(true))
+                .with("enabled", Value::Boolean(true))
+                .reacting_to(address(CONF)),
+        )
+        .unwrap();
+
+    let mut observed = Observed::new();
+    observed.learn(node.clone(), "init", "systemd");
+    observed.record(
+        address(CONF),
+        [("content".to_owned(), Value::Text("as it is\n".to_owned()))]
+            .into_iter()
+            .collect(),
+    );
+    observed.record(
+        address(SERVICE),
+        [
+            ("running".to_owned(), Value::Boolean(true)),
+            ("enabled".to_owned(), Value::Boolean(false)),
+        ]
+        .into_iter()
+        .collect(),
+    );
+
+    let mut state = State::new();
+    state.record(address(CONF), Record::new(BTreeMap::new(), BTreeSet::new()));
+    state.record(
+        address(SERVICE),
+        Record::new(BTreeMap::new(), [address(CONF)].into_iter().collect())
+            .owing([address(CONF)].into_iter().collect()),
+    );
+
+    let providers = Providers::new().with(Box::new(Os::new()));
+    let secrets = Secrets::new(&DIGEST_KEY, &NO_STORE);
+    let planned = plan(&graph, &observed, &state, &providers.schema(), secrets).expect("plannable");
+    let changes: Vec<_> = planned.changes().collect();
+    assert_eq!(changes.len(), 1, "only the service: {planned:?}");
+    assert_eq!(changes[0].kind(), ChangeKind::Update);
+    assert_eq!(changes[0].owed(), [address(CONF)]);
+
+    let machine = Obliging::default();
+    let machines = Machines::new().with(node, Box::new(machine.clone()));
+    let _ = apply(
+        &planned,
+        &providers,
+        &machines,
+        &observed,
+        &mut state,
+        secrets,
+        &mut |_: &State| Ok(()),
+    );
+
+    let sent = machine.sent();
+    assert!(
+        sent.iter()
+            .any(|program| program == &["systemctl", "try-restart", "nginx"]),
+        "owed a restart, and restarted: {sent:?}"
     );
 }

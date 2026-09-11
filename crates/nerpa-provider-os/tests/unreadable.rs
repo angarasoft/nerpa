@@ -189,6 +189,7 @@ fn a_binary_file_converges() {
         .apply(
             &address("os:file.subject@localhost"),
             ChangeKind::Create,
+            false,
             &wanted,
             &[],
             Observed::new().facts_of(None),
@@ -226,6 +227,7 @@ fn writing_where_a_symlink_is_replaces_the_link_and_leaves_its_target_alone() {
         .apply(
             &address("os:file.subject@localhost"),
             ChangeKind::Update,
+            false,
             &wanted,
             &[],
             Observed::new().facts_of(None),
@@ -316,6 +318,7 @@ fn making_a_directory_where_a_symlink_is_leaves_what_it_pointed_at_alone() {
         .apply(
             &address("os:directory.subject@localhost"),
             ChangeKind::Create,
+            false,
             &wanted,
             &[],
             Observed::new().facts_of(None),
@@ -362,6 +365,7 @@ fn a_file_ends_up_with_the_mode_it_was_declared() {
         .apply(
             &address("os:file.subject@localhost"),
             ChangeKind::Create,
+            false,
             &wanted,
             &[],
             Observed::new().facts_of(None),
@@ -460,6 +464,7 @@ fn content_too_large_is_refused_before_the_machine_is_asked() {
         .apply(
             &address("os:file.big@localhost"),
             ChangeKind::Create,
+            false,
             &attributes,
             &[],
             Observed::new().facts_of(None),

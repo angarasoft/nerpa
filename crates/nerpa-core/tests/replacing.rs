@@ -62,6 +62,7 @@ impl Provider for DeletesButCannotCreate {
         &self,
         address: &Address,
         _kind: ChangeKind,
+        _roused: bool,
         _attributes: &Attributes,
         _premise: &[nerpa_proto::Premise],
         _facts: nerpa_core::observed::Facts<'_>,

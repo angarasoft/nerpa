@@ -276,6 +276,13 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A service roused while its own attributes change is restarted as well as
+  settled. Providers are told whether a change was roused, and `Provider::apply`
+  gains `roused`. The `os` provider restarted only a reaction on its own, so a
+  service enabled in the same run as its file changed was started, which does
+  nothing to a running unit, and the fresh record cleared the debt. Found by the
+  second review of RFC 0001.
+
 - Being roused restarts a service only if it is running: `systemctl try-restart`
   and `rc-service --ifstarted ... restart`. A plain restart was sent, which starts
   a stopped service, while the comments and the architecture said a stopped one
