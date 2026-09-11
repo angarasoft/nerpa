@@ -344,6 +344,19 @@ pub fn apply(
                 for reactor in reactors {
                     owe_before(state, reactor, address, &observed, secrets);
                 }
+            }
+            // ENFORCES: INV-REACT-006
+            // And on the records of reacting resources this plan cannot reach,
+            // which the planner found to have one. Paid in whichever later run
+            // their machine answers in.
+            for reactor in change.owed_by() {
+                requires!(
+                    state.get(reactor).is_some(),
+                    "{reactor} was planned as owing a reaction on its record, and this run was handed a state without one"
+                );
+                state.owe(reactor, std::slice::from_ref(address));
+            }
+            if rousing.contains_key(address) || !change.owed_by().is_empty() {
                 record(state).map_err(RunError::Record)?;
             }
 

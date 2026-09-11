@@ -124,7 +124,7 @@ fn the_number_of_a_fixed_plan_is_written_down() {
         .expect("hashable");
     assert_eq!(
         number.to_hex(),
-        "0df6e7c201cc9beddbe500181c82095a36c0558af50614ee4cccdaa0ea658140",
+        "a40efb4d8cdbf14efd2a9e5f40b8ffd5851498fc4240ecbfb3092ae28f857693",
         "the encoding changed; if that was meant, write the new number here in the same commit"
     );
 }

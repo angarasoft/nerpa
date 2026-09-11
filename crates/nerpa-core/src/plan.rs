@@ -216,6 +216,13 @@ pub struct Change {
     /// a restart was owed since a run that stopped. See decision 0026.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     owed: Vec<Address>,
+    /// Reacting resources this plan cannot reach, which this change rouses.
+    ///
+    /// Owed a reaction on their records before this is sent, and paid in
+    /// whichever later run they can be planned in. Carried by the cause,
+    /// because the reactor is not in the plan to carry it. See `INV-REACT-006`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    owed_by: Vec<Address>,
     /// Everything this resource comes after, however that ordering arose: a
     /// reference, `after`, a reaction.
     ///
@@ -251,6 +258,7 @@ impl Change {
             premise,
             roused_by,
             owed,
+            owed_by: Vec::new(),
             depends_on,
         }
     }
@@ -265,6 +273,19 @@ impl Change {
     #[must_use]
     pub fn owed(&self) -> &[Address] {
         &self.owed
+    }
+
+    /// Reacting resources this plan cannot reach, owed a reaction to this change
+    /// on their records, in a stable order.
+    #[must_use]
+    pub fn owed_by(&self) -> &[Address] {
+        &self.owed_by
+    }
+
+    /// Leaves a reaction to this change owed by `reactors`, which the plan
+    /// cannot reach.
+    pub(crate) fn leave_owed(&mut self, reactors: Vec<Address>) {
+        self.owed_by = reactors;
     }
 
     /// What changed that this resource reacts to, in a stable order.
@@ -798,6 +819,14 @@ fn encode_stage(stage: &PlanStage, out: &mut Vec<u8>) {
         out.extend_from_slice(&value::length(change.owed().len()));
         for cause in change.owed() {
             value::text(&cause.to_string(), out);
+        }
+
+        // A debt left on the record of something this plan cannot reach. A plan
+        // writing one promises a reaction later, and approving it approves that
+        // promise.
+        out.extend_from_slice(&value::length(change.owed_by().len()));
+        for reactor in change.owed_by() {
+            value::text(&reactor.to_string(), out);
         }
 
         // What it comes after, which is what state will remember to order its

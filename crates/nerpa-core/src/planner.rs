@@ -179,24 +179,36 @@ pub fn plan_at(
 
     // Holding goes both ways. A removal waits while something recorded after it
     // cannot be planned, and a declared resource waits while the removal of what
-    // it names does, so the walk is taken again when a removal it did not know was
-    // held turns out to be named. Once in the ordinary case, and at most once more
-    // for each removal held that way. It is still 0006's single pass in what that
-    // decision is about: one plan, made in full from one reading before anything
-    // runs, and no planning between stages.
-    let mut held: BTreeSet<Address> = BTreeSet::new();
+    // it names does; and a cause waits while a resource reacting to it cannot be
+    // planned and has no record to owe the reaction on. So the walk is taken again
+    // when it finds something held that it did not know was. Once in the ordinary
+    // case, and at most once more for each thing held that way. It is still 0006's
+    // single pass in what that decision is about: one plan, made in full from one
+    // reading before anything runs, and no planning between stages.
+    let mut held = Held::default();
     loop {
         let walk = planning.walk(&held)?;
         let removals = planning.removals(&walk);
         let named = removals
             .held
             .iter()
-            .any(|removal| !held.contains(removal) && walk.claims.contains_key(removal));
-        if !named {
+            .any(|removal| !held.removals.contains(removal) && walk.claims.contains_key(removal));
+        let unowed = !walk.hold.is_subset(&held.causes);
+        if !named && !unowed {
             return assemble(walk, removals);
         }
-        held.extend(removals.held);
+        held.removals.extend(removals.held);
+        held.causes.extend(walk.hold);
     }
+}
+
+/// What a walk is told is held, by the walks before it.
+#[derive(Default)]
+struct Held {
+    /// Removals that cannot be planned.
+    removals: BTreeSet<Address>,
+    /// Changes rousing a resource that cannot be planned and has no record.
+    causes: BTreeSet<Address>,
 }
 
 /// What a plan is computed from, and what is worked out from that before the
@@ -233,6 +245,11 @@ struct Walk {
     outdated: Vec<Outdated>,
     /// For each removal, the declared resource naming what it takes away.
     claims: BTreeMap<Address, Address>,
+    /// For each cause, the resources it rouses that cannot be planned and have a
+    /// record to owe the reaction on.
+    owed_by: BTreeMap<Address, Vec<Address>>,
+    /// Causes rousing a resource that cannot be planned and has no record.
+    hold: BTreeSet<Address>,
 }
 
 /// Where the removals go among one walk's changes.
@@ -251,9 +268,9 @@ struct Removals {
 }
 
 impl Planning<'_> {
-    /// One walk of the graph, in the order the work will happen, knowing the
-    /// removals in `held` are held.
-    fn walk(&self, held: &BTreeSet<Address>) -> Result<Walk, PlanError> {
+    /// One walk of the graph, in the order the work will happen, knowing what the
+    /// walks before it found held.
+    fn walk(&self, held: &Held) -> Result<Walk, PlanError> {
         let mut walk = Walk::default();
         // What this plan is changing, so that a resource reacting to one of them
         // knows. Filled stage by stage, and a stage is only reached after every
@@ -305,10 +322,38 @@ impl Planning<'_> {
                 // was adopted from the reading, and the removal, planned in
                 // whichever later run its machine answered, took the thing away
                 // from under that record.
-                let waits_for_removal = claimed.iter().any(|removal| held.contains(removal));
+                let waits_for_removal = claimed
+                    .iter()
+                    .any(|removal| held.removals.contains(removal));
+                // A cause rousing something that cannot be planned and has
+                // nowhere to owe the reaction, found by a walk before this one.
+                let waits_for_reaction = held.causes.contains(address);
 
-                if out_of_reach || blocked || waits_for_removal {
+                if out_of_reach || blocked || waits_for_removal || waits_for_reaction {
                     walk.unplannable.insert(address.clone());
+                    // ENFORCES: INV-REACT-006
+                    // What this plan sends that rouses this resource. The reaction
+                    // is owed on its record, written before the cause is sent and
+                    // paid in whichever later run this can be planned. With no
+                    // record there is nowhere to owe it, so the cause waits. Sent
+                    // anyway, the file changed, the service on a machine that did
+                    // not answer kept reading the old one, and when the machine came
+                    // back nothing was changing and nothing was owed.
+                    let record = self.state.get(address);
+                    for cause in resource
+                        .reacts_to()
+                        .iter()
+                        .filter(|cause| changing.contains(*cause))
+                    {
+                        if record.is_some() {
+                            walk.owed_by
+                                .entry(cause.clone())
+                                .or_default()
+                                .push(address.clone());
+                        } else {
+                            walk.hold.insert(cause.clone());
+                        }
+                    }
                     if let Some(node) = node {
                         let age = known_for(self.state, &node, self.now);
                         walk.unreachable
@@ -490,13 +535,28 @@ fn assemble(walk: Walk, removals: Removals) -> Result<Plan, PlanError> {
         }
     }
 
+    // ENFORCES: INV-REACT-006
+    // Each cause carries the debts it leaves on records this plan cannot reach, so
+    // that apply writes them before sending it.
+    let mut walked = walk.stages;
+    for (cause, reactors) in walk.owed_by {
+        if let Some(change) = walk
+            .at
+            .get(&cause)
+            .and_then(|at| walked.get_mut(*at))
+            .and_then(|(_, changes)| changes.iter_mut().find(|change| change.address() == &cause))
+        {
+            change.leave_owed(reactors);
+        }
+    }
+
     let mut stages: Vec<PlanStage> = removals
         .first
         .into_iter()
         .map(|changes| PlanStage::new(StageKind::Mixed, changes))
         .collect();
     let mut later = removals.after;
-    for (index, (kind, changes)) in walk.stages.into_iter().enumerate() {
+    for (index, (kind, changes)) in walked.into_iter().enumerate() {
         stages.push(PlanStage::new(kind, changes));
         for changes in later.remove(&index).unwrap_or_default() {
             stages.push(PlanStage::new(StageKind::Mixed, changes));

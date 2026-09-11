@@ -276,6 +276,14 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A resource reacting to a change, on a machine that did not answer or held
+  behind one, is owed the reaction on its record before the change is sent, and a
+  change whose reactor has no record waits. Nothing was owed: when the machine
+  came back the file matched, nothing was changing, and the service kept the old
+  file. `Change::owed_by` carries the debt, the plan shows it, and every plan's
+  number changes with it. Found by the narrow review of RFC 0001; the rule was
+  decided by the owner.
+
 - A removal comes after the change of whatever state recorded after it, and waits
   while that cannot be planned. Removals came first and waited only for other
   removals, so a file moved out of a directory whose declaration went was still

@@ -8,6 +8,11 @@
   written before the cause is sent, once for each cause that rouses anything, and
   a reacting resource that state does not record yet is recorded from what was
   read so that it has somewhere to carry one.
+- Corrected: 2026-09-11 — a reacting resource the plan could not reach, on a
+  machine that did not answer or held behind one, was owed nothing while its
+  cause was sent: found by the narrow review of RFC 0001. The reaction is owed on
+  its record before the cause is sent, and a cause whose reactor has no record
+  waits, as the owner decided.
 
 ## Context
 

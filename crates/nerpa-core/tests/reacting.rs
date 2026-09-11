@@ -423,3 +423,123 @@ fn a_reactor_nothing_recorded_yet_is_owed_its_reaction_all_the_same() {
         "owed since the run that stopped"
     );
 }
+
+/// A service on a second machine, which reacts to the file on the first.
+const FAR_SERVICE: &str = "os:service.nginx@web-02";
+
+/// The file changing on a machine that answers, recorded, and a service reacting
+/// to it declared on another.
+fn far_world() -> (Graph, Observed, State) {
+    let mut graph = Graph::new();
+    for node in ["web-01", "web-02"] {
+        graph.preexisting(nerpa_core::Target::new(node).unwrap());
+    }
+    graph
+        .insert(Resource::new(address(CONF)).with("content", "as it will be\n"))
+        .unwrap();
+    graph
+        .insert(
+            Resource::new(address(FAR_SERVICE))
+                .with("name", "nginx")
+                .reacting_to(address(CONF)),
+        )
+        .unwrap();
+
+    let mut observed = Observed::new();
+    observed.record(
+        address(CONF),
+        [("content".to_owned(), Value::Text("as it was\n".to_owned()))]
+            .into_iter()
+            .collect(),
+    );
+    observed.unreachable(nerpa_core::Target::new("web-02").unwrap());
+
+    let mut state = State::new();
+    state.record(
+        address(CONF),
+        Record::new(BTreeMap::new(), BTreeSet::default()),
+    );
+    (graph, observed, state)
+}
+
+/// A service on a machine that did not answer, reacting to a file on one that
+/// did, is owed the reaction on its record before the file is sent. Nothing was
+/// owed: when the machine came back the file matched, nothing was changing, and
+/// the service kept the old file. Every reaction test ran on one machine. Found by
+/// the narrow review of RFC 0001.
+#[test]
+fn a_reaction_on_a_machine_that_did_not_answer_is_owed_on_its_record() {
+    let (graph, observed, mut state) = far_world();
+    state.record(
+        address(FAR_SERVICE),
+        Record::new(BTreeMap::new(), [address(CONF)].into_iter().collect()),
+    );
+
+    let first = plan(&graph, &observed, &state, &Schema::new(), secrets()).expect("plannable");
+    let file = first
+        .changes()
+        .find(|change| change.address() == &address(CONF))
+        .expect("the file is sent");
+    assert_eq!(file.owed_by(), [address(FAR_SERVICE)], "{first:?}");
+
+    apply(
+        &first,
+        &Providers::new().with(Box::new(StopsAt::fake())),
+        &Machines::new().everywhere(Box::new(Nowhere)),
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |_: &State| Ok(()),
+    )
+    .expect("applies");
+    assert_eq!(
+        state.get(&address(FAR_SERVICE)).unwrap().owed(),
+        &BTreeSet::from([address(CONF)]),
+        "owed on the record before anything else happens to it"
+    );
+
+    // The machine answers, and the file already matches.
+    let mut back = Observed::new();
+    back.record(
+        address(CONF),
+        [(
+            "content".to_owned(),
+            Value::Text("as it will be\n".to_owned()),
+        )]
+        .into_iter()
+        .collect(),
+    );
+    back.record(
+        address(FAR_SERVICE),
+        [("name".to_owned(), Value::Text("nginx".to_owned()))]
+            .into_iter()
+            .collect(),
+    );
+    let next = plan(&graph, &back, &state, &Schema::new(), secrets()).expect("plannable");
+    let service = next
+        .changes()
+        .find(|change| change.address() == &address(FAR_SERVICE))
+        .expect("the service is in the plan");
+    assert_eq!(service.kind(), ChangeKind::React, "{next:?}");
+    assert_eq!(service.owed(), [address(CONF)]);
+}
+
+/// And a service with no record, which has nowhere to owe it, holds the file back
+/// until its machine answers, and the plan says what waits.
+#[test]
+fn a_cause_waits_while_what_it_rouses_cannot_be_planned_and_has_no_record() {
+    let (graph, observed, state) = far_world();
+
+    let held = plan(&graph, &observed, &state, &Schema::new(), secrets()).expect("plannable");
+
+    assert!(held.is_empty(), "the file waits: {held:?}");
+    let named: BTreeSet<String> = held
+        .unreachable()
+        .iter()
+        .map(|entry| entry.address().to_string())
+        .collect();
+    assert!(
+        named.contains(CONF) && named.contains(FAR_SERVICE),
+        "{named:?}"
+    );
+}

@@ -256,6 +256,15 @@ fn one(change: &Change) -> String {
         );
     }
 
+    // On the cause, because what it rouses is not in the plan to say so. A reader
+    // is owed the reaction this promises for later as much as one happening now.
+    for reactor in change.owed_by() {
+        let _ = writeln!(
+            out,
+            "               ↺ leaves {reactor} owing a reaction: it cannot be planned now"
+        );
+    }
+
     // The part that matters later. Nothing is done to it now, and from now on
     // taking its declaration away removes it, which is not what somebody who
     // wrote a file by hand years ago would assume. See 0042.
