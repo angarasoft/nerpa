@@ -35,6 +35,7 @@ pub struct Schema {
     bounded: BTreeMap<(Provider, Kind), BTreeMap<String, usize>>,
     identities: BTreeMap<(Provider, Kind), (String, String)>,
     unreactive: BTreeSet<(Provider, Kind)>,
+    modes: BTreeMap<(Provider, Kind), BTreeSet<String>>,
 }
 
 impl Schema {
@@ -137,6 +138,27 @@ impl Schema {
             .and_then(|bounds| bounds.get(attribute).copied())
     }
 
+    /// Declares that this attribute is a file mode, written in octal.
+    ///
+    /// Compared as the number it spells, so "644", "0644" and "0o644" are one
+    /// mode, and refused while planning when it spells no mode a file can have.
+    #[must_use]
+    pub fn mode(mut self, provider: Provider, kind: Kind, attribute: impl Into<String>) -> Self {
+        self.modes
+            .entry((provider, kind))
+            .or_default()
+            .insert(attribute.into());
+        self
+    }
+
+    /// Whether this attribute of this resource is a file mode.
+    #[must_use]
+    pub fn is_mode(&self, address: &Address, attribute: &str) -> bool {
+        self.modes
+            .get(&(address.provider().clone(), address.kind().clone()))
+            .is_some_and(|names| names.contains(attribute))
+    }
+
     /// Declares that this kind cannot react to anything.
     ///
     /// A reaction is something a change elsewhere asks a resource to do again: a
@@ -189,6 +211,9 @@ impl Schema {
         }
         self.identities.extend(other.identities);
         self.unreactive.extend(other.unreactive);
+        for (kind, attributes) in other.modes {
+            self.modes.entry(kind).or_default().extend(attributes);
+        }
         self
     }
 
@@ -199,4 +224,21 @@ impl Schema {
             .get(&(address.provider().clone(), address.kind().clone()))
             .is_some_and(|names| names.contains(attribute))
     }
+}
+
+// ENFORCES: INV-PLAN-012
+/// The mode a file mode written in octal spells: `"0644"`, `"644"` or `"0o644"`.
+///
+/// `None` for text that is not octal, and for a number beyond the permission bits,
+/// which a machine does not keep: the rest of a mode is the kind of file, and a
+/// file written with it reads back without it.
+#[must_use]
+pub fn mode_of(written: &str) -> Option<u32> {
+    let digits = written.strip_prefix("0o").unwrap_or(written);
+    if digits.is_empty() || !digits.bytes().all(|digit| (b'0'..=b'7').contains(&digit)) {
+        return None;
+    }
+    u32::from_str_radix(digits, 8)
+        .ok()
+        .filter(|mode| *mode <= 0o7777)
 }

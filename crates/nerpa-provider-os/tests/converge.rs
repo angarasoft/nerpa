@@ -1188,6 +1188,55 @@ fn a_file_moved_onto_a_path_a_removal_frees_leaves_nothing_at_the_old_path() {
     );
 }
 
+/// A mode is compared as the number it spells. Written "644" or "0o644", it never
+/// matched the "0644" reading reports, and every run changed it again. Found by the
+/// review of RFC 0001's fourth revision.
+#[test]
+fn a_mode_is_compared_as_the_number_it_spells() {
+    for (name, written) in [("short", "644"), ("prefixed", "0o644")] {
+        let scratch = Scratch::new(&format!("mode-{name}"));
+        let graph = graph_of(vec![
+            Resource::new(address(&format!("os:file.{name}@localhost")))
+                .with("path", scratch.join("f"))
+                .with("content", "m\n")
+                .with("mode", written),
+        ]);
+        let mut state = State::new();
+        run_once(&graph, &mut state).expect("the first run applies");
+        let again = next_plan(&graph, &state);
+        assert!(
+            again.is_empty(),
+            "{written}: the next run has nothing to do: {again:?}"
+        );
+    }
+}
+
+/// And a mode beyond the permission bits is refused while planning: the machine
+/// keeps only those, so it never matched either. Found by the review of RFC 0001's
+/// fourth revision.
+#[test]
+fn a_mode_beyond_the_permission_bits_is_refused_while_planning() {
+    let scratch = Scratch::new("mode-beyond");
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.beyond@localhost"))
+            .with("path", scratch.join("f"))
+            .with("content", "m\n")
+            .with("mode", "100644"),
+    ]);
+    let providers = providers();
+    let state = State::new();
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
+    let refused = plan(&graph, &observed, &state, &providers.schema(), secrets()).unwrap_err();
+    assert!(
+        matches!(
+            &refused,
+            nerpa_core::planner::PlanError::NotAMode { attribute, value, .. }
+                if attribute == "mode" && value == "100644"
+        ),
+        "{refused}"
+    );
+}
+
 /// State is written as the run goes, not once when it finishes.
 ///
 /// A run that stops half way has made real changes. Recording them only at the

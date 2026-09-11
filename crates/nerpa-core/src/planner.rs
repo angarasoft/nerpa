@@ -100,6 +100,18 @@ pub enum PlanError {
         /// Its kind.
         kind: String,
     },
+    /// A file mode written as something no file can have.
+    #[error(
+        "{address}: {attribute} is {value:?}, and a mode is written in octal within the permission bits, such as \"0644\""
+    )]
+    NotAMode {
+        /// The resource declaring it.
+        address: Address,
+        /// Which attribute.
+        attribute: String,
+        /// What it says.
+        value: String,
+    },
     /// Changes that each have to come after the next, round to the first. One run
     /// cannot order them.
     #[error("one run cannot order these, each after the next: {}", steps(.cycle))]
@@ -1018,6 +1030,23 @@ fn change_for(
                 most,
             });
         }
+        // ENFORCES: INV-PLAN-012
+        // A mode is the number it spells. Compared as written, "644" never matched
+        // the "0644" a reading reports, and every run changed it again; one beyond
+        // the permission bits never matched at all, because a machine keeps only
+        // those. So it is compared as a number, and what spells no mode a file can
+        // have is refused here, before anything is done on the strength of it.
+        let mode = schema.is_mode(address, name);
+        if mode
+            && let Confidence::Known(Value::Text(written)) = &after
+            && crate::schema::mode_of(written).is_none()
+        {
+            return Err(PlanError::NotAMode {
+                address: address.clone(),
+                attribute: name.clone(),
+                value: written.clone(),
+            });
+        }
         desired.push((name.clone(), after.clone()));
 
         // Reduced here, at the edge: a secret attribute's observed value is a
@@ -1033,7 +1062,12 @@ fn change_for(
                     Recorded::Plain(value.clone())
                 }
             });
-        if settled(before.as_ref(), &after) {
+        let matches = if mode {
+            same_mode(before.as_ref(), &after)
+        } else {
+            settled(before.as_ref(), &after)
+        };
+        if matches {
             continue;
         }
 
@@ -1185,6 +1219,17 @@ fn resolve(
 ///
 /// An unresolved value never matches: nothing can be said about a value that
 /// does not exist, and claiming it matches would silently skip the write.
+/// Whether a mode on the machine is the mode declared, as numbers.
+fn same_mode(before: Option<&Recorded>, after: &Confidence) -> bool {
+    match (before, after) {
+        (Some(Recorded::Plain(Value::Text(current))), Confidence::Known(Value::Text(wanted))) => {
+            crate::schema::mode_of(current).is_some()
+                && crate::schema::mode_of(current) == crate::schema::mode_of(wanted)
+        }
+        _ => settled(before, after),
+    }
+}
+
 fn settled(before: Option<&Recorded>, after: &Confidence) -> bool {
     match (before, after) {
         (Some(Recorded::Plain(current)), Confidence::Known(wanted)) => current == wanted,

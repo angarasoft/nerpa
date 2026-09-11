@@ -439,11 +439,9 @@ fn mode(attributes: &Attributes, address: &Address, default: u32) -> Result<u32,
     let Some(written) = text(attributes, "mode") else {
         return Ok(default);
     };
-    u32::from_str_radix(written.trim_start_matches("0o"), 8).map_err(|_| {
-        ProviderError::Declaration {
-            address: address.clone(),
-            problem: format!("mode {written:?} is not an octal file mode such as \"0644\""),
-        }
+    nerpa_core::schema::mode_of(&written).ok_or_else(|| ProviderError::Declaration {
+        address: address.clone(),
+        problem: format!("mode {written:?} is not an octal file mode such as \"0644\""),
     })
 }
 
@@ -581,6 +579,10 @@ impl Provider for Os {
             // A file and a directory at one path are one thing on the machine.
             .identity(self.name.clone(), kind("file"), "path", "path")
             .identity(self.name.clone(), kind("directory"), "path", "path")
+            // A mode is the number it spells, and the machine keeps only its
+            // permission bits.
+            .mode(self.name.clone(), kind("file"), "mode")
+            .mode(self.name.clone(), kind("directory"), "mode")
             // A package has nothing a change elsewhere could ask it to do again:
             // on rhel installing it again did nothing, and on Portage it merged
             // again. So it cannot react, and a configuration saying it does is

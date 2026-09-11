@@ -276,6 +276,13 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A file mode is compared as the number it spells, and one no file can have is
+  refused while planning. Written "644" or "0o644", a mode never matched the "0644"
+  a reading reports, and "100644" never matched at all, because a machine keeps
+  only the permission bits: each was an update on every run. Providers say which
+  attributes are modes (`Schema::mode`). Found by the review of RFC 0001's fourth
+  revision.
+
 - A read interrupted by a signal inside a frame carries on. The prefix was read
   with `read_exact`, which asks again, and the body turned the interruption into a
   lost connection, so a signal handler installed without restarting reads would
