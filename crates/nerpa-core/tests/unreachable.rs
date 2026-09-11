@@ -316,29 +316,43 @@ fn a_resource_naming_what_a_held_removal_takes_is_held_with_it() {
 /// whether that is still in the way is not known until its machine answers.
 #[test]
 fn a_removal_waits_while_what_was_recorded_after_it_cannot_be_planned() {
+    let os = || nerpa_core::Provider::new("os").unwrap();
+    let schema = Schema::new()
+        .identity(os(), Kind::new("file").unwrap(), "path", "path")
+        .identity(os(), Kind::new("directory").unwrap(), "path", "path");
+    let path = |value: &str| {
+        Recorded::all(
+            [("path".to_owned(), Value::Text(value.to_owned()))]
+                .into_iter()
+                .collect::<Attributes>(),
+        )
+    };
     let mut state = State::new();
     state.record(
-        address("os:directory.old@web-02"),
-        Record::new(Recorded::all(Attributes::new()), BTreeSet::new()),
+        address("os:directory.old@web-01"),
+        Record::new(path("/old"), BTreeSet::new()),
     );
     state.record(
         address("os:file.conf@web-01"),
         Record::new(
-            Recorded::all(Attributes::new()),
-            [address("os:directory.old@web-02")].into_iter().collect(),
+            path("/old/conf"),
+            [address("os:directory.old@web-01")].into_iter().collect(),
         ),
     );
     let graph = graph_of(vec![
-        Resource::new(address("os:file.conf@web-01")).with("content", "moved\n"),
+        Resource::new(address("os:file.data@web-02")).with("path", "/data"),
+        Resource::new(address("os:file.conf@web-01"))
+            .with("path", "/conf")
+            .after(address("os:file.data@web-02")),
     ]);
     let mut observed = Observed::new();
-    observed.unreachable(node("web-01"));
+    observed.unreachable(node("web-02"));
 
     let plan = plan_at(
         &graph,
         &observed,
         &state,
-        &Schema::new(),
+        &schema,
         secrets(),
         nothing_known(),
     )
@@ -347,15 +361,21 @@ fn a_removal_waits_while_what_was_recorded_after_it_cannot_be_planned() {
     assert!(plan.is_empty(), "{plan:?}");
     assert_eq!(
         out_of_reach(&plan),
-        BTreeSet::from(["os:file.conf@web-01".to_owned()])
+        BTreeSet::from(["os:file.data@web-02".to_owned()])
     );
     assert_eq!(
         waiting(&plan),
-        [(
-            "os:directory.old@web-02".to_owned(),
-            "os:file.conf@web-01".to_owned()
-        )],
-        "both said, each as what it is"
+        [
+            (
+                "os:directory.old@web-01".to_owned(),
+                "os:file.conf@web-01".to_owned()
+            ),
+            (
+                "os:file.conf@web-01".to_owned(),
+                "os:file.data@web-02".to_owned()
+            ),
+        ],
+        "the directory waits for the file moving out of it, which waits in turn"
     );
 }
 
@@ -363,33 +383,36 @@ fn a_removal_waits_while_what_was_recorded_after_it_cannot_be_planned() {
 /// removing what was there could take it away from under something still in it.
 #[test]
 fn a_replacement_waits_while_what_was_recorded_inside_it_cannot_be_planned() {
-    let schema = Schema::new().immutable(
-        nerpa_core::Provider::new("os").unwrap(),
-        Kind::new("directory").unwrap(),
-        "path",
-    );
+    let os = || nerpa_core::Provider::new("os").unwrap();
+    let schema = Schema::new()
+        .immutable(os(), Kind::new("directory").unwrap(), "path")
+        .identity(os(), Kind::new("file").unwrap(), "path", "path")
+        .identity(os(), Kind::new("directory").unwrap(), "path", "path");
+    let path = |value: &str| {
+        Recorded::all(
+            [("path".to_owned(), Value::Text(value.to_owned()))]
+                .into_iter()
+                .collect::<Attributes>(),
+        )
+    };
     let mut state = State::new();
     state.record(
         address("os:directory.d@web-01"),
-        Record::new(
-            Recorded::all(
-                [("path".to_owned(), Value::Text("/d".to_owned()))]
-                    .into_iter()
-                    .collect::<Attributes>(),
-            ),
-            BTreeSet::new(),
-        ),
+        Record::new(path("/d"), BTreeSet::new()),
     );
     state.record(
-        address("os:file.inside@web-02"),
+        address("os:file.inside@web-01"),
         Record::new(
-            Recorded::all(Attributes::new()),
+            path("/d/inside"),
             [address("os:directory.d@web-01")].into_iter().collect(),
         ),
     );
     let graph = graph_of(vec![
         Resource::new(address("os:directory.d@web-01")).with("path", "/e"),
-        Resource::new(address("os:file.inside@web-02")).with("content", "x\n"),
+        Resource::new(address("os:file.data@web-02")).with("path", "/data"),
+        Resource::new(address("os:file.inside@web-01"))
+            .with("path", "/elsewhere")
+            .after(address("os:file.data@web-02")),
     ]);
     let mut observed = Observed::new();
     observed.unreachable(node("web-02"));
@@ -413,14 +436,20 @@ fn a_replacement_waits_while_what_was_recorded_inside_it_cannot_be_planned() {
     assert!(plan.is_empty(), "{plan:?}");
     assert_eq!(
         out_of_reach(&plan),
-        BTreeSet::from(["os:file.inside@web-02".to_owned()])
+        BTreeSet::from(["os:file.data@web-02".to_owned()])
     );
     assert_eq!(
         waiting(&plan),
-        [(
-            "os:directory.d@web-01".to_owned(),
-            "os:file.inside@web-02".to_owned()
-        )]
+        [
+            (
+                "os:directory.d@web-01".to_owned(),
+                "os:file.inside@web-01".to_owned()
+            ),
+            (
+                "os:file.inside@web-01".to_owned(),
+                "os:file.data@web-02".to_owned()
+            ),
+        ]
     );
 }
 

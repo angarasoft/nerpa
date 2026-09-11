@@ -67,6 +67,43 @@ fn recorded(graph: &Graph, addresses: &[&str]) -> State {
     state
 }
 
+/// A schema that says what the os provider says about paths.
+fn os_schema() -> Schema {
+    let os = || Provider::new("os").unwrap();
+    Schema::new()
+        .immutable(os(), Kind::new("file").unwrap(), "path")
+        .immutable(os(), Kind::new("directory").unwrap(), "path")
+        .identity(os(), Kind::new("file").unwrap(), "path", "path")
+        .identity(os(), Kind::new("directory").unwrap(), "path", "path")
+}
+
+/// A record of these plain values, after these addresses.
+fn record_of(values: &[(&str, &str)], after: &[&str]) -> Record {
+    Record::new(
+        Recorded::all(
+            values
+                .iter()
+                .map(|(name, value)| ((*name).to_owned(), Value::Text((*value).to_owned())))
+                .collect::<Attributes>(),
+        ),
+        after.iter().map(|each| address(each)).collect(),
+    )
+}
+
+/// Each stage's changes, by address and kind.
+fn order_of(plan: &nerpa_core::Plan) -> Vec<Vec<(String, ChangeKind)>> {
+    plan.stages()
+        .iter()
+        .map(|stage| {
+            stage
+                .changes()
+                .iter()
+                .map(|change| (change.address().to_string(), change.kind()))
+                .collect()
+        })
+        .collect()
+}
+
 fn only_change(graph: &Graph, observed: &Observed, schema: &Schema) -> Change {
     let plan = plan(graph, observed, &State::new(), schema, secrets()).expect("plannable");
     let changes: Vec<&Change> = plan.changes().collect();
@@ -214,69 +251,204 @@ fn a_resource_naming_what_a_removal_takes_is_created_after_it() {
     );
 }
 
-/// A removal comes after the change of whatever state recorded after it, not
-/// before everything. A file recorded after its directory and moved out of it
-/// while the directory's declaration went was still inside when the directory was
-/// removed; the removal refused, and every later run did the same. Found by the
-/// narrow review of RFC 0001.
+/// A removal comes after the change of whatever state recorded after it that
+/// moves out of it, not before everything. A file recorded inside its directory and
+/// moved out of it while the directory's declaration went was still inside when
+/// the directory was removed; the removal refused, and every later run did the
+/// same. Found by the narrow review of RFC 0001.
 #[test]
 fn a_removal_comes_after_the_change_of_what_was_recorded_after_it() {
     let graph = graph_of(vec![
-        Resource::new(address("os:file.conf@web-01")).with("content", "moved\n"),
-        Resource::new(address("os:file.motd@web-01")).with("content", "hello\n"),
+        Resource::new(address("os:file.conf@web-01"))
+            .with("path", "/conf")
+            .with("content", "moved\n"),
+        Resource::new(address("os:file.motd@web-01"))
+            .with("path", "/motd")
+            .with("content", "hello\n"),
     ]);
     let observed = observed_with(&[
         (
             "os:file.conf@web-01",
-            &[("content", Value::Text("where it was\n".to_owned()))],
+            &[
+                ("path", Value::Text("/old/conf".to_owned())),
+                ("content", Value::Text("moved\n".to_owned())),
+            ],
         ),
         (
             "os:file.motd@web-01",
-            &[("content", Value::Text("old\n".to_owned()))],
+            &[
+                ("path", Value::Text("/motd".to_owned())),
+                ("content", Value::Text("old\n".to_owned())),
+            ],
         ),
     ]);
     let mut state = State::new();
-    for doomed in ["os:directory.old@web-01", "os:directory.spare@web-01"] {
-        state.record(
-            address(doomed),
-            Record::new(BTreeMap::new(), BTreeSet::new()),
-        );
-    }
+    state.record(
+        address("os:directory.old@web-01"),
+        record_of(&[("path", "/old")], &[]),
+    );
+    state.record(
+        address("os:directory.spare@web-01"),
+        record_of(&[("path", "/spare")], &[]),
+    );
     state.record(
         address("os:file.conf@web-01"),
-        Record::new(
-            BTreeMap::new(),
-            [address("os:directory.old@web-01")].into_iter().collect(),
-        ),
+        record_of(&[("path", "/old/conf")], &["os:directory.old@web-01"]),
     );
     state.record(
         address("os:file.motd@web-01"),
-        Record::new(BTreeMap::new(), BTreeSet::new()),
+        record_of(&[("path", "/motd")], &[]),
     );
 
-    let plan = plan(&graph, &observed, &state, &Schema::new(), secrets()).expect("plannable");
-    let order: Vec<Vec<(String, ChangeKind)>> = plan
-        .stages()
-        .iter()
-        .map(|stage| {
-            stage
-                .changes()
-                .iter()
-                .map(|change| (change.address().to_string(), change.kind()))
-                .collect()
-        })
-        .collect();
+    let plan = plan(&graph, &observed, &state, &os_schema(), secrets()).expect("plannable");
     assert_eq!(
-        order,
+        order_of(&plan),
         [
             vec![("os:directory.spare@web-01".to_owned(), ChangeKind::Delete)],
             vec![
-                ("os:file.conf@web-01".to_owned(), ChangeKind::Update),
+                ("os:file.conf@web-01".to_owned(), ChangeKind::Replace),
                 ("os:file.motd@web-01".to_owned(), ChangeKind::Update),
             ],
             vec![("os:directory.old@web-01".to_owned(), ChangeKind::Delete)],
         ],
-        "what waits for nothing first, and the directory after the file: {plan:?}"
+        "what waits for nothing first, and the directory after the file moving out of it: {plan:?}"
+    );
+}
+
+/// A moved file and the service reacting to it are planned in one run: the file is
+/// replaced, then the service is roused. A reaction's record names its cause, and
+/// the replacement was put after the service's change as though the service were
+/// inside the file, against the declared order: a cycle, refused. Found by the
+/// review of RFC 0001's fifth revision.
+#[test]
+fn a_moved_file_and_the_service_reacting_to_it_are_planned_in_one_run() {
+    const CONF: &str = "os:file.conf@web-01";
+    const SERVICE: &str = "os:service.app@web-01";
+    let graph = graph_of(vec![
+        Resource::new(address(CONF))
+            .with("path", "/etc/app/new.conf")
+            .with("content", "c\n"),
+        Resource::new(address(SERVICE))
+            .with("name", "app")
+            .reacting_to(address(CONF)),
+    ]);
+    let observed = observed_with(&[
+        (
+            CONF,
+            &[
+                ("path", Value::Text("/etc/app/old.conf".to_owned())),
+                ("content", Value::Text("c\n".to_owned())),
+            ],
+        ),
+        (SERVICE, &[("name", Value::Text("app".to_owned()))]),
+    ]);
+    let mut state = State::new();
+    state.record(
+        address(CONF),
+        record_of(&[("path", "/etc/app/old.conf"), ("content", "c\n")], &[]),
+    );
+    state.record(address(SERVICE), record_of(&[("name", "app")], &[CONF]));
+
+    let plan = plan(&graph, &observed, &state, &os_schema(), secrets()).expect("one run can do it");
+    assert_eq!(
+        order_of(&plan),
+        [
+            vec![(CONF.to_owned(), ChangeKind::Replace)],
+            vec![(SERVICE.to_owned(), ChangeKind::React)],
+        ],
+        "{plan:?}"
+    );
+}
+
+/// And a replacement with a resource on another machine declared after it, and
+/// moving too, is planned in one run: nothing on another machine is inside it, so
+/// the move does not have to go first against the declared order. Found by the
+/// review of RFC 0001's fifth revision.
+#[test]
+fn a_replacement_and_a_move_after_it_on_another_machine_are_planned_in_one_run() {
+    const X: &str = "os:file.x@web-01";
+    const Y: &str = "os:file.y@web-02";
+    let graph = graph_of(vec![
+        Resource::new(address(X))
+            .with("path", "/b")
+            .with("content", "x\n"),
+        Resource::new(address(Y))
+            .with("path", "/z")
+            .with("content", "y\n")
+            .after(address(X)),
+    ]);
+    let observed = observed_with(&[
+        (
+            X,
+            &[
+                ("path", Value::Text("/a".to_owned())),
+                ("content", Value::Text("x\n".to_owned())),
+            ],
+        ),
+        (
+            Y,
+            &[
+                ("path", Value::Text("/y".to_owned())),
+                ("content", Value::Text("y\n".to_owned())),
+            ],
+        ),
+    ]);
+    let mut state = State::new();
+    state.record(
+        address(X),
+        record_of(&[("path", "/a"), ("content", "x\n")], &[]),
+    );
+    state.record(
+        address(Y),
+        record_of(&[("path", "/y"), ("content", "y\n")], &[X]),
+    );
+
+    let plan = plan(&graph, &observed, &state, &os_schema(), secrets()).expect("one run can do it");
+    assert_eq!(
+        order_of(&plan),
+        [
+            vec![(X.to_owned(), ChangeKind::Replace)],
+            vec![(Y.to_owned(), ChangeKind::Replace)],
+        ],
+        "{plan:?}"
+    );
+}
+
+/// A removal nothing moves out of still comes first. A service's record naming the
+/// old service it came after put the old one's removal after the new one's update,
+/// where the new one could find what it needs still held. Found by the review of
+/// RFC 0001's fifth revision.
+#[test]
+fn a_removal_nothing_moves_out_of_still_comes_first() {
+    const OLD: &str = "os:service.nginx@web-01";
+    const NEW: &str = "os:service.caddy@web-01";
+    let graph = graph_of(vec![
+        Resource::new(address(NEW))
+            .with("name", "caddy")
+            .with("enabled", "yes"),
+    ]);
+    let observed = observed_with(&[(
+        NEW,
+        &[
+            ("name", Value::Text("caddy".to_owned())),
+            ("enabled", Value::Text("no".to_owned())),
+        ],
+    )]);
+    let mut state = State::new();
+    state.record(address(OLD), record_of(&[("name", "nginx")], &[]));
+    state.record(
+        address(NEW),
+        record_of(&[("name", "caddy"), ("enabled", "no")], &[OLD]),
+    );
+
+    let plan = plan(&graph, &observed, &state, &os_schema(), secrets()).expect("plannable");
+    assert_eq!(
+        order_of(&plan),
+        [
+            vec![(OLD.to_owned(), ChangeKind::Delete)],
+            vec![(NEW.to_owned(), ChangeKind::Update)],
+        ],
+        "{plan:?}"
     );
 }
 

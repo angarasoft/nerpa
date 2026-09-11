@@ -600,3 +600,60 @@ fn a_held_cause_on_no_machine_is_named_all_the_same() {
         [("yandex:instance.db".to_owned(), FAR_SERVICE.to_owned())]
     );
 }
+
+/// And a cause that is replaced leaves the reaction owed, the same as a cause that
+/// is updated. A replacement was held instead, as though the far service were
+/// inside the file. Found by the review of RFC 0001's fifth revision.
+#[test]
+fn a_replaced_cause_owes_its_reaction_on_a_machine_that_did_not_answer() {
+    let os = || nerpa_core::Provider::new("os").unwrap();
+    let schema = Schema::new()
+        .immutable(os(), nerpa_core::Kind::new("file").unwrap(), "path")
+        .identity(os(), nerpa_core::Kind::new("file").unwrap(), "path", "path");
+    let mut graph = Graph::new();
+    for node in ["web-01", "web-02"] {
+        graph.preexisting(nerpa_core::Target::new(node).unwrap());
+    }
+    graph
+        .insert(
+            Resource::new(address(CONF))
+                .with("path", "/b")
+                .with("content", "new\n"),
+        )
+        .unwrap();
+    graph
+        .insert(
+            Resource::new(address(FAR_SERVICE))
+                .with("name", "nginx")
+                .reacting_to(address(CONF)),
+        )
+        .unwrap();
+    let mut observed = Observed::new();
+    observed.record(
+        address(CONF),
+        [
+            ("path".to_owned(), Value::Text("/a".to_owned())),
+            ("content".to_owned(), Value::Text("old\n".to_owned())),
+        ]
+        .into_iter()
+        .collect(),
+    );
+    observed.unreachable(nerpa_core::Target::new("web-02").unwrap());
+    let mut state = State::new();
+    state.record(
+        address(CONF),
+        Record::new(BTreeMap::new(), BTreeSet::default()),
+    );
+    state.record(
+        address(FAR_SERVICE),
+        Record::new(BTreeMap::new(), [address(CONF)].into_iter().collect()),
+    );
+
+    let planned = plan(&graph, &observed, &state, &schema, secrets()).expect("plannable");
+    let file = planned
+        .changes()
+        .find(|change| change.address() == &address(CONF))
+        .expect("the replacement is planned");
+    assert_eq!(file.kind(), ChangeKind::Replace, "{planned:?}");
+    assert_eq!(file.owed_by(), [address(FAR_SERVICE)], "owing the reaction");
+}

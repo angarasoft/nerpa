@@ -582,13 +582,7 @@ impl Planning<'_> {
                 let out_of_reach = node
                     .as_ref()
                     .is_some_and(|node| !self.observed.reached(node));
-                let waiting = self
-                    .later(address)
-                    .iter()
-                    .find(|other| {
-                        removals.held.contains(**other) || walk.unplannable.contains(**other)
-                    })
-                    .map(|other| (*other).clone());
+                let waiting = self.removal_waits_for(walk, &removals, address);
                 if out_of_reach || waiting.is_some() {
                     // ENFORCES: INV-REACH-004
                     // Out of reach only when its own machine did not answer.
@@ -642,8 +636,9 @@ impl Planning<'_> {
                     .iter()
                     .find(|other| {
                         **other != change.address()
-                            && (walk.unplannable.contains(**other)
-                                || removals.held.contains(**other))
+                            && (removals.held.contains(**other)
+                                || (walk.unplannable.contains(**other)
+                                    && self.may_move_out(other, change.address())))
                     })
                     .map(|other| (change.address().clone(), (*other).clone()))
             })
@@ -769,7 +764,7 @@ impl Planning<'_> {
                 // directory's declaration went was still inside when the directory
                 // was removed; the removal refused, and every later run did the
                 // same.
-                if sending.contains_key(other) {
+                if self.moves_out(&sending, other, address) {
                     step(address, other, Because::RemovedAfterChange);
                 }
             }
@@ -795,12 +790,69 @@ impl Planning<'_> {
                 // the directory was deleted with the file still in it.
                 if removing.contains(other) {
                     step(address, other, Because::ReplacedAfterRemoval);
-                } else if sending.contains_key(other) {
+                } else if self.moves_out(&sending, other, address) {
                     step(address, other, Because::ReplacedAfterChange);
                 }
             }
         }
         steps
+    }
+
+    /// What a removal waits for, if anything: a removal state recorded after it
+    /// that is held, or a declared resource that can move out of it and cannot be
+    /// planned.
+    fn removal_waits_for(
+        &self,
+        walk: &Walk,
+        removals: &Removals,
+        address: &Address,
+    ) -> Option<Address> {
+        self.later(address)
+            .iter()
+            .copied()
+            .find(|other| {
+                removals.held.contains(*other)
+                    || (walk.unplannable.contains(*other) && self.may_move_out(other, address))
+            })
+            .cloned()
+    }
+
+    /// Whether the change planned for `later` has to come before `earlier`'s
+    /// removal of what is there: it sends something that can move it, and it can
+    /// move out of `earlier`.
+    fn moves_out(
+        &self,
+        sending: &BTreeMap<&Address, ChangeKind>,
+        later: &Address,
+        earlier: &Address,
+    ) -> bool {
+        matches!(
+            sending.get(later),
+            Some(ChangeKind::Update | ChangeKind::Replace)
+        ) && self.may_move_out(later, earlier)
+    }
+
+    // ENFORCES: INV-PLAN-011
+    /// Whether `later`, declared and recorded after `earlier`, can be in the way of
+    /// removing what `earlier` is: on the same machine, of a kind whose provider
+    /// names what it is there, and not declared under the name state recorded.
+    ///
+    /// Only then does its change have to come first, or hold the removal while it
+    /// cannot be planned. A reaction's record names its cause without being inside
+    /// it, and a resource on another machine is inside nothing here: ordering
+    /// either first refused a moved file together with the service reacting to it,
+    /// put a removal nothing was inside after an update, and held a replacement
+    /// whose reaction could have been owed.
+    fn may_move_out(&self, later: &Address, earlier: &Address) -> bool {
+        if later.target() != earlier.target() || self.schema.identity_of(later).is_none() {
+            return false;
+        }
+        let declared = self
+            .graph
+            .get(later)
+            .and_then(|resource| name_of(resource, self.schema));
+        let recorded = recorded_name(later, self.state, self.schema);
+        declared.is_none() || recorded.is_none() || declared != recorded
     }
 
     /// What state recorded as coming after `address`.

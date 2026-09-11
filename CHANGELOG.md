@@ -276,6 +276,15 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- Only what can move out of a thing goes before its removal. The one order of
+  684c024 put a removal, or a replacement's removal of what was there, after the
+  change of anything state recorded after it: a moved configuration file and the
+  service reacting to it were refused as a cycle, a removal nothing was inside went
+  after an update, and a replaced cause was held where an update owed its reaction.
+  Now only a declared resource on the same machine, of a kind its provider names and
+  declared under another name than state recorded, goes first or holds. Found by
+  the review of RFC 0001's fifth revision.
+
 - What waits for something that cannot be planned is listed as waiting, with what
   it waits for, and only a machine that did not answer is reported as one. A change
   held on a machine that answered was reported as that machine not answering, and
