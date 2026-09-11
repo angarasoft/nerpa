@@ -113,6 +113,22 @@ fn the_same_plan_is_the_same_number_every_time() {
     );
 }
 
+/// The number of one fixed plan, written down. 0015 says a change that moves the
+/// number for identical input has to show up in review as a changed file, and
+/// nothing wrote the number down: the tests here compare two computations, so a
+/// field added to the encoding moved every plan's number with no file saying so.
+#[test]
+fn the_number_of_a_fixed_plan_is_written_down() {
+    let number = one(&[("path", "/etc/motd"), ("content", "hello\n")])
+        .digest()
+        .expect("hashable");
+    assert_eq!(
+        number.to_hex(),
+        "0df6e7c201cc9beddbe500181c82095a36c0558af50614ee4cccdaa0ea658140",
+        "the encoding changed; if that was meant, write the new number here in the same commit"
+    );
+}
+
 /// Anything a person is approving has to be inside the number, or their
 /// signature covers a plan that is not the one that runs.
 #[test]
