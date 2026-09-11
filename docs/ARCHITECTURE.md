@@ -400,7 +400,9 @@ Being roused means a restart, and only for a service that was already running:
 one that was stopped before the file changed is not started by a change nobody
 declared. Shown on a real machine — `chrony.conf` rewritten, `chronyd` restarted,
 its process identifier different afterwards, and a second run with nothing to do
-and the same identifier.
+and the same identifier. The stopped case was only claimed until 2026-09-11, when
+review found the command was a plain restart, which starts a stopped service; it
+is `systemctl try-restart` and `rc-service --ifstarted ... restart` now.
 
 ## Parallelism — [0031](decisions/0031-parallelism-is-threads-and-providers-are-sync.md) · partly built
 

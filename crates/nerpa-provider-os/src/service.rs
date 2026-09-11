@@ -196,16 +196,30 @@ impl Init {
         }
     }
 
+    // ENFORCES: INV-REACT-003
     /// What to run to make a running service take a changed file.
     ///
     /// This is what being roused means for a service, and it is the reason
     /// `reacts_to` exists. A stopped service is not restarted: it was not
     /// running before the file changed and starting it now would be a change
     /// nobody declared.
+    ///
+    /// Said by the command, because nothing can branch inside a batch. A plain
+    /// `restart` starts a stopped service, and that is what was sent while this
+    /// comment said otherwise. `try-restart` does nothing to a unit that is not
+    /// running; `rc-service --ifstarted` was measured to exit 0 and do nothing
+    /// for a stopped service.
     pub(crate) fn rouse(self, name: &str) -> Operation {
         let (program, arguments) = match self {
-            Self::Systemd => ("systemctl", vec!["restart".to_owned(), name.to_owned()]),
-            Self::OpenRc => ("rc-service", vec![name.to_owned(), "restart".to_owned()]),
+            Self::Systemd => ("systemctl", vec!["try-restart".to_owned(), name.to_owned()]),
+            Self::OpenRc => (
+                "rc-service",
+                vec![
+                    "--ifstarted".to_owned(),
+                    name.to_owned(),
+                    "restart".to_owned(),
+                ],
+            ),
         };
         Operation::Process {
             program: program.to_owned(),

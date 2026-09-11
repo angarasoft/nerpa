@@ -276,6 +276,12 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- Being roused restarts a service only if it is running: `systemctl try-restart`
+  and `rc-service --ifstarted ... restart`. A plain restart was sent, which starts
+  a stopped service, while the comments and the architecture said a stopped one
+  stays down; only the running case had been shown on a machine. Found by the
+  second review of RFC 0001.
+
 - Renaming a resource and keeping what it names, with no `moved`, converges in one
   run. The old address's removal deleted the file and the new address was adopted
   from the reading taken before it, so the run ended with no file and a record
