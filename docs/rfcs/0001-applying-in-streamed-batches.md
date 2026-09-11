@@ -1,6 +1,6 @@
 # RFC 0001. Applying machines in parallel, with state in shards
 
-- Status: in review; revision 3, narrowed to step 1 after the third review (§9); a narrow review pending
+- Status: in review; revision 3, narrowed to step 1 after the third review; its narrow review logged (§9)
 - Date: 2026-09-11
 - Revised: 2026-09-11, after each of three reviews
 - Scope: what was step 1. Replacing an installed executor is
@@ -1278,4 +1278,120 @@ above.
 | C3-6 | §5.2 | Rousing covered by its debt |
 | C3-7 | §5.2 | `one_at_a_time` takes `Concluding` |
 
-A narrow review is pending.
+The narrow review follows.
+
+## Narrow review, 2026-09-11
+
+Four of the five angles, on revision 3 (`6f5a6ed`) and step 1 only: P and S by
+Opus, B and C by Sonnet. X was not repeated, because what it reviewed moved to RFC
+0002. Every finding was checked before it was logged. The reviewer for P ran
+experiments of its own against the executor through pipes. The reviewer for B ran
+none and cites the runs logged for the second and third reviews.
+
+**The third round, as revision 3 left it.**
+
+- **P:** P3-8, P3-13 and P3-17 resolved; P3-1, P3-2, P3-14 and P3-15 partly; P3-16
+  not.
+- **S:** S3-9, S3-10, S3-13, S3-14, S3-15, S3-18 and S3-19 resolved; S3-1 to S3-6,
+  S3-8, S3-12, S3-16 and S3-17 partly.
+- **B:** B3-5, B3-6, B3-8, B3-9 and B3-10 resolved; B3-1, B3-3, B3-4 and B3-7 partly.
+- **C:** C3-2, C3-5, C3-6 and C3-7 resolved; C3-1, C3-3, C3-4, C3-8 and C3-9
+  partly.
+
+### Defects in the code, found by this round
+
+| From | How verified | Defect | Fixed |
+| --- | --- | --- | --- |
+| S4-3 | R, E | Removals came first and waited only for other removals. A file recorded after its directory and moved out of it while the directory's declaration went was still inside when the directory was removed; the removal refused, and every later run did the same. | `3d2d383`, `INV-PLAN-011` |
+| S4-1 | R, E | A cause on a machine that answered was sent while the resource reacting to it was on one that did not, or held behind one, and no debt was written: when that machine came back the file matched, and nothing was owed. | `6e5bec8`, `INV-REACT-006`; the rule decided by the owner |
+| — | R, E | Found while fixing S4-3. A declared resource naming what a held removal takes away was adopted from the reading, and the removal, planned in a later run, took the thing away from under that record. | `1e04f62`, `INV-PLAN-010` |
+
+Latent and not fixed. P4-2: a private process answers with its output, and a
+failure quotes its standard error despite "(input withheld)". No operation of the
+`os` provider is private today; revision 4 answers it with protocol 5.
+
+### Blockers
+
+| Id | How verified | Finding | Resolution |
+| --- | --- | --- | --- |
+| B4-1, S4-6, P4-5 | R, D | `in-flight` is one file beside `lock` in §5.6, and is written through each machine's group commit in §5.8. Several shard writers would rewrite one file and lose a machine's mark, or a single writer would put a durable write before every request of every machine. §5.4 counts neither write. | The mark is a field of each machine's shard, written with the record of the change before it: one durable write per `Perform`, and no shared file |
+| C4-1, S4-10, P4-1 | R, D | `conclude` cannot compare a sealed write digest with what it asked for. It holds no secret value and never sees the seal, and nothing else compares either. | The engine holds the value and the seal when it seals a `Perform`. It computes the expected digest and the state's digest there, and compares the answer itself; `conclude` is told that the write matched |
+| C4-2, S4-5 | R, D | A resend cannot always be `dnf reinstall`, which fails for a package that is not installed, and `prepare` cannot branch. | A change is marked resent only when this run's reading finds the resource; otherwise it is an ordinary install |
+
+### P: protocol and failures
+
+| Id | Severity | How verified | Finding | Goes to |
+| --- | --- | --- | --- | --- |
+| P4-1 | major | R, D | With C4-1. The recorder cannot make a written secret's state digest either, and `conclude` cannot report the attribute back as `INV-PLAN-005` requires. | Blocker, above |
+| P4-2 | major | E, R | A private process answers with its output, and a failure quotes its standard error despite "(input withheld)". A value derived from a secret comes back the same way. Measured: `cat` with private input answered with that input. | §5.3: a private process answers with its status and a digest of its output sealed for the machine, and a problem never quotes it |
+| P4-3 | major | R, D | A stop splits a change. A replacement whose delete was answered and recorded is never created, on a machine that did not fail, and the postcondition has no place for it. | §5.8: stops end at change boundaries |
+| P4-4 | major | R, D | Entries written ahead for a whole stage and never sent are resent by a later run, and a resent install on rhel fails. | §5.6: an entry is written with its change's mark, so none exists for a change never sent |
+| P4-5 | major | R, D | With B4-1. Setting and clearing the mark are two writes, and "exactly the machines" is false. | Blocker, above; "at least" |
+| P4-6 | major | R, D | A stop cannot end a blocked read, because the child lives inside the conversation's mutex. A recorder that panics leaves workers waiting, and `thread::scope` never returns. | §5.8: a kill handle outside the mutex; every wait watches the stop flag |
+| P4-7 | major | R, D | One request that never answers holds every machine's next stage through the stage barrier. | §5.4: waits per edge in place of the barrier |
+| P4-8 | major | R, E, D | Route slots bound applying, which reuses connections, while `MaxStartups` counts the handshakes made at opening. The fleet has no first hop; only `ssh -G` knows it. | §5.4, §5.10: slots bound opening; the route key from `ssh -G` |
+| P4-9 | minor | E, R | A version 4 executor exits on a version 5 frame without answering, so "Refused by `Build`" is wrong, and the reason is lost among handshakes. | §5.3, §5.12 |
+| P4-10 | minor | E, R | `Failed` has no arm for a refusal before anything ran. Nothing refuses a secret write without a seal, unknown keys decode, and "a digest of what was written" is not defined. | §5.3 |
+| P4-11 | minor | E, R, D | "`ssh` failed before authenticating" cannot be observed: exit 255 covers every `ssh` error, and standard error can be empty. | §5.3: retried on exit 255 with no byte read and only `Build` written |
+| P4-12 | minor | R, D | Rows missing or wrong in §5.5 and §5.12: `Done` at a point, an answer of the wrong kind or count, an executor exiting on a request it cannot decode, `Route::Here`. | §5.5, §5.12 |
+| P4-13 | minor | R, D | `lock` must never be unlinked, `release` and the downgrade must take it, and versions 4 and 5 lock different files during a migration. | §5.8, §5.13 |
+| P4-14 | minor | E, R | A signal blocked or ignored in the engine reaches every child. Measured in the `SigBlk` and `SigIgn` of a program the executor ran. | §5.8 |
+| P4-15 | minor | R, D | Preparing a stage whole holds every operation and secret of the stage, against the memory bound and 0027. | §5.2, §5.9: a change prepared just before its `Perform` |
+| P4-16 | nit | D | Reports written beside state have no name that loading ignores, and merging HUP with TERM swallows a second Ctrl-C. | §5.8 |
+
+### S: state and invariants
+
+| Id | Severity | How verified | Finding | Goes to |
+| --- | --- | --- | --- | --- |
+| S4-1 | major | R, D | A cause is sent while its reactor is not in the plan, so no debt is written. | Built; see the defects above |
+| S4-2 | major | R, D | Edges carried in `depends_on` for the failure policy would be recorded, and the next plan would be a reorder. | §5.5: `waits_for`, hashed and shown, never recorded |
+| S4-3 | major | R, D | An edge is missing from the planner and from §5.5: the removal of X after the change of a declared Y whose record names X. | Built; see the defects above |
+| S4-4 | major | R, D | The entry table can plan an adoption, a reorder or nothing, which would clear an entry without sending anything, or never clear it. "Changed" and the point passed are undefined. | §5.6: an entry always yields a change that sends something |
+| S4-5 | major | D, R | With C4-2. | Blocker, above |
+| S4-6 | major | R, D | With B4-1. The mark holds less than an entry, and what `release` makes of it is unsaid. | Blocker, above; §5.8 |
+| S4-7 | major | R | Splitting `INV-STATE-005` drops "a machine sends its next change only after its previous one is recorded", which the bounded risk rests on. | §5.6: a third clause |
+| S4-8 | major | D | The interrupted-run property is false for a change never begun, a moved locator and a `Forget` point. | §5.6: stated per change |
+| S4-9 | major | R, D | A directory cannot be renamed onto the state file, and the other order leaves a moment with no state, which loads as empty. | §5.13: format 5 at a path of its own |
+| S4-10 | major | R, D | With C4-1, and what state records for a file's content is undefined. | Blocker, above; §5.6 |
+| S4-11 | major | R, D | Reporting a held machine as unreachable conflates the two, a plan with one has no rule for its digest, and `release` is unspecified. | §5.8: `Held` in the plan |
+| S4-12 | major | R, D | §5.4 contradicts itself about waiting, and its barrier can hold the fleet without bound. | §5.4: waits per edge |
+| S4-13 | major | R, D | `INV-APPLY-001` misses control-domain changes, adoptions and reorders, cannot be checked under `stop` across workers, and withdraws an entry on a `Moved` after an earlier `Perform` of the change ran. | §5.5 |
+| S4-14 | major | R, D | "Read by the token" cannot be expressed in this contract, and no step-1 provider needs it. | §5.2: `FindByToken` out of step 1 |
+| S4-15 | minor | R, D | Owing every reaction of a stage at its start widens 0026's window. | §5.4: owed per cause |
+| S4-16 | minor | R, D | Hexadecimal doubles a target's length past `NAME_MAX`, and a shard does not say which target it holds. | §5.6 |
+| S4-17 | minor | R, D | `resent` has to be encoded for every change, which changes every plan's number. | §5.6: the digest's domain goes to version 2 |
+| S4-18 | minor | R, D | The outcome buckets are neither disjoint nor total. | §5.5 |
+| S4-19 | nit | R, D | "One-way" sits beside a downgrade command, `.v4` holds a live key, and the lock's descriptor must not be inherited. | §5.8, §5.13 |
+
+### B: performance
+
+| Id | Severity | How verified | Finding | Goes to |
+| --- | --- | --- | --- | --- |
+| B4-1 | blocker | R, D | `in-flight` is specified two ways. | Blocker, above |
+| B4-2 | major | R, D | §5.4 has a cause wait for another shard's write, and says two lines later that no machine waits for another's record. | §5.4 |
+| B4-3 | major | R, D | The stage barrier gathers the whole fleet at every stage, not only shards joined by an edge. | §5.4: waits per edge |
+| B4-4 | major | R, D | The route scheduler has no algorithm and nothing to group by: the fleet has no first hop. | §5.4, §5.10 |
+| B4-5 | major | R | §5.9 undercounts memory: `Look` still returns content, and sending clones an ask twice beside its CBOR buffer. | §5.9 |
+| B4-6 | minor | R | The performance gates have no concrete configuration. | §5.11 |
+| B4-7 | nit | R | 75 and 923 writes a second carry no label. | §5.4 |
+| B4-8 | nit | R, D | `MAX_CONTENT`'s reason is an answer echoing content, which protocol 5 removes. | §5.9 |
+
+### C: the provider contract
+
+| Id | Severity | How verified | Finding | Goes to |
+| --- | --- | --- | --- | --- |
+| C4-1 | blocker | R, D | `conclude` cannot check a sealed digest. | Blocker, above |
+| C4-2 | blocker | R, D | A resend cannot choose between installing and reinstalling. | Blocker, above |
+| C4-3 | major | R, D | `INV-PLAN-005` compares what `apply` returns, and a secret's state digest is made from the value returned, which `conclude` never holds. | §5.2 |
+| C4-4 | major | R, D | A plain digest answer has no wire shape, and nothing says how it is checked. | §5.3 |
+| C4-5 | major | R, D | Points past `Forget`, and `FindByToken`, are exercised by nothing step 1 ships. | §5.2 |
+| C4-6 | major | R | `Reading` has no token. | With C4-5 |
+| C4-7 | minor | D | A package's update runs its post-install as well, and the prose names only install and removal. | §5.2 |
+| C4-8 | minor | R, D | A removal that only settles, as a service's does, has no named `Concluded`. | §5.2 |
+
+### Decided by the owner after the narrow review
+
+1. **S4-1's rule.** A reacting resource the plan cannot reach is owed the reaction
+   on its record before its cause is sent, and one with no record holds its cause.
+   Built.
+2. **Revision 4, and another round of P and S** before acceptance.
