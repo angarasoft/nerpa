@@ -956,6 +956,21 @@ tests = [
   "a_resource_renamed_at_the_same_path_converges_in_one_run",
 ]
 adversarial = ["a_resource_renamed_at_the_same_path_converges_in_one_run"]
+
+[[invariant]]
+id = "INV-PLAN-010"
+status = "enforced"
+statement = "A declared resource naming what a held removal takes away is held with it."
+rationale = """
+A removal that cannot be planned yet, because its machine did not answer or it \
+waits for one that did not, still takes its thing away in whichever later run it \
+can. A declared resource naming the same thing, planned in the meantime, was \
+adopted from the reading, and that later run removed the file from under its \
+record. It waits for the removal, and the plan says so."""
+bypass = "Asking only about the removals this plan carries, as INV-PLAN-009 does. The declared resource is adopted from the reading and loses its thing when the removal comes."
+enforced_by = ["crates/nerpa-core/src/planner.rs"]
+tests = ["a_resource_naming_what_a_held_removal_takes_is_held_with_it"]
+adversarial = ["a_resource_naming_what_a_held_removal_takes_is_held_with_it"]
 [[invariant]]
 id = "INV-TEMPLATE-001"
 status = "enforced"

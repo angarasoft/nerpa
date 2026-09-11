@@ -147,7 +147,7 @@ pub fn plan_at(
     reactions_allowed(graph, schema)?;
 
     let mut unreachable = Vec::new();
-    let mut stages = removals(graph, state, observed, now, &mut unreachable);
+    let (mut stages, held) = removals(graph, state, observed, now, &mut unreachable);
     // ENFORCES: INV-PLAN-009
     // What those removals take away, by what names it on its machine. A declared
     // resource naming the same thing is made again after the removal rather than
@@ -155,7 +155,21 @@ pub fn plan_at(
     // delete. Renaming an address and keeping its path, with no `moved`, used to
     // remove the file and adopt the new resource from that reading, and the run
     // ended with no file and a record saying there was one.
-    let taken = taken_away(&stages, state, schema);
+    let taken = taken_away(
+        stages
+            .iter()
+            .flat_map(PlanStage::changes)
+            .map(Change::address),
+        state,
+        schema,
+    );
+    // ENFORCES: INV-PLAN-010
+    // And what the removals that cannot be planned yet will take away once they
+    // can. A declared resource naming one of those waits with it. Planned in the
+    // meantime, it was adopted from the reading, and the removal, planned in
+    // whichever later run its machine answered, took the thing away from under
+    // that record.
+    let withheld = taken_away(&held, state, schema);
     let mut outdated = Vec::new();
     // Marked as the walk goes. Stages are topological, so a resource's
     // dependencies have already been decided by the time it is reached, and
@@ -186,8 +200,10 @@ pub fn plan_at(
                     .iter()
                     .any(|dependency| unplannable.contains(*dependency))
             });
+            let name = name_of(resource, schema);
+            let waits_for_removal = name.as_ref().is_some_and(|name| withheld.contains(name));
 
-            if out_of_reach || blocked {
+            if out_of_reach || blocked || waits_for_removal {
                 unplannable.insert(address.clone());
                 if let Some(node) = node {
                     let age = known_for(state, &node, now);
@@ -231,7 +247,7 @@ pub fn plan_at(
                     })
                     .unwrap_or_default(),
                 record.map(Record::depends_on),
-                name_of(resource, schema).is_some_and(|name| taken.contains(&name)),
+                name.is_some_and(|name| taken.contains(&name)),
             )? {
                 // ENFORCES: INV-REACT-001
                 // Only what moves on the machine rouses anything. An adoption or
@@ -292,21 +308,19 @@ fn one_thing_once(graph: &Graph, schema: &Schema) -> Result<(), PlanError> {
     Ok(())
 }
 
-/// What the removals in `stages` take away, named as `name_of` names a declared
-/// resource: by machine, namespace and one spelling of the value.
+/// What removing each of `removed` takes away, named as `name_of` names a
+/// declared resource: by machine, namespace and one spelling of the value.
 ///
 /// Taken from state, because the configuration that named them is gone. A record
 /// whose naming attribute is not a plain value names nothing here.
-fn taken_away(
-    stages: &[PlanStage],
+fn taken_away<'a>(
+    removed: impl IntoIterator<Item = &'a Address>,
     state: &State,
     schema: &Schema,
 ) -> BTreeSet<(Target, String, String)> {
-    stages
-        .iter()
-        .flat_map(PlanStage::changes)
-        .filter_map(|change| {
-            let address = change.address();
+    removed
+        .into_iter()
+        .filter_map(|address| {
             let node = address.target()?;
             let (attribute, namespace) = schema.identity_of(address)?;
             let Value::Text(value) = state.get(address)?.attributes().get(attribute)?.plain()?
@@ -387,13 +401,16 @@ fn known_for(state: &State, node: &Target, now: Written) -> Option<u64> {
 /// Removals come first, in reverse dependency order. First because a resource on
 /// its way out can be holding something a new one needs — a name, a port, a path
 /// — and because nothing being created can want something that is leaving.
+///
+/// Returned with the removals that cannot be planned yet, so that a declared
+/// resource naming what one of them takes away can wait as well.
 fn removals(
     graph: &Graph,
     state: &State,
     observed: &Observed,
     now: Written,
     unreachable: &mut Vec<Unreachable>,
-) -> Vec<PlanStage> {
+) -> (Vec<PlanStage>, BTreeSet<Address>) {
     let declared: BTreeSet<&Address> = state
         .addresses()
         .filter(|address| graph.get(address).is_some())
@@ -407,7 +424,7 @@ fn removals(
     // called itself complete, and apply stopped at the first stage, before
     // touching the machines that did answer.
     let mut held: BTreeSet<Address> = BTreeSet::new();
-    state
+    let stages = state
         .abandoned(&declared)
         .into_iter()
         .filter_map(|level| {
@@ -446,7 +463,8 @@ fn removals(
                 .collect();
             (!changes.is_empty()).then(|| PlanStage::new(StageKind::Mixed, changes))
         })
-        .collect()
+        .collect();
+    (stages, held)
 }
 
 /// What has to happen to one resource, or nothing if it already matches and is

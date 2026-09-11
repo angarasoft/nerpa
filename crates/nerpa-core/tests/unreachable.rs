@@ -18,7 +18,9 @@ use nerpa_core::run::observe;
 use nerpa_core::schema::Schema;
 use nerpa_core::secret::{Key, Recorded, Remembered, Secrets};
 use nerpa_core::state::{Record, State, Written};
-use nerpa_core::{Address, ExecutionDomain, Graph, Observed, Reference, Resource, Target};
+use nerpa_core::{
+    Address, ExecutionDomain, Graph, Kind, Observed, Reference, Resource, Target, Value,
+};
 
 /// A machine that answers and knows nothing about itself.
 ///
@@ -210,6 +212,79 @@ fn a_removal_waiting_on_one_that_cannot_be_made_is_held() {
     assert!(
         named.contains("os:file.reader@web-01") && named.contains("os:file.source@web-02"),
         "{named:?}"
+    );
+}
+
+/// And a declared resource naming what a held removal takes away waits with it. It
+/// used to be adopted from the reading, and the removal, planned in whichever later
+/// run its machine answered, took the file away from under that record. Found while
+/// ordering removals after the narrow review of RFC 0001.
+#[test]
+fn a_resource_naming_what_a_held_removal_takes_is_held_with_it() {
+    let schema = Schema::new().identity(
+        nerpa_core::Provider::new("os").unwrap(),
+        Kind::new("file").unwrap(),
+        "path",
+        "path",
+    );
+    let mut state = State::new();
+    state.record(
+        address("os:file.source@web-02"),
+        Record::new(
+            Recorded::all(
+                [("path".to_owned(), Value::Text("/srv/a".to_owned()))]
+                    .into_iter()
+                    .collect::<Attributes>(),
+            ),
+            BTreeSet::new(),
+        ),
+    );
+    state.record(
+        address("os:file.reader@web-01"),
+        Record::new(
+            Recorded::all(Attributes::new()),
+            [address("os:file.source@web-02")].into_iter().collect(),
+        ),
+    );
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.successor@web-02"))
+            .with("path", "/srv/a")
+            .with("content", "hello\n"),
+    ]);
+    let mut observed = Observed::new();
+    observed.unreachable(node("web-01"));
+    observed.record(
+        address("os:file.successor@web-02"),
+        [
+            ("path".to_owned(), Value::Text("/srv/a".to_owned())),
+            ("content".to_owned(), Value::Text("hello\n".to_owned())),
+        ]
+        .into_iter()
+        .collect(),
+    );
+
+    let plan = plan_at(
+        &graph,
+        &observed,
+        &state,
+        &schema,
+        secrets(),
+        nothing_known(),
+    )
+    .unwrap();
+
+    assert!(
+        plan.is_empty(),
+        "nothing on either side of a removal that cannot happen yet: {plan:?}"
+    );
+    let named: BTreeSet<String> = plan
+        .unreachable()
+        .iter()
+        .map(|entry| entry.address().to_string())
+        .collect();
+    assert!(
+        named.contains("os:file.successor@web-02"),
+        "and the plan says it waits: {named:?}"
     );
 }
 

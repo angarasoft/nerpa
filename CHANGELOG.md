@@ -276,6 +276,11 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A declared resource naming what a held removal takes away is held with it. It
+  was adopted from the reading while the removal waited for a machine that did not
+  answer, and the removal, planned in a later run, took the file away from under
+  that record. Found while ordering removals after the narrow review of RFC 0001.
+
 - A package cannot react. `reacts_to` on an `os:package` is refused at the line
   that says it, and when planning a graph that did not come from a configuration.
   A reaction on a package did nothing on rhel and merged it again on Portage.
