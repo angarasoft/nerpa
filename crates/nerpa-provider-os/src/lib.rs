@@ -581,6 +581,11 @@ impl Provider for Os {
             // A file and a directory at one path are one thing on the machine.
             .identity(self.name.clone(), kind("file"), "path", "path")
             .identity(self.name.clone(), kind("directory"), "path", "path")
+            // A package has nothing a change elsewhere could ask it to do again:
+            // on rhel installing it again did nothing, and on Portage it merged
+            // again. So it cannot react, and a configuration saying it does is
+            // refused where it says so.
+            .cannot_react(self.name.clone(), kind("package"))
         // Nothing about a service is immutable: a stopped one starts, a
         // disabled one is enabled, and neither needs the resource replaced.
     }

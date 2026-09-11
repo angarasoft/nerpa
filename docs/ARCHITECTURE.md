@@ -407,7 +407,9 @@ stopped case was shown on the Gentoo test machine the same day: `systemd-timesyn
 stopped and disabled, stayed stopped when its file changed and when it changed
 back, and each time the next run had nothing to do. A service
 whose own attributes change in the same run is settled and then restarted if it is
-running: a provider is told whether a change was roused, whatever its kind.
+running: a provider is told whether a change was roused, whatever its kind. A
+package cannot react, since there is nothing a change elsewhere could ask it to do
+again, and `reacts_to` on one is refused at the line that says it.
 
 ## Parallelism — [0031](decisions/0031-parallelism-is-threads-and-providers-are-sync.md) · partly built
 

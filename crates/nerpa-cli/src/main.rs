@@ -297,15 +297,18 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
         None => Fleet::empty(),
     };
 
-    let graph = nerpa_config::evaluate(
+    let providers = Providers::new().with(Box::new(Os::new()));
+
+    // The providers first, so that what they refuse, such as a package reacting,
+    // is refused at the line that says it.
+    let graph = nerpa_config::evaluate_with(
         &arguments.file.display().to_string(),
         &source,
         Box::new(nerpa_config::template::Directory::at(root)),
         fleet.clone(),
+        providers.schema(),
     )
     .map_err(|error| error.to_string())?;
-
-    let providers = Providers::new().with(Box::new(Os::new()));
 
     // Taken before anything is read, and held until the run is over. Two runs
     // against one state file would each write what the other did not know about.

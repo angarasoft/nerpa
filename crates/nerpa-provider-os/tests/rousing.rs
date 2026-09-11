@@ -128,6 +128,14 @@ fn a_service_changing_and_roused_is_settled_then_restarted() {
     );
 }
 
+/// The os provider says a package cannot react, and a service can.
+#[test]
+fn the_os_provider_says_a_package_cannot_react() {
+    let schema = Os::new().schema();
+    assert!(!schema.reacts(&address("os:package.app-misc/jq@web-01")));
+    assert!(schema.reacts(&address("os:service.nginx@web-01")));
+}
+
 static DIGEST_KEY: Key = Key::from_bytes([3; 32]);
 static NO_STORE: Remembered = Remembered::EMPTY;
 

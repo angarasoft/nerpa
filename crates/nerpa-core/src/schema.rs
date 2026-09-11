@@ -34,6 +34,7 @@ pub struct Schema {
     at_birth: BTreeMap<(Provider, Kind), BTreeSet<String>>,
     bounded: BTreeMap<(Provider, Kind), BTreeMap<String, usize>>,
     identities: BTreeMap<(Provider, Kind), (String, String)>,
+    unreactive: BTreeSet<(Provider, Kind)>,
 }
 
 impl Schema {
@@ -136,6 +137,26 @@ impl Schema {
             .and_then(|bounds| bounds.get(attribute).copied())
     }
 
+    /// Declares that this kind cannot react to anything.
+    ///
+    /// A reaction is something a change elsewhere asks a resource to do again: a
+    /// restart, for a service. A kind with nothing to do again says so, and a
+    /// configuration giving it `reacts_to` is refused where it says it, rather
+    /// than doing nothing on one family of machines and everything on another.
+    #[must_use]
+    pub fn cannot_react(mut self, provider: Provider, kind: Kind) -> Self {
+        self.unreactive.insert((provider, kind));
+        self
+    }
+
+    /// Whether this resource may react to anything.
+    #[must_use]
+    pub fn reacts(&self, address: &Address) -> bool {
+        !self
+            .unreactive
+            .contains(&(address.provider().clone(), address.kind().clone()))
+    }
+
     /// Whether this attribute describes the resource's making rather than its
     /// state.
     #[must_use]
@@ -167,6 +188,7 @@ impl Schema {
             }
         }
         self.identities.extend(other.identities);
+        self.unreactive.extend(other.unreactive);
         self
     }
 

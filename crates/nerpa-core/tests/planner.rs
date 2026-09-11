@@ -670,6 +670,26 @@ fn a_value_too_large_for_one_operation_is_refused_when_planning() {
     assert_eq!((attribute.as_str(), size, most), ("content", 9, 8));
 }
 
+/// A reaction on a kind that cannot react is refused when planning as well, for a
+/// graph that did not come from a configuration.
+#[test]
+fn a_kind_that_cannot_react_is_refused_when_planning() {
+    let schema =
+        Schema::new().cannot_react(Provider::new("os").unwrap(), Kind::new("package").unwrap());
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.conf@web-01")).with("path", "/etc/app.conf"),
+        Resource::new(address("os:package.app-misc/jq@web-01"))
+            .with("version", "1.8.1")
+            .reacting_to(address("os:file.conf@web-01")),
+    ]);
+    let refusal = plan(&graph, &Observed::new(), &State::new(), &schema, secrets())
+        .expect_err("a package cannot react");
+    assert!(
+        matches!(&refusal, PlanError::CannotReact { address: refused, .. } if *refused == address("os:package.app-misc/jq@web-01")),
+        "{refusal}"
+    );
+}
+
 /// One thing on a machine is declared once. A file and a directory at one path,
 /// however the path is spelled, are the same thing there; the same path on
 /// another machine is not.

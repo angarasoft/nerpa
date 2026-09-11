@@ -276,6 +276,12 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A package cannot react. `reacts_to` on an `os:package` is refused at the line
+  that says it, and when planning a graph that did not come from a configuration.
+  A reaction on a package did nothing on rhel and merged it again on Portage.
+  Providers say which of their kinds cannot react, and `nerpa_config::evaluate_with`
+  takes the providers' schema. Decided after the third review of RFC 0001.
+
 - A removal on a machine that did not answer is reported as out of reach and not
   planned, and so is every removal that has to wait for it. It was planned from
   state in a plan that called itself complete, and apply stopped at that first

@@ -1196,3 +1196,27 @@ tests = [
   "a_service_changing_and_roused_is_settled_then_restarted",
 ]
 adversarial = ["a_service_owed_a_restart_is_restarted_when_it_changes_as_well"]
+
+[[invariant]]
+id = "INV-REACT-005"
+status = "enforced"
+statement = "A kind whose provider says it cannot react is never given a reaction."
+rationale = """
+A reaction is something a change elsewhere asks a resource to do again, and a \
+package has nothing to do again: on rhel a reaction did nothing, and on Portage it \
+merged the package again. A provider says which of its kinds cannot react. A \
+configuration giving one `reacts_to` is refused at the line that says it, and a \
+graph that did not come from a configuration is refused when planning. Decided \
+after the third review of RFC 0001."""
+bypass = "A provider that does not say its kind cannot react, or a graph planned with a schema that does not carry the provider's. Either plans a reaction that does whatever the provider's apply does for that kind."
+enforced_by = ["crates/nerpa-config/src/globals.rs", "crates/nerpa-core/src/planner.rs"]
+tests = [
+  "a_kind_that_cannot_react_is_refused_where_the_reaction_is_written",
+  "a_kind_that_cannot_react_is_refused_when_planning",
+  "the_os_provider_says_a_package_cannot_react",
+  "what_can_react_still_does",
+]
+adversarial = [
+  "a_kind_that_cannot_react_is_refused_where_the_reaction_is_written",
+  "a_kind_that_cannot_react_is_refused_when_planning",
+]

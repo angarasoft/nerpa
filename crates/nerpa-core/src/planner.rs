@@ -89,6 +89,16 @@ pub enum PlanError {
         /// The name, as the second declares it.
         value: String,
     },
+    /// A resource of a kind that cannot react was given something to react to.
+    #[error(
+        "{address} is given something to react to, and its provider says a {kind} cannot react"
+    )]
+    CannotReact {
+        /// The resource.
+        address: Address,
+        /// Its kind.
+        kind: String,
+    },
 }
 
 /// Computes what would have to happen for the world to match the configuration.
@@ -134,6 +144,7 @@ pub fn plan_at(
     // resource.
     let dependencies = graph.dependencies()?;
     one_thing_once(graph, schema)?;
+    reactions_allowed(graph, schema)?;
 
     let mut unreachable = Vec::new();
     let mut stages = removals(graph, state, observed, now, &mut unreachable);
@@ -317,6 +328,28 @@ fn name_of(resource: &Resource, schema: &Schema) -> Option<(Target, String, Stri
         return None;
     };
     Some((node.clone(), namespace.to_owned(), one_spelling(value)))
+}
+
+// ENFORCES: INV-REACT-005
+/// Refuses a reaction on a kind whose provider says it cannot react.
+///
+/// Refused where it is written as well, when a configuration is evaluated. This
+/// is for a graph that did not come from one.
+fn reactions_allowed(graph: &Graph, schema: &Schema) -> Result<(), PlanError> {
+    for stage in graph.stages()? {
+        for address in stage.addresses() {
+            if let Some(resource) = graph.get(address)
+                && !resource.reacts_to().is_empty()
+                && !schema.reacts(address)
+            {
+                return Err(PlanError::CannotReact {
+                    address: address.clone(),
+                    kind: address.kind().as_str().to_owned(),
+                });
+            }
+        }
+    }
+    Ok(())
 }
 
 /// A path without the spellings that name the same one: repeated separators, `.`

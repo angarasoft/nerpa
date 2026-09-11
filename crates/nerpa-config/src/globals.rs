@@ -44,6 +44,8 @@ enum Rejected {
     ReactsToNotAResource { address: String, found: String },
     #[error("{0} was declared to react to itself")]
     ReactsToItself(String),
+    #[error("{0} is given something to react to, and its provider says this kind cannot react")]
+    CannotReact(String),
     #[error("secret() needs a store and a path, and {0} is empty")]
     NamelessSecret(&'static str),
     #[error("template() takes a name and a dictionary of values, and was given {0}")]
@@ -161,6 +163,15 @@ pub(crate) fn nerpa(builder: &mut GlobalsBuilder) {
         // silence, and two modules cannot collide over "restart nginx".
         if !reacts_to.is_none() {
             for item in reacts_to.iterate(eval.heap())? {
+                // ENFORCES: INV-REACT-005
+                // Refused where it is written. A package had nothing a change
+                // elsewhere could ask of it: a reaction did nothing on rhel and
+                // merged it again on Portage.
+                if !store.schema().reacts(&parsed) {
+                    return Err(starlark::Error::new_value(Rejected::CannotReact(
+                        parsed.to_string(),
+                    )));
+                }
                 let Some(cause) = ResourceRef::from_value(item) else {
                     return Err(starlark::Error::new_value(Rejected::ReactsToNotAResource {
                         address: parsed.to_string(),

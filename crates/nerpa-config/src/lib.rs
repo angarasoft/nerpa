@@ -94,18 +94,30 @@ pub(crate) struct Declarations {
     resources: RefCell<Vec<Resource>>,
     nodes: RefCell<Vec<(Target, Option<Address>)>>,
     problems: RefCell<Vec<String>>,
+    schema: nerpa_core::Schema,
 }
 
 impl Declarations {
     /// A store that can reach these templates and nothing else.
-    fn with(renderer: crate::template::Renderer, fleet: crate::fleet::Fleet) -> Self {
+    fn with(
+        renderer: crate::template::Renderer,
+        fleet: crate::fleet::Fleet,
+        schema: nerpa_core::Schema,
+    ) -> Self {
         Self {
             fleet,
             renderer,
             resources: RefCell::new(Vec::new()),
             nodes: RefCell::new(Vec::new()),
             problems: RefCell::new(Vec::new()),
+            schema,
         }
+    }
+
+    /// What the providers say about their kinds, for a refusal that belongs to
+    /// one of them.
+    pub(crate) fn schema(&self) -> &nerpa_core::Schema {
+        &self.schema
     }
 
     /// The renderer, for the one global that needs it.
@@ -148,6 +160,29 @@ pub fn evaluate(
     templates: Box<dyn crate::template::Templates>,
     fleet: crate::fleet::Fleet,
 ) -> Result<Graph, ConfigError> {
+    evaluate_with(path, source, templates, fleet, nerpa_core::Schema::new())
+}
+
+/// The same, knowing what the providers say about their kinds.
+///
+/// A schema is how a refusal that belongs to a provider, such as a package
+/// reacting, is made where the configuration says it, with its line, rather than
+/// when planning.
+///
+/// # Errors
+///
+/// As [`evaluate`], and a reaction given to a kind that cannot react.
+#[allow(
+    clippy::result_large_err,
+    reason = "diagnostics beat a lint on a cold path"
+)]
+pub fn evaluate_with(
+    path: &str,
+    source: &str,
+    templates: Box<dyn crate::template::Templates>,
+    fleet: crate::fleet::Fleet,
+    schema: nerpa_core::Schema,
+) -> Result<Graph, ConfigError> {
     // Top-level statements are enabled because this is a configuration, not a
     // build file: `for` and `if` at module level are how anybody would write it.
     // Everything else stays standard — no `while`, no recursion — so evaluation
@@ -167,7 +202,7 @@ pub fn evaluate(
     }
 
     let globals = GlobalsBuilder::standard().with(globals::nerpa).build();
-    let declarations = Declarations::with(crate::template::Renderer::new(templates), fleet);
+    let declarations = Declarations::with(crate::template::Renderer::new(templates), fleet, schema);
 
     handle::forget_branches();
     Module::with_temp_heap(|module| {
