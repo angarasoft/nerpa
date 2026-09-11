@@ -402,7 +402,10 @@ declared. Shown on a real machine — `chrony.conf` rewritten, `chronyd` restart
 its process identifier different afterwards, and a second run with nothing to do
 and the same identifier. The stopped case was only claimed until 2026-09-11, when
 review found the command was a plain restart, which starts a stopped service; it
-is `systemctl try-restart` and `rc-service --ifstarted ... restart` now. A service
+is `systemctl try-restart` and `rc-service --ifstarted ... restart` now, and the
+stopped case was shown on the Gentoo test machine the same day: `systemd-timesyncd`,
+stopped and disabled, stayed stopped when its file changed and when it changed
+back, and each time the next run had nothing to do. A service
 whose own attributes change in the same run is settled and then restarted if it is
 running: a provider is told whether a change was roused, whatever its kind.
 

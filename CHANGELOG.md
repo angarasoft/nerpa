@@ -287,7 +287,8 @@ without ceremony until the first stage is complete.
   and `rc-service --ifstarted ... restart`. A plain restart was sent, which starts
   a stopped service, while the comments and the architecture said a stopped one
   stays down; only the running case had been shown on a machine. Found by the
-  second review of RFC 0001.
+  second review of RFC 0001, and shown on the Gentoo test machine: a stopped,
+  disabled `systemd-timesyncd` stayed stopped when its file changed.
 
 - Renaming a resource and keeping what it names, with no `moved`, converges in one
   run. The old address's removal deleted the file and the new address was adopted
