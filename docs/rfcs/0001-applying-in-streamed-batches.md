@@ -1,6 +1,6 @@
 # RFC 0001. Applying in streamed batches, and an executor that replaces itself
 
-- Status: in review; revised after the second review (§9), third review pending
+- Status: in review; third review logged (§9); being split, with step 1 kept here, replacing an executor moving to RFC 0002 and streamed batches to RFC 0003
 - Date: 2026-09-11
 - Revised: 2026-09-11, after each review
 - Touches: 0006, 0010, 0011, 0015, 0020, 0026, 0027, 0028, 0031, 0032, 0033,
@@ -1052,7 +1052,7 @@ checked before it was logged, in the same three ways.
 | From | How verified | Defect | Fixed |
 | --- | --- | --- | --- |
 | S2-2 | E | Renaming an address and keeping its path, with no `moved`, deleted the file and adopted the new resource from the reading taken before the removal. The run ended with no file and a record saying there was one. | `842abcd`, `INV-PLAN-009` |
-| S2-10 | R, E | Rousing sent a plain restart, which starts a stopped service, while the comments and the architecture said it stays down. | `ae25cac`, `INV-REACT-003` |
+| S2-10 | R, E | Rousing sent a plain restart, which starts a stopped service, while the comments and the architecture said it stays down. | `ae25cac`, `INV-REACT-003`; shown on the Gentoo test machine |
 | S2-10 | R | A roused service whose own attributes changed was one `Update` that never restarted it, and the fresh record cleared the debt. | `4db7ffd`, `INV-REACT-004` |
 
 True today and not fixed. S-3: absence is not kept as a premise, so a file that
@@ -1238,3 +1238,150 @@ decisions. The defects in code this round found are fixed above.
 | X2-8 | §5.10 | One `P.previous`; `P`'s content in the premise |
 
 A third review is pending.
+
+## Third review, 2026-09-11
+
+The same five angles and models, on revision 2 (`d6644b1`). Every finding was
+checked before it was logged. The reviewers for P and B ran experiments of their
+own: P against the executor through pipes, B against the store's write and sync on
+this control machine.
+
+**The second round, as revision 2 left it.**
+
+- **P:** P2-5, P2-11, P2-15, P2-16, P2-17 and P2-18 resolved; the rest partly.
+- **S:** S2-2 and S2-10 resolved; the rest partly.
+- **X:** X2-3 resolved; the rest partly.
+- **B:** B2-8 resolved; the rest partly.
+- **C:** C2-1, C2-2, C2-4, C2-5, C2-7, C2-8 and C2-9 resolved; C2-3 and C2-6 partly.
+
+### Defects in the code, found by this round
+
+| From | How verified | Defect | Fixed |
+| --- | --- | --- | --- |
+| S3-7 | R | Removals were planned from state without asking whether their machine answered. A record on a machine that did not answer was planned for removal in a plan that called itself complete, and apply stopped at that first stage, before touching the machines that did answer. | `d7330a9`, `INV-REACH-001` |
+
+True today and not fixed. X3-13: a frame is decoded as one CBOR item with nothing
+checking that the frame ends there, so trailing bytes are accepted; harmless while
+frames are length-delimited. P3-7: the executor returns at the first premise that
+moved, so later premises are never evaluated, which is right for one change and
+matters only for batches.
+
+### Blockers
+
+| Id | How verified | Finding | Resolution |
+| --- | --- | --- | --- |
+| C3-1 | R | The executor answers a file write with the file's content, so `conclude` would be handed a secret's value, against revision 2's "`conclude` never sees a secret value". | **Owner's decision:** a write whose content is secret is answered with a digest sealed for the machine, never the content. A protocol change, one reinstall, and a wider closed operation set (0033) |
+| B3-1 | E, R | "The recorder is the only writer of state (0031)" and "machines write in parallel" say opposite things. Measured on this ext4: the store's write-sync-rename-sync on one small file per thread gives 75 writes a second on one thread and 923 on sixteen. | A writer per shard under one recorder that owns ordering; 0031's serialisation point corrected (RFC 0001) |
+| B3-2 | D | Three threads per open conversation for the whole run scale with the machines carrying work, not with the pool. | Belongs to streamed batches: step 1 keeps one synchronous conversation per machine in flight (RFC 0003) |
+| P3-12 | D | An absence premise on a create is moved by an earlier change of the same run on that machine, such as a package laying down the configuration file declared after it, so a fresh machine's first run fails. | **Owner's decision:** no absence premise; a create writes over what appeared between reading and writing, as today, and the risk is stated (RFC 0001) |
+
+### P: protocol and failures
+
+| Id | Severity | How verified | Finding | Goes to |
+| --- | --- | --- | --- | --- |
+| P3-1 | major | R, D | One lock file cannot both keep out a live run and name machines still being acted on; a killed engine never rewrites it; "nothing of that run running there" needs a run identity protocol 4 lacks | RFC 0001: a lock the kernel releases, an in-flight record written before each request, a person releasing machines in step 1 |
+| P3-2 | major | R, D | A panic, including a failed write to a closed terminal, unwinds into the lock guard and deletes the lock while executors act | RFC 0001: a panic hook that stops the run; the in-flight record is never removed on unwind |
+| P3-3 | major | E, R | A version 4 executor exits on the bootstrap envelope without answering, so step 2 starts with one install by hand | RFC 0002 |
+| P3-4 | major | D, E, R | The frozen list lacks `Alive`, ids, the frame layer and premise machinery, and freezes a general process runner | RFC 0002 |
+| P3-5 | minor | E, R | "Decoded exactly" is undefined at the byte level, and the stamp-first read is itself a partial read | RFC 0002 and 0003 |
+| P3-6 | major | D, R | Engine-side liveness is undefined while a conversation is idle, and the timers count frames where they need bytes | RFC 0003 |
+| P3-7 | major | E, R | After `Moved`, resending without premises applies changes whose premises were never evaluated | RFC 0003 |
+| P3-8 | major | R, D | Under `continue`, the outcome table withdraws entries of changes it then resends | RFC 0001 for step 1's table; RFC 0003 for resends |
+| P3-9 | minor | R, E, D | `Refused` semantics are inverted | RFC 0003 |
+| P3-10 | major | R, D | The stream rules make an expired executor's `Stopped` a contract violation, and miss constraints | RFC 0003 |
+| P3-11 | major | R, D | Exiting when any thread ends splits a change at end of input | RFC 0003 |
+| P3-12 | blocker | D | Above | RFC 0001 |
+| P3-13 | minor | R | In step 1, one `Perform` for a replacement makes `Failed.at` decide state | RFC 0001 |
+| P3-14 | minor | R | Defects in the failure table | RFC 0001 for step 1's rows; RFC 0003 |
+| P3-15 | minor | D, R | Signal details: a HUP followed by TERM, blocked TSTP, SIGSTOP, askpass prompts, step 1 without `Stop` | RFC 0001 |
+| P3-16 | minor | R | §5.5 contradicts itself on waiting for records | RFC 0001 |
+| P3-17 | minor | R, D | Keeping `Reach::ask` needs exclusivity stated, and the failure classes while reading | RFC 0001 |
+| P3-18 | nit | R | `seq` against "id"; a test path; which end of stderr is kept | RFC 0003 |
+
+### S: state and invariants
+
+| Id | Severity | How verified | Finding | Goes to |
+| --- | --- | --- | --- | --- |
+| S3-1 | major | R, D | A debt can sit in another shard from its cause, whose write goes first | RFC 0001 |
+| S3-2 | major | R, D | Where the single digest key lives among shards, and how a file becomes a directory without a moment of no state | RFC 0001 |
+| S3-3 | major | R, D | "Sent again" has no place in the planner: a pending package that reads as installed is adopted | RFC 0001 |
+| S3-4 | major | R, D | On rhel, sending an install again runs no post-install; `dnf reinstall` does | RFC 0001 |
+| S3-5 | major | R, D | Nothing says what a pending entry becomes when its declaration changed or went | RFC 0001 |
+| S3-6 | major | R, D | Option D brings back unowned files for what a shard has not yet written, and lost reorders keep old edges | RFC 0001 |
+| S3-7 | major | R | Above | Fixed |
+| S3-8 | major | R, D | The removal edges for `INV-APPLY-001` point the wrong way, and two are missing | RFC 0001 |
+| S3-9 | major | D | The outcome table's entry column contradicts `continue` | RFC 0001 |
+| S3-10 | major | R, D | A dead run's kept machines and a live run's exclusion cannot share one lock file | RFC 0001, with P3-1 |
+| S3-11 | major | R, D | Absence as a premise changes `read` and breaks creates after removals | Moot: no absence premise |
+| S3-12 | minor | D | The clearing invariant contradicts §5.7 | RFC 0001 |
+| S3-13 | minor | R, D | The interrupted-run property misses records made to carry a debt | RFC 0001 |
+| S3-14 | minor | R | The postcondition leaves out changes never begun and outcomes unknown | RFC 0001 |
+| S3-15 | minor | R | Shard names: `.`, `..` and names differing only in case are valid targets (verified in `address.rs`) | RFC 0001 |
+| S3-16 | minor | R, D | No stage barrier across shards | RFC 0001 |
+| S3-17 | minor | D | "The second run after an interrupted one is empty" has unlisted exceptions | RFC 0001 |
+| S3-18 | minor | R, D | Whether debts for causes never sent are withdrawn contradicts itself | RFC 0001 |
+| S3-19 | nit | R | "Reading sees everything" holds only for declared attributes | RFC 0001 |
+
+### X: security of self-replacement
+
+| Id | Severity | How verified | Finding | Goes to |
+| --- | --- | --- | --- | --- |
+| X3-1 | major | R, D | The frozen set cannot carry the sequence: `Alive`, removing `.new`, a digest, the restore | RFC 0002 |
+| X3-2 | major | R, D | Generic run, link and rename frozen for ever; narrow them to the sequence | RFC 0002 |
+| X3-3 | major | D | Nothing binds the operations to what was walked | RFC 0002 |
+| X3-4 | major | D | Owner, mode and label cannot decide "writable by nobody else": groups, ACLs, mounts, attributes | RFC 0002 |
+| X3-5 | major | D | No automatic rollback after the switch | RFC 0002 |
+| X3-6 | major | R, D | Unwinding after a panic removes the lock | RFC 0001, with P3-2 |
+| X3-7 | major | R, D | The plan shows replacements only while they happen, and the flag authorises every opted-in machine | RFC 0002 |
+| X3-8 | major | R, D | The first replacement cannot run through protocol 4 | RFC 0002 |
+| X3-9 | minor | D | Which part of a label is compared | RFC 0002 |
+| X3-10 | minor | R, D | `P`'s content is never tied to what answered `Build` | RFC 0002 |
+| X3-11 | minor | R | Fleet group keys are values for the configuration, and unknown node keys are ignored (verified in `fleet.rs`) | RFC 0001 for `[apply]`; RFC 0002 |
+| X3-12 | minor | D | A replacement is not a unit for stopping or for the lock | RFC 0002 |
+| X3-13 | minor | R | The rewording of `INV-WIRE-001` drops half of it; trailing bytes accepted today | RFC 0002 |
+| X3-14 | minor | D | What makes a build a release | RFC 0002 |
+| X3-15 | minor | D | `P.previous` keeps an older build beside `P` for good | RFC 0002 |
+| X3-16 | minor | D | The risk statement is incomplete | RFC 0002 |
+| X3-17 | nit | R, D | Umask on create, digest length in names, empty path parts, where `arch` comes from | RFC 0002 |
+
+### B: performance
+
+| Id | Severity | How verified | Finding | Goes to |
+| --- | --- | --- | --- | --- |
+| B3-1 | blocker | E, R | Above | RFC 0001 |
+| B3-2 | blocker | D | Above | RFC 0003 |
+| B3-3 | major | R, D | `fanout::every` cannot skip a saturated route | RFC 0001 |
+| B3-4 | major | E, R | The backlog bound turns recorder throughput into latency on each machine's path | RFC 0001 |
+| B3-5 | major | R, D | The change-size bound has no number, and a write's answer echoes its content, doubling memory | RFC 0001 |
+| B3-6 | minor | R | The "stated bound" on reaching disk is not stated | RFC 0001 |
+| B3-7 | minor | E, R | Figures carry no statistic; the reviewer's medians differ 1.3–2.6× from ours | RFC 0001 |
+| B3-8 | minor | R | The stderr buffer has no size | RFC 0001 |
+| B3-9 | minor | D | The Teleport limits carry no citation | RFC 0001 |
+| B3-10 | nit | E | Shard count costs nothing at these scales (2000 files listed in 0.4 ms) | RFC 0001 |
+
+### C: the provider contract
+
+| Id | Severity | How verified | Finding | Goes to |
+| --- | --- | --- | --- | --- |
+| C3-1 | blocker | R | Above | RFC 0001 |
+| C3-2 | major | R, D | `Records` has no value for a change that completed | RFC 0001 |
+| C3-3 | major | D | Nothing says what is recorded when an interruption falls between points | RFC 0001 |
+| C3-4 | major | R | `Sending` and `#[non_exhaustive]`: which trade-off | RFC 0001 |
+| C3-5 | major | R, D | A package's reaction is undefined: nothing on rhel, a re-merge on Portage | **Owner's decision:** packages cannot react; refused when configured |
+| C3-6 | minor | R, D | `afterwards` does not say a rousing is covered by its debt | RFC 0001 |
+| C3-7 | minor | R, D | `one_at_a_time` is handed secret values it does not need | RFC 0001 |
+| C3-8 | minor | D | The record-point example is the one case where points change nothing | RFC 0001 |
+| C3-9 | major | R, D | There is no sealed answer for an operation, only for an observation | With C3-1 |
+
+### Decided by the owner after the third review
+
+1. **Split this RFC.** Step 1 stays here, revised and reviewed narrowly before
+   acceptance. Replacing an installed executor moves to RFC 0002, not scheduled,
+   with its findings. Streamed batches move to RFC 0003, to be written once step 1
+   is built and measured. The history stays in this log.
+2. **A write whose content is secret is answered with a sealed digest,** never the
+   content: a protocol change and one reinstall.
+3. **No absence premise.** A create writes over what appeared between reading and
+   writing, as today, and the risk is stated.
+4. **Packages cannot react.** `reacts_to` on a package is refused when configured.
+
