@@ -158,7 +158,11 @@ line number.
 Code generation from provider JSON schemas: Starlark stubs, an in-tree `yandex`
 provider covering ten to fifteen types, a `tfstate` reader. Import moves secrets
 out of state rather than copying them. Machines are visited in parallel, because
-a fleet is where sequential stops being acceptable.
+a fleet is where sequential stops being acceptable. For applying, how is
+[RFC 0001](docs/rfcs/0001-applying-in-streamed-batches.md), in review: machines side
+by side, one recorder, state in a shard per machine. Batching a machine's changes
+into one conversation waits for it and for what it alone gains
+([RFC 0003](docs/rfcs/0003-streamed-batches.md)).
 
 **Risk retired:** that provider schemas carry enough to generate against, and that
 importing beats recreating.
@@ -217,4 +221,7 @@ two machines was already called tedious. Both ways are wanted and neither is now
 nerpa replacing an executor of another build through that executor, shown in the
 plan — it already runs as root, so the replacement adds no privilege, and it needs
 a record refining 0040 — and packages, `rpm`, `ebuild`, `apk` and a tarball, so a
-machine's own package manager or image carries it.
+machine's own package manager or image carries it. The first is designed as far as
+[RFC 0002](docs/rfcs/0002-replacing-an-installed-executor.md), with the findings of
+three reviews still open, among them that the first executor able to replace
+itself is installed by hand.
