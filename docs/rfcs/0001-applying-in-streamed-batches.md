@@ -1,6 +1,6 @@
 # RFC 0001. Applying machines in parallel, with state in shards
 
-- Status: in review; revision 5, after the fifth review (§9); a full round of P and S pending
+- Status: in review; revision 5; its sixth review logged (§9)
 - Date: 2026-09-11
 - Revised: 2026-09-11, after each of five reviews
 - Scope: what was step 1. Replacing an installed executor is
@@ -1838,4 +1838,76 @@ What changed after the fifth review, finding by finding.
 | P5-15 | §5.8 | `plan` takes the lock shared |
 | P5-16, P5-17 | §5.8 | The remaining cases named; a one-second window, a third signal, the handler's process |
 
-A full round of P and S is pending.
+The sixth review follows.
+
+## Sixth review, 2026-09-17
+
+P and S, both by Opus, on revision 5 (`28ab691`) and step 1 only. Every finding
+was checked before it was logged. The reviewer for P ran experiments against the
+executor through pipes, a copy of the tree, and `ssh -G`; the reviewer for S ran
+the planner on copies of `28ab691` and `d11060f`.
+
+**The fifth review, as revision 5 left it.**
+
+- **P:** P5-1, P5-4, P5-6, P5-8, P5-9, P5-14, P5-15 and P5-16 resolved; the rest
+  partly. Of S's findings, S5-18 resolved; S5-4, S5-10, S5-12, S5-13 and S5-14
+  partly.
+- **S:** S5-1, S5-2, S5-6 (the blocker), S5-9, S5-11, S5-13, S5-14, S5-15, S5-17,
+  S5-18 and S5-19 resolved; the rest partly.
+
+### Defects in the code, found by this round
+
+| From | How verified | Defect | Fixed |
+| --- | --- | --- | --- |
+| S6-1 | E | A regression from `684c024`. A removal, or a replacement's removal of what was there, was put after the change of anything state recorded after it, a reaction and another machine included: a moved file and the service reacting to it were refused as a cycle, and a removal nothing was inside went after an update. | `6526a4f`, `INV-PLAN-011` |
+| S6-2 | E | The same breadth held a replaced cause whose reactor was on a machine that did not answer, where an update of it owed the reaction. | `6526a4f`, `INV-REACT-006` |
+| S6-3 | E | A file declared where another moves away from was read there, adopted or updated from the file about to be deleted, and the move deleted it. | `cfd3502`, `INV-PLAN-009` |
+| P6-1 | E, R | Delivery moved a copy cut short under the executor's final name when its input ended early; the file test passed for ever, and the short binary died without a word. | `51d8b54`, `INV-DELIVERY-001` |
+| S6-10 | E | A mode written as a number, as Starlark's `0o600` is, was neither refused nor applied. | `6bee2fe`, `INV-PLAN-012` |
+| S6-11, P6-5 | E | A held removal could be named as waiting for what waited for it. | `809cb9d`, `INV-REACH-004` |
+
+### P: protocol and failures
+
+| Id | Severity | How verified | Finding | Goes to |
+| --- | --- | --- | --- | --- |
+| P6-1 | major | E, R, D | Delivery is not idempotent: a copy cut short lands under the final name, and a retry built on it retries for ever. | Built; see the defects above. §5.3: delivery in its own session, and a delivered path whose handshake fails is delivered again |
+| P6-2 | major | R, D | The slot a request holds while applying is not defined. If a machine holds one while it waits for another's record, more machines than slots with an edge between them jam the pool. | §5.4: a sending slot taken when a change is ready and given back by its outcome |
+| P6-3 | minor | E, R, D | The outcome table misses `TooLarge`, exits other than 1 and 255, an index out of range on a first `Perform`, a failed write of a request, and a kill the engine sent itself. | §5.5: classes by what the engine saw, with a fallback |
+| P6-4 | minor | R, D | Not every stop is in the supervisor's list, and a provider call on the engine, a control-domain change or a secret's fetch, cannot be killed. | §5.8: a stop is whatever sets the flag; the supervisor does not wait for provider calls |
+| P6-5 | minor | E, R | A held removal named as waiting for its claimant. | Built with S6-11 |
+| P6-6 | minor | E, D | `ssh -G` prints the first hop as written, so one bastion spelt two ways is two routes, a hop with its own `ProxyJump` hides the outer one, and `Match exec` runs in every `ssh`. | §5.4: the route resolved hop by hop |
+| P6-7 | minor | D, R | A kill under the lock that reaps can wait for the reaper, and the thread killing for the second signal cannot take a third. | §5.8: signals counted in the handler; no blocking reap under the kill lock |
+| P6-8 | minor | D, R | A `ControlMaster` without `ControlPersist` sits in the first transport's process group, so killing it ends every conversation through it. | §5.10 |
+| P6-9 | minor | D, R | The supervisor's order can report a machine in flight whose answer is recorded after, and a report written to a closed pipe is lost. | §5.8: kill, flush, report; reports always in the directory |
+| P6-10 | minor | R, D | `release` drops what a `Read` mark could have made, and an entry a mark replaced is lost on a kill. | §5.6, §5.8, with S6-6 |
+| P6-11 | minor | R, D | Nothing keeps `Seen::Written` off the wire, the shape each operation answers with is not listed, and a wrong shape keeps the conversation. | §5.2, §5.3, §5.5 |
+| P6-12 | minor | R, D | `Planned::carries` is the provider's word, unchecked; indices over a replacement's two `Perform`s and a secret through a process are unsaid. | §5.2 |
+| P6-13 | minor | R, D | A change can begin and never be sent, and has no outcome. | §5.5, with S6-8 |
+| P6-14 | nit | R | §5.11 leaves out the slot a request that never answers holds. | §5.11 |
+| P6-15 | nit | R | A shared lock for `plan` keeps out more than another live run, and whether `plan` migrates a version 4 file is unsaid. | §5.8, §5.13 |
+
+### S: state and invariants
+
+| Id | Severity | How verified | Finding | Goes to |
+| --- | --- | --- | --- | --- |
+| S6-1 | major | E, R | Edges from every recorded dependent, reactions and other machines included. | Built; see the defects above |
+| S6-2 | major | E, R | A replaced cause held where its reaction could be owed. | Built; see the defects above |
+| S6-3 | major | E, R | A name a replacement leaves was not taken. | Built; see the defects above |
+| S6-4 | major | D | Two rows of the entry table contradict its rule: a removal declared again could be resent as a removal, and an entry for removal only could never be cleared. | §5.6: a concrete kind in every row |
+| S6-5 | major | D, R | An entry's locator is never read, so a failed create whose path then changed leaves what it made unnamed. | §5.6: read at the entry's locator when there is no record |
+| S6-6 | major | D | An entry replaced by the next mark is lost on a kill and `release`, and `release` drops what a `Read` mark could have made. | §5.6, §5.8: a mark carries the entry it replaced; `release` keeps what says more |
+| S6-7 | major | D, R | Migration windows after `format`: a pair refused for ever, a `link` that fails every time, a stale version 4 lock, a gap before `lock`, entries dropped on downgrade. | §5.13: the version 4 file's digest in `format`, and a way to finish |
+| S6-8 | minor | D | Nothing says what happens between a mark and its request, or what "ready" means against `prepare`. | §5.5, §5.6: mark, then prepare; an unsent mark put back on a supervised stop |
+| S6-9 | minor | D, R | `waits_for` as direct edges loses orders through a resource that does not change. | §5.5 |
+| S6-10 | minor | E, R | A mode written as a number. | Built; see the defects above |
+| S6-11 | minor | E, R | A held removal named by what waits for it. | Built; see the defects above |
+| S6-12 | minor | D | Marks in `control` have no hold or release. | §5.8 |
+| S6-13 | minor | D | `INV-APPLY-001` misses changes that send nothing and debts in other shards. | §5.5 |
+| S6-14 | minor | D | A mark does not record `afterwards`, so a later build can change what an old mark becomes. | §5.6 |
+| S6-15 | nit | R | "`Held` … (built)" reads as if `Held` exists; `Unhashable` counts only unreachable machines. | §5.8 |
+
+### Decided by the owner after the sixth review
+
+1. **Revision 6, then a narrow round of P and S**: §5.5 to §5.8 and §5.13, where
+   the design findings of the last two rounds are, and the code built since. The RFC
+   is accepted after it if nothing blocks.
