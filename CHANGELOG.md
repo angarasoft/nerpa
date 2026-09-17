@@ -672,6 +672,13 @@ without ceremony until the first stage is complete.
   `read` needs, and `INV-PROVIDER-002` records what that is worth and how it
   could still be got around.
 
+- A secret is carried by the write that sets it, or the change is refused before
+  anything is sent. A provider says which of its operations write and what
+  attributes a matching answer confirms; a secret outside all of them would be
+  sent and confirmed by nothing, and state would record a digest of a value
+  nobody checked had arrived — the one recording that cannot be corrected by
+  looking, because looking is what a secret does not allow.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

@@ -17,9 +17,9 @@ use nerpa_core::provider::{
     Afterwards, Answered, Attributes, Concluded, Concluding, Machines, Planned, Prepared, Provider,
     ProviderError, Providers, Reach, Read, Reading, Sending,
 };
-use nerpa_core::run::apply;
+use nerpa_core::run::{RunError, apply};
 use nerpa_core::schema::Schema;
-use nerpa_core::secret::{Key, Recorded, Remembered, Secrets};
+use nerpa_core::secret::{Key, Recorded, Remembered, Secrets, Source};
 use nerpa_core::state::{Record, State};
 use nerpa_core::{Address, Graph, Observed, Resource, Value};
 use nerpa_proto::{Answer, Ask, Entry, Operation, Seen};
@@ -182,12 +182,23 @@ fn graph_of(path: &str) -> Graph {
 
 /// Runs the plan the graph asks for, against a machine that writes down what it
 /// was asked, and a recorder that writes down what state said.
-fn run(graph: &Graph, observed: &Observed, mut state: State) -> (Ledger, State) {
+fn run(graph: &Graph, observed: &Observed, state: State) -> (Ledger, State) {
+    let (ledger, state, outcome) = attempt(graph, observed, state, secrets());
+    outcome.expect("applied");
+    (ledger, state)
+}
+
+/// The same, for a run that is expected to refuse.
+fn attempt(
+    graph: &Graph,
+    observed: &Observed,
+    mut state: State,
+    secrets: Secrets<'_>,
+) -> (Ledger, State, Result<(), RunError>) {
     let ledger = Ledger::default();
     let providers = Providers::new().with(Box::new(Writes));
     let machines = Machines::new().everywhere(Box::new(Telling(ledger.clone())));
-    let intended =
-        plan(graph, observed, &state, &providers.schema(), secrets()).expect("plannable");
+    let intended = plan(graph, observed, &state, &providers.schema(), secrets).expect("plannable");
 
     let watching = ledger.clone();
     let mut record = move |state: &State| {
@@ -198,17 +209,17 @@ fn run(graph: &Graph, observed: &Observed, mut state: State) -> (Ledger, State) 
         });
         Ok(())
     };
-    apply(
+    let outcome = apply(
         &intended,
         &providers,
         &machines,
         observed,
         &mut state,
-        secrets(),
+        secrets,
         &mut record,
     )
-    .expect("applied");
-    (ledger, state)
+    .map(|_| ());
+    (ledger, state, outcome)
 }
 
 #[test]
@@ -258,4 +269,44 @@ fn a_replacement_is_forgotten_between_the_half_that_removes_and_the_half_that_ma
         "the old one goes, the record goes with it, and only then is the new one made"
     );
     assert!(state.get(&address(MOTD)).is_some());
+}
+
+/// A secret is carried by the write that sets it, or the change does not go.
+///
+/// What a provider says a write carries is what a matching answer confirms. A
+/// secret no write carries would be sent and then confirmed by nothing, and
+/// state would record a digest of a value nobody checked arrived. RFC 0001 §5.2.
+#[test]
+fn a_secret_no_write_carries_is_refused_before_anything_is_sent() {
+    let store = Remembered::new().holding("db/password", "correct-horse");
+    let secrets = Secrets::new(&DIGEST_KEY, &store);
+
+    let mut graph = Graph::new();
+    graph.preexisting(address(MOTD).target().unwrap().clone());
+    graph
+        .insert(
+            Resource::new(address(MOTD))
+                .with("path", Value::Text("/etc/motd".to_owned()))
+                .with(
+                    "content",
+                    Source::Stored {
+                        provider: "remembered".to_owned(),
+                        path: "db/password".to_owned(),
+                        version: None,
+                    },
+                ),
+        )
+        .unwrap();
+
+    let (ledger, _, outcome) = attempt(&graph, &Observed::new(), State::new(), secrets);
+
+    let Err(RunError::Uncarried { attribute, .. }) = outcome else {
+        panic!("a secret nothing carries is not a change that can be sent: {outcome:?}");
+    };
+    assert_eq!(attribute, "content");
+    assert!(
+        ledger.read().iter().all(|line| !line.starts_with("sent ")),
+        "and it is refused before the machine is asked anything: {:?}",
+        ledger.read()
+    );
 }

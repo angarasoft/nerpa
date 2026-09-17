@@ -368,8 +368,14 @@ pub fn apply(
                 facts,
             })?;
 
-            let became = send(planned, reach, change, state, record)?;
             let (shown, secret) = told(change, kind, &desired, recorded);
+            if let Some(attribute) = uncarried(&planned, &secret) {
+                return Err(RunError::Uncarried {
+                    address: address.clone(),
+                    attribute,
+                });
+            }
+            let became = send(planned, reach, change, state, record)?;
             let result = match provider.conclude(
                 &Concluding {
                     address,
@@ -582,6 +588,23 @@ fn send(
     Ok(became)
 }
 
+/// The first secret attribute no operation of this change claims to carry.
+///
+/// `Planned::carries` names, for each operation that writes, the declared
+/// attributes a matching answer confirms. A secret outside all of them is a
+/// secret sent on trust, and this run does not send one.
+fn uncarried(planned: &Planned, secret: &BTreeSet<String>) -> Option<String> {
+    secret
+        .iter()
+        .find(|name| {
+            !planned
+                .carries
+                .values()
+                .any(|carried| carried.contains(name.as_str()))
+        })
+        .cloned()
+}
+
 /// What a provider is told when its change is over, and which of its attributes
 /// were secrets.
 ///
@@ -792,6 +815,23 @@ pub enum RunError {
         /// The resource it was declared on.
         address: Address,
         /// The attribute that went in and did not come out.
+        attribute: String,
+    },
+    /// A secret was to be sent, and no operation claims to carry it.
+    ///
+    /// What a provider says a write carries is what a matching answer confirms.
+    /// A secret no write carries would be sent and confirmed by nothing, and
+    /// state would record a digest of a value nobody checked had arrived — which
+    /// is the one recording that cannot be corrected by looking, because looking
+    /// is exactly what a secret does not allow.
+    #[error(
+        "{address}: {attribute} is a secret, and nothing this change sends says it \
+         carries it, so nothing would confirm that it arrived"
+    )]
+    Uncarried {
+        /// The resource it was declared on.
+        address: Address,
+        /// The secret attribute nothing carries.
         attribute: String,
     },
     /// A value that depends on a fact was still open when its stage ran.
