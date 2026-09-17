@@ -101,6 +101,17 @@ fn every_answer_survives_the_trip() {
                 mode: 0o644,
             })],
         },
+        // What a write and a private process answer with: a number, and a
+        // status with a number.
+        Answer::Done {
+            became: vec![
+                Seen::Digest { digest: [7; 32] },
+                Seen::Private {
+                    status: 3,
+                    sealed: [9; 32],
+                },
+            ],
+        },
         Answer::Moved { at: 2 },
         Answer::Fingerprint {
             digest: "9f86d081".to_owned(),

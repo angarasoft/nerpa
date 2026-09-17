@@ -715,6 +715,13 @@ without ceremony until the first stage is complete.
   engine's own copy of what it sent, because nothing downstream of sending holds
   one.
 
+- A private process answers its status and a sealed digest of everything it
+  printed, and a failure names neither what went into it nor what it said.
+  Marking a process private withheld its input and nothing else: its output came
+  back whole, and its standard error was quoted into the failure under a message
+  saying the input was withheld. No operation the `os` provider builds is private
+  yet, so this closes it before the first one that would.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

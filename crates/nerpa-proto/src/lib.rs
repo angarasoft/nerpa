@@ -265,6 +265,20 @@ pub enum Seen {
         /// The sealed digest.
         digest: [u8; 32],
     },
+    /// What a private process did, without what it said.
+    ///
+    /// Its status, because that is what decides whether the operation worked,
+    /// and a digest of everything it printed — sealed for the machine, so the
+    /// engine can compare it against a run it expected and nobody else can test
+    /// guesses against it. A program handed a credential on its input usually
+    /// prints something about it, and this is where that stopped travelling
+    /// home. See decision 0027.
+    Private {
+        /// What it exited with.
+        status: i32,
+        /// What it printed, hashed and sealed.
+        sealed: [u8; 32],
+    },
     /// What a write left behind, as what it hashed to.
     ///
     /// A file write is answered with this rather than with what was read back.
@@ -575,6 +589,11 @@ pub fn digest(seen: &Seen) -> [u8; 32] {
         Seen::Digest { digest: written } => {
             out.push(4);
             out.extend_from_slice(written);
+        }
+        Seen::Private { status, sealed } => {
+            out.push(5);
+            out.extend_from_slice(&status.to_le_bytes());
+            out.extend_from_slice(sealed);
         }
     }
     *blake3::hash(&out).as_bytes()

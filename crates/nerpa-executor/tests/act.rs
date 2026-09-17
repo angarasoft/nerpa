@@ -209,7 +209,10 @@ fn a_private_input_is_not_repeated_into_the_failure() {
         panic!("exit 3 was not asked for")
     };
     assert!(!problem.contains("hunter2"), "{problem}");
-    assert!(problem.contains("input withheld"), "{problem}");
+    assert!(
+        problem.contains("what it was given") && problem.contains("withheld"),
+        "and it says that is deliberate rather than leaving a gap: {problem}"
+    );
 }
 
 #[test]
@@ -607,5 +610,62 @@ fn a_write_is_answered_with_a_digest_and_never_with_the_contents() {
         became,
         vec![Seen::Digest { digest: expected }],
         "the answer is what the path hashed to"
+    );
+}
+
+/// A private process answers its status and a seal, and never what it said.
+///
+/// Its output came back in the answer, which is the other half of the hole the
+/// withheld input closed: a program handed a credential on its input usually
+/// prints something about it, and `stdout` was travelling home whole. Nothing in
+/// the `os` provider marks an operation private yet; this closes it before one
+/// does.
+#[test]
+fn a_private_process_answers_with_a_seal_and_never_with_what_it_said() {
+    let answer = answer(&Ask::Perform {
+        plan: None,
+        premise: Vec::new(),
+        operations: vec![Operation::Process {
+            program: "sh".to_owned(),
+            arguments: vec!["-c".to_owned(), "echo correct-horse".to_owned()],
+            stdin: b"hunter2".to_vec(),
+            private: true,
+            expect: vec![0],
+        }],
+        seal: Some(SEAL),
+    });
+
+    let Answer::Done { became } = answer else {
+        panic!("a program that exited as asked is answered: {answer:?}")
+    };
+    assert!(
+        !matches!(became[0], Seen::Said { .. }),
+        "a private process does not answer with what it said: {became:?}"
+    );
+}
+
+/// And a private process that fails does not put it in the failure either.
+///
+/// An error message is the most reliably logged thing in any system. The input
+/// was already withheld; what the program printed on its way out was not.
+#[test]
+fn a_private_process_that_fails_does_not_quote_what_it_said() {
+    let Answer::Failed { problem, .. } = perform(
+        Vec::new(),
+        vec![Operation::Process {
+            program: "sh".to_owned(),
+            arguments: vec!["-c".to_owned(), "echo correct-horse >&2; exit 3".to_owned()],
+            stdin: Vec::new(),
+            private: true,
+            expect: vec![0],
+        }],
+    ) else {
+        panic!("exit 3 was not asked for")
+    };
+
+    assert!(!problem.contains("correct-horse"), "{problem}");
+    assert!(
+        problem.contains('3') && problem.contains("sh"),
+        "and it still says which program ended how: {problem}"
     );
 }

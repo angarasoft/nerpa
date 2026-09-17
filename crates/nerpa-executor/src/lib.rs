@@ -106,14 +106,17 @@ fn perform(premise: &[Premise], operations: &[Operation], seal: Option<&Seal>) -
     // seal it with. Refused before anything runs rather than answered with what
     // was read back, which for a secret write is the secret.
     if seal.is_none()
-        && operations
-            .iter()
-            .any(|operation| matches!(operation, Operation::File { secret: true, .. }))
+        && operations.iter().any(|operation| {
+            matches!(
+                operation,
+                Operation::File { secret: true, .. } | Operation::Process { private: true, .. }
+            )
+        })
     {
         return Answer::Failed {
             at: At::Before,
-            problem: "a write carrying a secret arrived without a seal, and its answer \
-                      cannot be sealed"
+            problem: "an operation here carries a secret and arrived without a seal, and \
+                      its answer cannot be sealed"
                 .to_owned(),
         };
     }
@@ -349,22 +352,45 @@ fn act(operation: &Operation, seal: Option<&Seal>) -> Result<Seen, String> {
         } => {
             let (status, out, complaint) = run(program, arguments, stdin)?;
             let wanted = if expect.is_empty() { &[0][..] } else { expect };
-            if wanted.contains(&status) {
-                Ok(Seen::Said {
+            if !wanted.contains(&status) {
+                // Neither what went in nor what came out is repeated back when
+                // it was private, even into an error. An error message is the
+                // most reliably logged thing in any system, and a program handed
+                // a credential usually says something about it.
+                if *private {
+                    return Err(format!(
+                        "{program} exited {status}, expected one of {wanted:?} \
+                         (what it was given and what it said are withheld)"
+                    ));
+                }
+                let said = String::from_utf8_lossy(&complaint);
+                return Err(format!(
+                    "{program} exited {status}, expected one of {wanted:?}: {said}"
+                ));
+            }
+            if !*private {
+                return Ok(Seen::Said {
                     status,
                     out,
                     complaint,
-                })
-            } else {
-                // What went in is not repeated back when it was private, even
-                // into an error. An error message is the most reliably logged
-                // thing in any system.
-                let said = String::from_utf8_lossy(&complaint);
-                let quiet = if *private { " (input withheld)" } else { "" };
-                Err(format!(
-                    "{program} exited {status}, expected one of {wanted:?}{quiet}: {said}"
-                ))
+                });
             }
+            // Its status is the answer; what it printed leaves as one number,
+            // sealed for this machine.
+            let Some(seal) = seal else {
+                return Err(format!(
+                    "{program} is private and there is no seal to answer with"
+                ));
+            };
+            let said = nerpa_proto::digest(&Seen::Said {
+                status,
+                out,
+                complaint,
+            });
+            Ok(Seen::Private {
+                status,
+                sealed: nerpa_proto::sealed(seal, &said),
+            })
         }
         _ => Err("this executor does not understand that operation".to_owned()),
     }
