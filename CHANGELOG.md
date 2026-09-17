@@ -730,6 +730,15 @@ without ceremony until the first stage is complete.
   drained on a thread of its own and kept to its last 64 KiB, which is the rule
   delivery already used and now shares.
 
+- Delivery asks again when `ssh` could not connect. A shared bastion drops
+  connections at random once ten are being made at once — that is what
+  `MaxStartups` does, by design — and one dropped connection made a machine out
+  of reach for a whole run. The three commands delivery sends are idempotent, so
+  it tries three times, waiting 200 ms and doubling, with jitter taken from the
+  clock so that a fleet dropped together does not come back together. What the
+  far side answered is not asked again: only exit 255, which is `ssh` failing to
+  connect rather than the far side speaking.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

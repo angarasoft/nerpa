@@ -97,7 +97,7 @@ pub fn deliver(
 
     // Already there is the common case, and it costs one round trip rather than
     // eight hundred kilobytes.
-    let said = run(node, host, config, &present(&path, bytes.len()), &[])?;
+    let said = asked(node, host, config, &present(&path, bytes.len()), &[])?;
     if said.answered {
         return Ok(path);
     }
@@ -105,7 +105,7 @@ pub fn deliver(
     // Asked over ssh rather than through the wire, because the wire needs the
     // thing that is not there yet. This is the chicken-and-egg the architecture
     // note mentions, and asking directly is the honest way out of it.
-    let said = run(node, host, config, "uname -m", &[])?;
+    let said = asked(node, host, config, "uname -m", &[])?;
     let found = said.text.trim();
     if !said.answered {
         return Err(out_of_reach(format!(
@@ -121,7 +121,7 @@ pub fn deliver(
     // Written beside, counted, and moved into place. A half-copied file that is
     // executable is worse than no file at all, and an interrupted copy under the
     // final name would pass the test above for ever.
-    let said = run(node, host, config, &copy(&path, bytes.len()), &bytes)?;
+    let said = asked(node, host, config, &copy(&path, bytes.len()), &bytes)?;
     if !said.answered {
         return Err(out_of_reach(format!(
             "the executor could not be put there: {}",
@@ -141,6 +141,105 @@ struct Said {
     text: String,
 }
 
+/// How many times a connection `ssh` itself could not make is tried.
+///
+/// Three. What this rides out is a shared bastion dropping connections at random
+/// once ten are being made at once, which `MaxStartups` does by design (RFC 0001
+/// §5.10): a second or third attempt arrives in a different moment and gets
+/// through. More than three is holding a worker of the pool against a machine
+/// that is genuinely not there, which the run would rather hear about.
+const ATTEMPTS: usize = 3;
+
+/// How long the first wait between attempts is. Each one after it doubles.
+const WAITS: std::time::Duration = std::time::Duration::from_millis(200);
+
+/// Why one attempt came back with nothing useful.
+///
+/// The difference decides whether asking again is worth anything: `ssh` failing
+/// to connect is a moment that may pass, and the far side answering is an answer
+/// that will not change.
+#[derive(Debug)]
+enum Refused {
+    /// `ssh` never reached the far side, and this is what it said about that.
+    Connecting(String),
+    /// The far side answered, and this is what it said.
+    Answered(String),
+}
+
+/// Runs one of the delivery commands, asking again when `ssh` could not connect.
+///
+/// The three commands are idempotent — a file test, `uname -m`, and a copy
+/// written beside and moved into place — so a second attempt costs a round trip
+/// and risks nothing. See RFC 0001 §5.3.
+///
+/// # Errors
+///
+/// Returns [`ProviderError::Unreachable`], naming the machine and what `ssh` or
+/// the far side said.
+fn asked(
+    node: &Target,
+    host: &str,
+    config: Option<&str>,
+    command: &str,
+    stdin: &[u8],
+) -> Result<Said, ProviderError> {
+    attempted(WAITS, || run(host, config, command, stdin)).map_err(|refused| {
+        let problem = match refused {
+            Refused::Connecting(problem) | Refused::Answered(problem) => problem,
+        };
+        ProviderError::Unreachable {
+            node: node.clone(),
+            problem: format!("{host}: {problem}"),
+        }
+    })
+}
+
+/// The asking again itself, with the command it asks handed in.
+///
+/// Separate from what it runs so that the rule can be shown rather than argued
+/// about: a test drives it with an attempt that fails as many times as it likes,
+/// and nothing here needs an `ssh` or a machine.
+///
+/// The wait doubles and carries jitter, because every machine of a fleet that
+/// was dropped by one bastion would otherwise come back at the same instant and
+/// be dropped together again. The jitter comes from the clock rather than from a
+/// dependency: spreading a handful of retries does not need randomness anybody
+/// could bet on.
+fn attempted<T>(
+    waits: std::time::Duration,
+    mut attempt: impl FnMut() -> Result<T, Refused>,
+) -> Result<T, Refused> {
+    let mut waiting = waits;
+    for left in (0..ATTEMPTS).rev() {
+        match attempt() {
+            Ok(said) => return Ok(said),
+            Err(Refused::Answered(problem)) => return Err(Refused::Answered(problem)),
+            Err(refused) if left == 0 => return Err(refused),
+            Err(_) => {}
+        }
+        std::thread::sleep(waiting.saturating_add(jitter(waiting)));
+        waiting = waiting.saturating_mul(2);
+    }
+    // Unreachable: the last attempt returns above, whichever way it went.
+    Err(Refused::Connecting(
+        "it was never asked, which cannot happen".to_owned(),
+    ))
+}
+
+/// A little less than one wait, from the clock.
+fn jitter(waits: std::time::Duration) -> std::time::Duration {
+    let spread = waits.as_millis();
+    if spread == 0 {
+        return std::time::Duration::ZERO;
+    }
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| u128::from(since.subsec_nanos()))
+        .unwrap_or_default();
+    let millis = u64::try_from(now % spread).unwrap_or_default();
+    std::time::Duration::from_millis(millis)
+}
+
 /// One `ssh`, and what it said.
 ///
 /// The command is one string rather than separate words, because that is what
@@ -148,18 +247,7 @@ struct Said {
 /// a shell on the far side, so passing words only creates the illusion of
 /// quoting. Everything in these commands is written here — a fixed shape and a
 /// digest — and nothing in them comes from a configuration.
-fn run(
-    node: &Target,
-    host: &str,
-    config: Option<&str>,
-    command: &str,
-    stdin: &[u8],
-) -> Result<Said, ProviderError> {
-    let out_of_reach = |problem: String| ProviderError::Unreachable {
-        node: node.clone(),
-        problem: format!("{host}: {problem}"),
-    };
-
+fn run(host: &str, config: Option<&str>, command: &str, stdin: &[u8]) -> Result<Said, Refused> {
     let mut asking = Command::new("ssh");
     asking
         .arg("-o")
@@ -171,15 +259,17 @@ fn run(
     }
     asking.arg(host).arg(command);
 
+    // `ssh` not starting at all is this machine missing it, which asking again
+    // will not fix.
     let (status, said, complained) =
-        spoken(asking, stdin).map_err(|error| out_of_reach(error.to_string()))?;
+        spoken(asking, stdin).map_err(|error| Refused::Answered(error.to_string()))?;
 
     // 255 is `ssh` failing rather than the far side answering: it could not
     // connect, could not authenticate, was refused. The three commands here
-    // return 0 or 1 and never 255, so the code says which of the two happened,
-    // and a machine that was never reached is not asked again.
+    // return 0 or 1 and never 255, so the code says which of the two happened —
+    // and which of them is worth asking again.
     if status.code() == Some(255) {
-        return Err(out_of_reach(
+        return Err(Refused::Connecting(
             String::from_utf8_lossy(&complained).trim().to_owned(),
         ));
     }
@@ -275,6 +365,59 @@ mod tests {
             pipe.write_all(input).expect("the input is taken");
         }
         shell.wait().expect("the shell ends").success()
+    }
+
+    /// A connection `ssh` itself could not make is tried again.
+    ///
+    /// A shared bastion drops unauthenticated connections at random once ten are
+    /// in flight (RFC 0001 §5.10), and the three commands delivery sends are
+    /// idempotent: a file test, `uname -m`, and a copy that writes beside and
+    /// moves into place. So asking again costs a round trip and risks nothing.
+    #[test]
+    fn a_connection_ssh_could_not_make_is_tried_again() {
+        let tries = std::cell::Cell::new(0);
+        let outcome = super::attempted(std::time::Duration::ZERO, || {
+            tries.set(tries.get() + 1);
+            if tries.get() < 3 {
+                Err(super::Refused::Connecting(
+                    "kex_exchange_identification".to_owned(),
+                ))
+            } else {
+                Ok("delivered")
+            }
+        });
+
+        assert_eq!(outcome.ok(), Some("delivered"));
+        assert_eq!(tries.get(), 3, "it asked again until it got through");
+    }
+
+    /// What the far side answered is not asked again. It would say the same
+    /// thing, and a machine that is out of room or of the wrong architecture is
+    /// not a machine that was unlucky.
+    #[test]
+    fn a_far_side_that_answered_is_not_asked_twice() {
+        let tries = std::cell::Cell::new(0);
+        let outcome = super::attempted(std::time::Duration::ZERO, || {
+            tries.set(tries.get() + 1);
+            Err::<&str, _>(super::Refused::Answered("no such file".to_owned()))
+        });
+
+        assert!(outcome.is_err());
+        assert_eq!(tries.get(), 1, "an answer is an answer");
+    }
+
+    /// And a connection that never comes gives up rather than holding a worker
+    /// of the pool for ever.
+    #[test]
+    fn a_connection_that_never_comes_gives_up() {
+        let tries = std::cell::Cell::new(0);
+        let outcome = super::attempted(std::time::Duration::ZERO, || {
+            tries.set(tries.get() + 1);
+            Err::<&str, _>(super::Refused::Connecting("timed out".to_owned()))
+        });
+
+        assert!(outcome.is_err());
+        assert_eq!(tries.get(), super::ATTEMPTS);
     }
 
     /// A far side that fills its standard error while the copy is being written to
