@@ -290,6 +290,17 @@ command and whether the plan describes its effect.
 
 The wire carries it and the executor runs it; no provider emits one yet.
 
+Protocol 5 tightened what may come back. A file write is answered with a digest
+of what the path holds afterwards rather than with its contents, sealed for the
+machine when the write carries a secret — the provider marks the write, the
+engine checks the mark against the names it settled, and a mark that is missing
+stops the change before anything is sent. A private process answers its status
+and a sealed digest of everything it printed, so a program handed a credential
+cannot bring it home in its output or in a failure. A failure says where it
+stopped: before anything, at a premise, at an operation, or at an observation.
+And a frame is read to its end, refusing a key nobody defined, because bytes
+nobody looks at are bytes a peer has somewhere to put.
+
 ## A plan carries its premise — [0034](decisions/0034-a-plan-carries-its-premise.md) · partly built
 
 Between looking and acting the machine can change, and reading everything once

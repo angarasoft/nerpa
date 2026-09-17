@@ -9,6 +9,14 @@
   as its reason rather than the version. The machine was refused all the same.
   Frames are now read stamp first, so from version 3 on a newer frame is refused
   as a version.
+- Corrected: 2026-09-18 — refusing by name is not the same as being heard. An
+  executor of protocol 4 handed a version 5 frame writes the refusal to its
+  standard error and exits without answering, and the conversation let that
+  standard error through to whatever terminal the run had: what reached the
+  report was a pipe that broke. It is kept now, to its last 64 KiB, and quoted
+  beside the build this nerpa carries — and a connection `ssh` could not make is
+  tried again before the machine is called one that will not answer. RFC 0001
+  §5.3, P4-9 and P4-11.
 
 ## Context
 
