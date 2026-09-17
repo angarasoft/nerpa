@@ -1,14 +1,14 @@
 # RFC 0001. Applying machines in parallel, with state in shards
 
-- Status: in review; revision 5; its sixth review logged (§9)
+- Status: in review; revision 6, after the sixth review (§9); a narrow round of P and S pending
 - Date: 2026-09-11
-- Revised: 2026-09-11, after each of five reviews
+- Revised: 2026-09-17, after each of six reviews
 - Scope: what was step 1. Replacing an installed executor is
   [RFC 0002](0002-replacing-an-installed-executor.md), and streamed batches are
   [RFC 0003](0003-streamed-batches.md). The file keeps its first name, because
   reviews and commits cite it.
 - Touches: 0006, 0015, 0020, 0026, 0027, 0028, 0031, 0033, 0034, 0040, 0041, 0042,
-  0043; `INV-APPLY-001` (new), `INV-BATCH-001`, `INV-PLAN-005`, `INV-PLAN-007`,
+  0043; `INV-APPLY-001` (new), `INV-BATCH-001`, `INV-DELIVERY-001`, `INV-PLAN-005`, `INV-PLAN-007`,
   `INV-PLAN-008` to `INV-PLAN-012`, `INV-PREMISE-002`, `INV-REACH-001`,
   `INV-REACH-002`, `INV-REACH-004`, `INV-REACT-002`, `INV-REACT-006`,
   `INV-SECRET-*`, `INV-STATE-002`, `INV-STATE-004`, `INV-STATE-005`,
@@ -163,7 +163,12 @@ record (`6e5bec8`). A plan's number is written down (`27b2a2a`). A replacement c
 recorded inside it (`684c024`). A file moved onto a path a removal frees is replaced
 (`d7b74fd`). A read interrupted inside a frame carries on (`93d3912`). A file mode
 is compared as the number it spells (`0285b88`). What waits for something that cannot
-be planned says so, apart from what is out of reach (`d78c674`).
+be planned says so, apart from what is out of reach (`d78c674`). A replacement
+comes after only what can move out of it (`6526a4f`). A file declared where
+another moves away from is made after the move (`cfd3502`). A mode written as a
+number is the mode the file gets (`6bee2fe`). A held removal is said to wait for
+its root (`809cb9d`). An executor cut short in delivery is never taken for a
+whole one (`51d8b54`).
 
 **Decided by the owner.**
 
@@ -183,6 +188,8 @@ be planned says so, apart from what is out of reach (`d78c674`).
   says so** (§5.4); **under `continue`, a change that failed after its operations
   leaves an entry for removal only** (§5.6); **revision 5 is reviewed again, fully,
   for P and S.**
+- After the sixth: **revision 6 is reviewed narrowly, for P and S, over §5.5 to
+  §5.8, §5.13 and the code built since**, and accepted if nothing blocks.
 
 **Not decided, and what this RFC settles.**
 
@@ -272,9 +279,10 @@ trait Provider: Send + Sync {
     fn prepare(&self, change: &Prepared<'_>) -> Result<Planned, ProviderError>;
 
     /// What the change became, from exactly the answers to its own operations,
-    /// once all of them have run. A file write that the engine checked arrives as
-    /// `Seen::Written`.
-    fn conclude(&self, change: &Concluding<'_>, became: &[Seen])
+    /// once all of them have run. `Answered` is the engine's, not the wire's: it
+    /// carries what came back, and `Written` for a file write whose digest the
+    /// engine checked (P6-11).
+    fn conclude(&self, change: &Concluding<'_>, became: &[Answered])
         -> Result<Concluded, ProviderError>;
 
     /// What the next run does with this change if a run marked it and never
@@ -293,7 +301,8 @@ pub struct Planned {
     /// change is recorded as forgotten after them. `None` for every other change.
     pub forget_after: Option<usize>,
     /// For each operation that writes a file, the attributes it carries, so the
-    /// engine knows what a matching digest confirms.
+    /// engine knows what a matching digest confirms. Counted over the operations
+    /// of the whole change, a replacement's two halves included.
     pub carries: BTreeMap<usize, BTreeSet<String>>,
 }
 
@@ -326,7 +335,14 @@ The rules:
   digest comes from what was sent (C4-3). `Planned::carries` names the attributes
   each write carries: before sending, the engine refuses a change whose secret
   attribute no write carries, or one carries without the secret flag, and a matching
-  digest confirms exactly those attributes (P5-5).
+  digest confirms exactly those attributes (P5-5). What `conclude` then reports for
+  one of them is refused, so that two claims about one attribute cannot disagree,
+  and a secret carried by anything but a file write — a process's input — is refused
+  in step 1 (P6-12).
+- **Each operation is answered with one shape,** and any other is a contract
+  violation: a file write with a digest, sealed or plain; a process with its status
+  and output, or with sealed digests when it is private; a directory with what was
+  read; a removal with nothing (P6-11).
 - **A refusal from `conclude` follows operations that ran.**
 - **A replacement interrupted between its halves stays forgotten,** and reading
   resolves the rest.
@@ -443,14 +459,18 @@ buffer that keeps its last 64 KiB, for the report.
    route slot, taking the global slot and the route slot together, and takes routes
    in turn among those with a free slot and a machine waiting (B4-4). A machine's
    route is what `ssh -G`, run with the fleet's configuration, says its first hop
-   is: the first host of `proxyjump`, with its user and port written out, else the
-   `proxycommand`, else the `hostname` (P4-8, P5-13). `ssh -G` runs any `Match exec`
-   in that configuration, once per machine and outside the slots. A fleet may name
-   routes itself, with a slot size each, and then its names win. Applying reuses the
+   is: the first `proxyjump`, resolved by asking `ssh -G` about that hop in turn
+   until one has none, and taken as its user, host and port; else the unsubstituted
+   `proxycommand`; else the `hostname` (P4-8, P5-13, P6-6). `ssh -G` runs any
+   `Match exec` in the configuration, once for each hop of each machine and outside
+   the slots, which is its cost. A fleet may name routes itself, saying which
+   machines are on each and how many slots it has, and then its names win. Applying reuses the
    connections reading opened and takes no route slot.
 6. **Send** each change as its `Perform`s (§5.1). On each machine, a request is
-   written only once the write recording the change before it, and marking this
-   one, is durable (§5.6).
+   written only once the write recording the change before it, and marking this one,
+   is durable (§5.6). A change takes a slot of the pool when it is ready — everything
+   it waits for recorded, its debts durable — and gives it back with the write that
+   records its outcome, so a machine waiting for another's record holds none (P6-2).
 7. **The recorder owns what state says and in what order,** and has a writer per
    shard, writing in parallel, each with group commit. That corrects 0031's "state
    is written from one place". Measured on this control machine in one session, one
@@ -486,8 +506,9 @@ with its cause, and the run exits with a failure.
   after what it depends on (built, `85200af`).
 - **`waits_for`,** a list on each change, shown and part of the number but never
   recorded, so that the next plan is never a reorder for an edge that only ordered
-  this one (S4-2, S5-16). The planner builds it from every edge below; today they are
-  only places in stages (`684c024`):
+  this one (S4-2, S5-16). The planner builds it from every edge below, through
+  resources that do not change as the order it computes already does (S6-9); today
+  they are only places in stages (`684c024`):
   - the removal of X after the removal of every doomed Y whose record names X;
   - the removal of X after the change of every declared Y whose record names X
     (built, `3d2d383`, `INV-PLAN-011`);
@@ -509,10 +530,12 @@ written, and as not begun otherwise.
 | `Moved`, a premise, or an index out of range, on a later `Perform` | a contract violation: premises go on the first `Perform` only | ended | in flight |
 | `Failed` at an operation | failed after the operations before it ran | kept | an entry: pending for `SendAgain`, for removal only for `Read` (S5-10) |
 | A write digest that does not match, a `Seen` of the wrong shape, or `conclude` refuses | failed after its operations ran | kept | as above |
-| `Failed` `Before`, or an answer of the wrong kind or count | a contract violation | ended | in flight |
-| An answer that does not decode (`Malformed`, `Version`) | a contract violation by the far end | ended | in flight |
-| End of file (`Truncated`, `Connection`), `ssh` exiting 1 | a contract violation: the executor refused a request it could not decode, and its standard error says why | ended | in flight |
-| End of file, `ssh` exiting 255 or killed | a conversation lost: that machine's remaining changes and what waits for them are refused | ended | in flight; the machine is held (§5.8) |
+| `Failed` `Before`, an answer of the wrong kind, count or shape, or an index out of range | a contract violation | ended | in flight |
+| Anything that does not decode, or is too large to be a frame (`Malformed`, `Version`, `TooLarge`) | a contract violation by the far end | ended | in flight |
+| No answer, and the transport exited 255, or died of a signal this engine did not send | a conversation lost: that machine's remaining changes and what waits for them are refused | ended | in flight; the machine is held (§5.8) |
+| No answer, and the transport exited any other way, or the request could not be written | a contract violation, with the end of the transport's standard error | ended | in flight |
+| No answer, because this engine killed the transport | unknown | ended | in flight; the machine is held |
+| A change begun, whose request was never written | not begun | kept | put back by the write that records the stop, or left in flight if that cannot be written (P6-13) |
 | The wait after a stop ends with no answer | unknown | killed | in flight; the machine is held |
 | A shard write fails after `Done` | always a stop; done on the machine, not in state | kept until the stop | in flight; the machine is held |
 | A failure to prepare | `stop`: nothing more begins; `continue`: that change and what waits for it are refused | — | none written |
@@ -536,8 +559,9 @@ never as one that did not answer to begin with (`INV-REACH-002`).
 **Invariants.** `INV-REACH-002` keeps its wording, is scoped to planning, and names a
 held machine (§5.8). A new invariant, `INV-APPLY-001`: **a change begins, by any
 path, only once every change it waits for is recorded, a replacement by the record of
-its create; and under `stop`, none begins after the stop flag is set** (S4-13,
-S5-12). A change begins when the recorder accepts its mark. One refusal check in the recorder, which
+its create, and every debt it leaves in another shard is durable; and under `stop`,
+none begins after the stop flag is set** (S4-13, S5-12, S6-13). A change that sends
+nothing begins when the recorder accepts the record that is all of it. A change begins when the recorder accepts its mark. One refusal check in the recorder, which
 every path consults, enforces it: a `Perform`, a control-domain change, an adoption
 and a reorder alike. It is tested through a control-domain fake. The postcondition in
 `apply` becomes: each change is in exactly one outcome, the outcomes add up to the
@@ -582,8 +606,9 @@ durably holds, in one write:
 
 - the record of the change before it, or of that change's forget point;
 - the **mark** of the change about to be sent, in flight: its address, kind,
-  locator, settled non-secret values, edges, the time, and whether it is past its
-  forget point;
+  locator, settled non-secret values, edges, the time, whether it is past its forget
+  point, what its provider's `afterwards` said when it was written (S6-14), and the
+  entry it replaced, if it replaced one (S6-6);
 - the debts this change leaves on reactors in the same shard (§5.4).
 
 The write that records a change's outcome settles its mark (§5.5). It goes with the
@@ -591,6 +616,10 @@ next mark when the machine's next request is ready, and on its own as soon as it
 not, so a finished change is never held back behind one waiting on another machine
 (S5-7). A change costs one durable write while its machine has work ready, and no file
 is shared between shards (B4-1, S4-6, P4-5).
+
+**The mark is written, and then the change is prepared** (S6-8): a failure to
+prepare therefore puts the mark back, as a failure at a premise does, and nothing
+waits on a secret's fetch to have its record written.
 
 **A mark's states** (S5-6, P5-1). A mark is **in flight** from the write before its
 request until the write that records the answer, and only a mark in flight holds its
@@ -629,11 +658,12 @@ next mark replaces it.
 
 | The entry | Its declaration | Planned |
 | --- | --- | --- |
-| `SendAgain` | still declared | the declaration's change; or, where that would send nothing, the entry's kind, resent |
+| `SendAgain` | still declared, and the reading matches it | the entry's kind again, resent |
+| `SendAgain` | still declared, and the reading does not | the declaration's change, not resent |
 | `SendAgain` | gone | a removal built from the entry's locator, which joins the removals' order, holds and names (`INV-PLAN-009` to `INV-PLAN-011`) with the entry's edges |
-| for removal only | still declared | the declaration's change, whose record clears it |
+| for removal only | still declared | the declaration's change; where that would send nothing, a record written from the reading at the entry's locator, which clears it (S6-4) |
 | for removal only | gone | a removal built from the entry's locator, as above |
-| a removal | declared again | the declaration's change, sending something |
+| a removal | declared again | the declaration's change; where that would send nothing, a create from the declaration, never the removal again (S6-4) |
 | a removal | still gone | the removal again, since already being gone is not a failure |
 | any | on a machine that did not answer, or held | kept, and not planned |
 
@@ -646,6 +676,10 @@ same commit (S4-17).
 **Clearing.** An entry is cleared only by the record of a change for its address that
 sent something, by a removal's forget, or by a person with
 `nerpa release --entry <address>` (S5-18).
+
+**Where a resource is read.** At its record's locator, as `INV-STATE-003` says; and
+where there is no record but an entry, at the entry's locator, so that what a failed
+change made is found and not left unnamed (S6-5).
 
 **What a record holds for a file's content.** What the engine sent, once the answer's
 digest confirms it: the value for plain content, as today, and the keyed digest for a
@@ -707,13 +741,17 @@ however it ends. Its descriptor is close-on-exec, which is Rust's default, and t
 is a requirement: a transport that inherited it would hold the lock for as long as it
 outlived nerpa, about a minute on Teleport (§2.3). Every command that writes the
 directory takes it: `apply`, `release`, the migration and the downgrade (P4-13,
-S4-19). `plan` takes it shared, so it never reads a live run's marks as holds, and
-says a run is in progress when it cannot (P5-15). It keeps out another live run and
+S4-19). `plan` takes it shared, so it never reads a live run's marks as holds, and says a
+run is in progress when it cannot (P5-15); a shared lock keeps out `apply`, `release`
+and the migration for as long as the plan takes, and `plan` refuses a version 4 file
+rather than migrating it, naming the command that does (P6-15). It keeps out another live run and
 nothing else.
 
-**Held machines.** A machine whose shard holds a mark in flight from a run that ended is held.
+**Held machines.** A machine whose shard holds a mark in flight from a run that ended is held, and so
+is the control domain, whose shard is `control` and which is released by that name
+(S6-12).
 The next run reads nothing from it and plans nothing on it, and says so: the plan
-carries `Held { node, since, changes }` beside `Unreachable` and `Waiting` (built,
+carries `Held { node, since, changes }` beside `Unreachable` and the built `Waiting` (
 `d78c674`), counted by `is_complete`; a plan with a hold has no number, as one with
 anything out of reach has none (S5-19). A hold spreads along edges exactly as
 unreachability does, removals and reactions included (S4-11). A held machine is not
@@ -722,16 +760,19 @@ reported as one that did not answer, and `INV-REACH-002` names the hold.
 **Releasing.** In this RFC only a person releases a machine, with
 `nerpa release <machine>`, because protocol 5 cannot show that nothing of the old run
 is still running there; RFC 0003 designs what could. `release` takes `lock`, and
-refuses beside a live run. It settles the machine's marks in flight and nothing else: the mark of a
-`SendAgain` change becomes its pending entry, and the mark of a `Read` change is
-dropped, so the next run reads it. Entries, records and debts stay, and entries do not
+refuses beside a live run. It settles the machine's marks in flight and nothing else, keeping whichever
+says more: the mark of a `SendAgain` change becomes its pending entry; the mark of a
+`Read` change becomes an entry for removal only, since its change may have made
+something; and an entry the mark replaced comes back if it said more than either
+(S6-6, P6-10). Entries, records and debts stay, and entries do not
 hold a machine (S5-6). `nerpa release --entry <address>` drops one entry whose resend
 cannot succeed, under the same lock (S5-18). The tests: a released machine with an
 entry is not held, and the entry is resent; `release` refuses while a run holds the
 lock.
 
-**Stops end at change boundaries** (P4-3). A signal, the first failure under `stop`,
-and a panic each set the stop flag, and no worker then begins a change. A change past
+**Stops end at change boundaries** (P4-3). A stop is anything that sets the stop
+flag — a signal, the first failure under `stop`, a contract violation, a failure to
+write state, a panic — and no worker then begins a change (P6-4). A change past
 its forget point sends its create within the wait unless its own answer failed, so a
 stop of its own never leaves a path removed and not made again on a machine that did
 not fail. One that cannot finish within the wait is reported as stopped at its forget
@@ -742,7 +783,8 @@ one, and say so (P5-16).
 waits a bounded time for the answers in flight, recording them as they come. A second
 signal kills the transports, except that a SIGHUP and a SIGTERM within a second of
 each other, as a closing terminal sends them, count as one; a second SIGINT always
-counts (P4-16). A third ends the process at once, whatever it is waiting in. The
+counts (P4-16). Signals are counted in the handler itself, and the third ends the
+process there, whatever any thread is waiting in (P6-7). The
 handler writes to the pipe only in the engine's own process, so a child between
 `fork` and its `pre_exec` cannot make one signal count twice (P5-17).
 Signals are taken through a self-pipe, never by blocking or ignoring them in the
@@ -757,13 +799,16 @@ the answers when it continues.
 
 **Ending a wait** (P4-6). Each transport's kill handle is kept outside the
 conversation's mutex, so a stop can end a blocked read. Every wait, for a record, a
-debt or an answer, also watches the stop flag. Every stop, whether a signal, the
-first failure under `stop`, a failed state write or a panic, starts the same bounded
-wait for the answers in flight. When it ends, a supervisor flushes the recorder,
-writes the reports, naming the machines still in flight, and kills the transports
-(P5-2). A transport is killed as its process group, before it is reaped and under the
-lock that reaps it, so a proxy it started cannot hold its standard error open and a
-reused pid is never killed; the standard error is drained for a bounded time (P5-7).
+debt or an answer, also watches the stop flag. Every stop starts the same bounded wait for the answers in flight. When it ends,
+a supervisor kills the transports, then flushes the recorder, then writes the
+reports, naming the machines still in flight, so that no answer arrives after the
+report that names it (P5-2, P6-9). The supervisor waits for no call into a provider —
+a control-domain change, a secret's fetch — and ends the process when one is still
+running, which the marks name (P6-4). A report is always written into the directory,
+under its own name, because the terminal may be gone (P6-9). A transport is killed as its process group, before it is reaped, so a proxy it
+started cannot hold its standard error open; nothing waits for the reaper while
+holding what the kill needs (P6-7), and the standard error is drained for a bounded
+time (P5-7).
 A thread left in a read ends with its pipe. A panic in the recorder ends the process
 once the reports are written, since nothing else can record. The marks name the
 machines.
@@ -800,13 +845,13 @@ Stated, not changed.
 
 | Limit | Value | Consequence | Response |
 | --- | --- | --- | --- |
-| OpenSSH `MaxStartups` on a shared bastion | `10:30:100` by default | More than 10 unauthenticated connections start being dropped at random | A slot per route while opening and delivering, default 8, inside the global 16, both in the fleet's `[apply]` table, and a size per named route; the route from `ssh -G` (§5.4); delivery and handshake retried as §5.3; recommend `ControlMaster` on the jump hop |
+| OpenSSH `MaxStartups` on a shared bastion | `10:30:100` by default | More than 10 unauthenticated connections start being dropped at random | A slot per route while opening and delivering, default 8, inside the global 16, both in the fleet's `[apply]` table, and a size per named route; the route from `ssh -G` (§5.4); delivery and handshake retried as §5.3; recommend `ControlMaster` with `ControlPersist` on the jump hop, since a master without it sits in the first transport's process group and dies with it (P6-8) |
 | OpenSSH `MaxSessions` | 10 per connection | Forwarding channels are not named | Verify before relying on multiplexing through a jump host (§8) |
 | Teleport role `max_sessions`, proxy `connection_limits` | 10 per connection; 1000 per client address | nerpa opens one session per connection | From Teleport's documentation, not measured on this proxy |
 | One `ssh` process per machine | `W-014` | Memory and process count on the control machine | Bounded by the pool; a conversation holds no thread of its own in this RFC |
 | Durable state writes | 2 `fsync` per write; a write costs its shard | One write per `Perform` | A writer per shard with group commit (§5.4, §5.6) |
 | Memory | about three copies of a change per machine in flight | about 1.5 GiB at sixteen machines, at the largest change | The pool size (§5.9) |
-| A request that never answers | no deadline | Holds what waits for it, a slot of the pool and its prepared change | Named in the report; step 1's cost, by the owner's decision; `W-015` (§8) |
+| A request that never answers | no deadline | Holds what waits for it, the slot it took when it was ready, and its prepared change | Named in the report; step 1's cost, by the owner's decision; `W-015` (§8) |
 | The transport's standard error | a bounded buffer | A verbose route cannot stall `ssh` | The last 64 KiB kept |
 
 ### 5.11 Testing
@@ -829,8 +874,14 @@ Stated, not changed.
   at a premise keeps the earlier entry; a released machine with an entry is not held.
 - **Interrupted reads:** a signal handler that does not restart reads, firing inside
   a large answer, loses nothing (built for frames, `93d3912`).
-- **A far end that never answers:** a signal ends the wait, and only what waits for
-  that machine is held back meanwhile.
+- **A far end that never answers:** a signal ends the wait, and meanwhile what waits
+  for that machine, and the slot it holds, are held back with it.
+- **Delivery:** a copy whose input ends early never lands under the executor's name,
+  and a short one already there is delivered again (built, `51d8b54`).
+- **Marks and entries:** a failure after operations leaves an entry and no hold; a
+  resend refused at a premise keeps the earlier entry; `release` keeps whichever of a
+  mark and the entry it replaced says more; a mark in `control` holds the control
+  domain until it is released by name.
 - **Migration:** a crash, and a return with an error, at each step from format 4 to 5 leaves a state that loads, or
   a refusal, and never an empty first run; a version 4 binary run afterwards refuses.
 - **Scheduling:** three routes with more machines than slots; routes are served in
@@ -881,7 +932,11 @@ migration runs again. Its `lock` was never taken, so removing it removes no lock
 holds (S5-8).
 
 **Migrating.** Take the version 4 lock, by exclusive create as version 4 does; the new
-`lock` is made with the directory and taken once `format` is written. Build the directory: `key` carried over from the version 4 file and
+`lock` is made with the directory and taken once `format` is written. `format` carries
+a digest of the version 4 file it was built from, so a migration that stopped after
+writing it can be finished rather than refused: a directory beside a version 4 file of
+that digest, or beside a `<state>.v4` of it, is completed under both locks, and
+anything else is refused by name (S6-7). Build the directory: `key` carried over from the version 4 file and
 checked by recomputing a recorded digest, then every shard, then `format`, each synced,
 and the directory synced. Then link the version 4 file to `<state>.v4` and sync, write beside
 it a file that a version 4 binary refuses by its version, and rename that over
@@ -890,7 +945,8 @@ empty (P4-13, S5-8). `<state>.v4` holds the live key; it may be removed once no
 downgrade is wanted (S4-19).
 
 **One-way, except through the downgrade command,** which takes both locks and refuses
-while any shard holds a mark.
+while any shard holds a mark or an entry, since version 4 has nowhere to keep one
+(S6-7).
 
 | Changes | Protocol | Reinstall | Invariants |
 | --- | --- | --- | --- |
@@ -950,8 +1006,10 @@ while any shard holds a mark.
 - **A package interrupted mid-install is installed again,** whether or not that
   install finished.
 - **A run that stops leaves machines a person must release.**
-- **A request that never answers holds what waits for it, its slot and its prepared
-  change,** until a stop ends the wait (P5-3).
+- **A request that never answers holds what waits for it, the slot it took when it
+  was ready, and its prepared change,** until a stop ends the wait (P5-3).
+- **Delivery counts what it copied** before it moves it into place, and counts what is
+  already there: one more command per machine that has the executor already.
 - **An entry for removal only** is kept for each failure of a `Read` change after its
   operations (S5-10).
 - **A change waits for a reacting resource with no record** on a machine that did not
@@ -1911,3 +1969,33 @@ the planner on copies of `28ab691` and `d11060f`.
 1. **Revision 6, then a narrow round of P and S**: §5.5 to §5.8 and §5.13, where
    the design findings of the last two rounds are, and the code built since. The RFC
    is accepted after it if nothing blocks.
+
+### Revision 6, 2026-09-17
+
+What changed after the sixth review, finding by finding.
+
+| Findings | Answered in | How |
+| --- | --- | --- |
+| S6-1, S6-2, S6-3, S6-10, S6-11, P6-1, P6-5 | §3, §5.3 | Built |
+| P6-2 | §5.4, §5.10 | A sending slot: taken when a change is ready, given back by the write that records its outcome |
+| P6-3 | §5.5, §5.12 | Outcomes classed by what the engine saw, with a fallback for any other exit and any other `WireError` |
+| P6-4 | §5.8 | A stop is whatever sets the flag; the supervisor waits for no provider call |
+| P6-6 | §5.4 | The route resolved hop by hop; `Match exec`'s cost stated; a named route matched in the fleet |
+| P6-7 | §5.8 | Signals counted in the handler, a third ends the process; no blocking reap under the kill |
+| P6-8 | §5.10 | `ControlMaster` only with `ControlPersist` |
+| P6-9 | §5.8 | Kill, flush, report; a report always written into the directory |
+| P6-10, S6-6 | §5.6, §5.8 | A mark carries the entry it replaced; `release` keeps whichever says more |
+| P6-11 | §5.2, §5.3, §5.5 | The shape each operation is answered with; a wrong shape is a contract violation; what `conclude` is handed is the engine's type |
+| P6-12 | §5.2 | `carries` checked before sending and against what `conclude` reports; the digest's input named; a secret through a process refused in step 1 |
+| P6-13, S6-8 | §5.5, §5.6 | The mark is written, then the change is prepared; an unsent mark is put back on a supervised stop |
+| P6-14, P6-15 | §5.8, §5.11, §5.13 | The slot named in the testing section; what a shared lock keeps out; `plan` refuses a version 4 file |
+| S6-4 | §5.6 | A concrete kind in every row of the entry table |
+| S6-5 | §5.6 | An entry's locator is read when there is no record |
+| S6-7 | §5.13 | The version 4 file's digest in `format`, so a migration that stopped can finish |
+| S6-9 | §5.5 | `waits_for` built through resources that do not change |
+| S6-12 | §5.8 | Marks in `control`: held as one, released by name |
+| S6-13 | §5.5 | `INV-APPLY-001` covers changes that send nothing and debts in other shards |
+| S6-14 | §5.6 | A mark records its `afterwards` |
+| S6-15 | §5.8 | `Waiting` is what is built; `Unhashable` names holds |
+
+A narrow round of P and S is pending.
