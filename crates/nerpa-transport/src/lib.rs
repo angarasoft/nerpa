@@ -340,6 +340,7 @@ impl Reach for Held {
                             path,
                             content,
                             mode,
+                            ..
                         } => {
                             let entry = nerpa_proto::Entry::File {
                                 content: content.clone(),

@@ -305,6 +305,14 @@ pub enum Operation {
         content: Vec<u8>,
         /// Permission bits.
         mode: u32,
+        /// Whether what is written here is a secret.
+        ///
+        /// Required, with no default: the far end answers a secret write with a
+        /// sealed digest rather than with what it read back, and a write that
+        /// forgot to say so would have the machine answer with the value. A
+        /// `Perform` carrying one without a seal is refused before anything
+        /// runs. See decision 0027 and `INV-PREMISE-002`.
+        secret: bool,
     },
     /// Run a program, and take what it does as the change.
     ///

@@ -226,6 +226,12 @@ pub struct Prepared<'a> {
     pub resent: bool,
     /// Settled values, secrets included; empty for a removal.
     pub desired: &'a Attributes,
+    /// Which of those names are secrets — the names, never which value is which
+    /// kind of thing beyond that. A provider marks the operation that carries a
+    /// secret, and the engine refuses a change where the marking and this
+    /// disagree, so that two claims have to line up rather than one being
+    /// trusted.
+    pub secret: &'a BTreeSet<String>,
     /// What state recorded, for a replacement and a removal.
     pub recorded: Option<&'a Attributes>,
     /// What the machine said about itself.

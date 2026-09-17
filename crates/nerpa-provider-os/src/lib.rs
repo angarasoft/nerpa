@@ -388,16 +388,23 @@ fn write_of(
     attributes: &Attributes,
     address: &Address,
     provider: &ProviderName,
+    secret: &BTreeSet<String>,
 ) -> Result<Operation, ProviderError> {
     match address.kind().as_str() {
         "directory" => Ok(Operation::Directory {
             path,
             mode: mode(attributes, address, DEFAULT_DIRECTORY_MODE)?,
         }),
+        // Marked by what it carries: the contents of a file are one of the two
+        // places decision 0027 says a secret goes, and a write that carried one
+        // without saying so would be answered with the value.
         "file" => Ok(Operation::File {
             path,
             content: content_of(attributes, address)?,
             mode: mode(attributes, address, DEFAULT_FILE_MODE)?,
+            secret: carried(attributes)
+                .iter()
+                .any(|name| secret.contains(name.as_str())),
         }),
         _ => Err(ProviderError::UnknownKind {
             provider: provider.clone(),
@@ -446,7 +453,13 @@ fn prepare_path(change: &Prepared<'_>, provider: &ProviderName) -> Result<Planne
     }
 
     let path = required_path(change.desired, address)?;
-    operations.push(write_of(path, change.desired, address, provider)?);
+    operations.push(write_of(
+        path,
+        change.desired,
+        address,
+        provider,
+        change.secret,
+    )?);
     let mut carries = BTreeMap::new();
     carries.insert(operations.len() - 1, carried(change.desired));
     Ok(Planned {

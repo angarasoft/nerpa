@@ -496,6 +496,7 @@ fn applied(
         desired: attributes,
         recorded: None,
         facts,
+        secret: &BTreeSet::new(),
     })?;
     let became = answered(planned, address, reach)?;
     let secret = BTreeSet::new();
@@ -532,6 +533,7 @@ fn removed(
         desired: &nothing,
         recorded: Some(recorded),
         facts,
+        secret: &BTreeSet::new(),
     })?;
     let became = answered(planned, address, reach)?;
     let secret = BTreeSet::new();

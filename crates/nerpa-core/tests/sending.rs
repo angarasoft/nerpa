@@ -92,7 +92,11 @@ fn said(operations: &[Operation]) -> String {
 
 /// Writes files, and reaches nothing: it is handed no connection to reach with.
 #[derive(Debug)]
-struct Writes;
+struct Writes {
+    /// Whether its write says it carries what it was given. A write that
+    /// carries nothing confirms nothing.
+    carrying: bool,
+}
 
 impl Provider for Writes {
     fn name(&self) -> &nerpa_core::Provider {
@@ -140,12 +144,22 @@ impl Provider for Writes {
                 path: path(change.desired),
                 content: b"hello\n".to_vec(),
                 mode: 0o644,
+                secret: false,
             });
+        }
+        let mut carries = BTreeMap::new();
+        if self.carrying && change.kind != Sending::Delete {
+            carries.insert(
+                operations.len() - 1,
+                ["content".to_owned(), "path".to_owned()]
+                    .into_iter()
+                    .collect::<BTreeSet<_>>(),
+            );
         }
         Ok(Planned {
             operations,
             forget_after,
-            carries: BTreeMap::new(),
+            carries,
         })
     }
 
@@ -165,7 +179,7 @@ impl Provider for Writes {
     }
 
     fn fake() -> Self {
-        Self
+        Self { carrying: false }
     }
 }
 
@@ -183,7 +197,13 @@ fn graph_of(path: &str) -> Graph {
 /// Runs the plan the graph asks for, against a machine that writes down what it
 /// was asked, and a recorder that writes down what state said.
 fn run(graph: &Graph, observed: &Observed, state: State) -> (Ledger, State) {
-    let (ledger, state, outcome) = attempt(graph, observed, state, secrets());
+    let (ledger, state, outcome) = attempt(
+        graph,
+        observed,
+        state,
+        secrets(),
+        Writes { carrying: false },
+    );
     outcome.expect("applied");
     (ledger, state)
 }
@@ -194,9 +214,10 @@ fn attempt(
     observed: &Observed,
     mut state: State,
     secrets: Secrets<'_>,
+    provider: Writes,
 ) -> (Ledger, State, Result<(), RunError>) {
     let ledger = Ledger::default();
-    let providers = Providers::new().with(Box::new(Writes));
+    let providers = Providers::new().with(Box::new(provider));
     let machines = Machines::new().everywhere(Box::new(Telling(ledger.clone())));
     let intended = plan(graph, observed, &state, &providers.schema(), secrets).expect("plannable");
 
@@ -276,11 +297,8 @@ fn a_replacement_is_forgotten_between_the_half_that_removes_and_the_half_that_ma
 /// What a provider says a write carries is what a matching answer confirms. A
 /// secret no write carries would be sent and then confirmed by nothing, and
 /// state would record a digest of a value nobody checked arrived. RFC 0001 §5.2.
-#[test]
-fn a_secret_no_write_carries_is_refused_before_anything_is_sent() {
-    let store = Remembered::new().holding("db/password", "correct-horse");
-    let secrets = Secrets::new(&DIGEST_KEY, &store);
-
+/// One file whose contents are a secret held in the store.
+fn graph_of_a_secret() -> Graph {
     let mut graph = Graph::new();
     graph.preexisting(address(MOTD).target().unwrap().clone());
     graph
@@ -297,11 +315,55 @@ fn a_secret_no_write_carries_is_refused_before_anything_is_sent() {
                 ),
         )
         .unwrap();
+    graph
+}
 
-    let (ledger, _, outcome) = attempt(&graph, &Observed::new(), State::new(), secrets);
+#[test]
+fn a_secret_no_write_carries_is_refused_before_anything_is_sent() {
+    let store = Remembered::new().holding("db/password", "correct-horse");
+    let secrets = Secrets::new(&DIGEST_KEY, &store);
+
+    let (ledger, _, outcome) = attempt(
+        &graph_of_a_secret(),
+        &Observed::new(),
+        State::new(),
+        secrets,
+        Writes { carrying: false },
+    );
 
     let Err(RunError::Uncarried { attribute, .. }) = outcome else {
         panic!("a secret nothing carries is not a change that can be sent: {outcome:?}");
+    };
+    assert_eq!(attribute, "content");
+    assert!(
+        ledger.read().iter().all(|line| !line.starts_with("sent ")),
+        "and it is refused before the machine is asked anything: {:?}",
+        ledger.read()
+    );
+}
+
+/// Carrying a secret is not the same as saying so.
+///
+/// The write that sets a secret is marked secret on the wire, because that is
+/// what makes the far end answer with a sealed digest rather than with what it
+/// read back — and an unmarked write would have the machine answer with the
+/// password itself. The provider marks it and the engine checks the mark, so a
+/// provider that forgets is caught by something that did not write the mark.
+#[test]
+fn a_secret_carried_by_a_write_that_is_not_marked_secret_is_refused() {
+    let store = Remembered::new().holding("db/password", "correct-horse");
+    let secrets = Secrets::new(&DIGEST_KEY, &store);
+
+    let (ledger, _, outcome) = attempt(
+        &graph_of_a_secret(),
+        &Observed::new(),
+        State::new(),
+        secrets,
+        Writes { carrying: true },
+    );
+
+    let Err(RunError::Unflagged { attribute, .. }) = outcome else {
+        panic!("a write that carries a secret and does not say so is not sent: {outcome:?}");
     };
     assert_eq!(attribute, "content");
     assert!(

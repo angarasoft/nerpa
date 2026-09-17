@@ -58,6 +58,7 @@ fn every_operation_survives_the_trip() {
                 path: "/etc/app/conf".to_owned(),
                 content: "listen 80;\nserver_name пример;\n".into(),
                 mode: 0o640,
+                secret: false,
             },
             Operation::Remove {
                 path: "/etc/old".to_owned(),
@@ -314,6 +315,7 @@ fn a_large_but_reasonable_file_still_fits() {
             path: "/var/big".to_owned(),
             content: content.clone(),
             mode: 0o644,
+            secret: false,
         }],
         seal: None,
     };

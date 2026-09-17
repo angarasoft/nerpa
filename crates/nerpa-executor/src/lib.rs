@@ -102,6 +102,23 @@ fn look(observations: &[Observation], seal: Option<&Seal>) -> Answer {
 
 fn perform(premise: &[Premise], operations: &[Operation], seal: Option<&Seal>) -> Answer {
     // ENFORCES: INV-PREMISE-002
+    // A secret write is answered with a sealed digest, and there is nothing to
+    // seal it with. Refused before anything runs rather than answered with what
+    // was read back, which for a secret write is the secret.
+    if seal.is_none()
+        && operations
+            .iter()
+            .any(|operation| matches!(operation, Operation::File { secret: true, .. }))
+    {
+        return Answer::Failed {
+            at: At::Before,
+            problem: "a write carrying a secret arrived without a seal, and its answer \
+                      cannot be sealed"
+                .to_owned(),
+        };
+    }
+
+    // ENFORCES: INV-PREMISE-002
     // Compared sealed or not at all. A premise that arrived bare would be
     // compared against an unkeyed digest, which is the digest a plan's JSON must
     // not carry, so it is refused before anything is looked at. Decision 0041.
@@ -249,6 +266,7 @@ fn act(operation: &Operation) -> Result<Seen, String> {
             path,
             content,
             mode,
+            ..
         } => {
             let path = Path::new(path);
             if let Some(parent) = path.parent() {

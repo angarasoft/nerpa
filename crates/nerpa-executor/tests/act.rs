@@ -114,6 +114,7 @@ fn what_it_did_is_read_back_rather_than_echoed() {
             path: file.display().to_string(),
             content: b"hello\n".to_vec(),
             mode: 0o600,
+            secret: false,
         }],
     ) else {
         panic!("it should have written the file")
@@ -147,6 +148,7 @@ fn a_batch_whose_premise_moved_does_nothing_and_says_which() {
         path: written.display().to_string(),
         content: b"hello\n".to_vec(),
         mode: 0o644,
+        secret: false,
     };
 
     assert!(
@@ -372,6 +374,7 @@ fn a_premise_that_arrives_without_its_seal_is_refused_before_anything_is_done() 
             path: written.display().to_string(),
             content: b"hello\n".to_vec(),
             mode: 0o644,
+            secret: false,
         }],
         seal: None,
     });
@@ -400,6 +403,7 @@ fn a_premise_sealed_for_another_machine_does_not_hold() {
         path: written.display().to_string(),
         content: b"hello\n".to_vec(),
         mode: 0o644,
+        secret: false,
     };
 
     assert_eq!(
@@ -475,6 +479,7 @@ fn a_refusal_before_anything_is_not_where_the_first_premise_is() {
         path: written.display().to_string(),
         content: b"hello\n".to_vec(),
         mode: 0o644,
+        secret: false,
     };
 
     // Refused before anything is looked at: a premise arrived bare.
@@ -516,4 +521,35 @@ fn a_refusal_before_anything_is_not_where_the_first_premise_is() {
         "a refusal before anything and a failure at the first premise are different places"
     );
     assert!(!written.exists(), "and neither of them wrote anything");
+}
+
+/// A write carrying a secret is answered with a sealed digest, and without a
+/// seal there is nothing to answer with — so it is refused before it runs.
+///
+/// Refused rather than answered with what was read back: for a file whose
+/// contents are a password, what was read back is the password. The same
+/// reasoning as a premise that arrives bare, and the same invariant.
+#[test]
+fn a_write_carrying_a_secret_without_a_seal_is_refused_before_anything() {
+    let scratch = scratch();
+    let written = scratch.path().join("shadow");
+
+    let refused = answer(&Ask::Perform {
+        plan: None,
+        premise: Vec::new(),
+        operations: vec![Operation::File {
+            path: written.display().to_string(),
+            content: b"correct-horse\n".to_vec(),
+            mode: 0o600,
+            secret: true,
+        }],
+        seal: None,
+    });
+
+    let Answer::Failed { at, problem } = refused else {
+        panic!("a secret write without a seal is refused, and was answered {refused:?}")
+    };
+    assert_eq!(at, At::Before);
+    assert!(problem.contains("seal"), "{problem}");
+    assert!(!written.exists(), "and nothing was written");
 }

@@ -696,6 +696,15 @@ without ceremony until the first stage is complete.
   deliberate exception: it reads one field out of a frame whose body this end has
   not decided to believe yet.
 
+- A write that carries a secret says so on the wire, and is refused without a
+  seal. The far end answers a marked write with a sealed digest instead of with
+  what it read back — which, for a file whose contents are a password, is the
+  password. The provider marks the write, because it is what knows which
+  operation carries which attribute, and the engine refuses before sending a
+  change whose secret is carried by an operation that does not say so: two claims
+  that have to line up rather than one that is trusted. `INV-PREMISE-002` covers
+  it now.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

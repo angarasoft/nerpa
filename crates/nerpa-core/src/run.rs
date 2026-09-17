@@ -357,6 +357,7 @@ pub fn apply(
             // provider has to know to restart it as well.
             let roused = !(change.roused_by().is_empty() && change.owed().is_empty());
 
+            let secret = secret_names(change);
             let planned = provider.prepare(&Prepared {
                 address,
                 kind,
@@ -366,15 +367,11 @@ pub fn apply(
                 desired: &desired,
                 recorded: recorded.as_ref(),
                 facts,
+                secret: &secret,
             })?;
 
-            let (shown, secret) = told(change, kind, &desired, recorded);
-            if let Some(attribute) = uncarried(&planned, &secret) {
-                return Err(RunError::Uncarried {
-                    address: address.clone(),
-                    attribute,
-                });
-            }
+            let shown = told(kind, &desired, recorded, &secret);
+            withheld(&planned, &secret, address)?;
             let became = send(planned, reach, change, state, record)?;
             let result = match provider.conclude(
                 &Concluding {
@@ -588,6 +585,33 @@ fn send(
     Ok(became)
 }
 
+/// What a change may not be sent with: a secret nothing carries, and a secret
+/// carried by an operation that does not say it is carrying one.
+///
+/// # Errors
+///
+/// Returns [`RunError::Uncarried`] or [`RunError::Unflagged`], both of them
+/// before anything is sent.
+fn withheld(
+    planned: &Planned,
+    secret: &BTreeSet<String>,
+    address: &Address,
+) -> Result<(), RunError> {
+    if let Some(attribute) = uncarried(planned, secret) {
+        return Err(RunError::Uncarried {
+            address: address.clone(),
+            attribute,
+        });
+    }
+    if let Some(attribute) = unflagged(planned, secret) {
+        return Err(RunError::Unflagged {
+            address: address.clone(),
+            attribute,
+        });
+    }
+    Ok(())
+}
+
 /// The first secret attribute no operation of this change claims to carry.
 ///
 /// `Planned::carries` names, for each operation that writes, the declared
@@ -612,27 +636,52 @@ fn uncarried(planned: &Planned, secret: &BTreeSet<String>) -> Option<String> {
 /// and stops there. A removal is told what state recorded, because the
 /// declaration that described it is gone.
 fn told(
-    change: &Change,
     kind: Sending,
     desired: &Attributes,
     recorded: Option<Attributes>,
-) -> (Attributes, BTreeSet<String>) {
-    let secret: BTreeSet<String> = change
+    secret: &BTreeSet<String>,
+) -> Attributes {
+    if kind == Sending::Delete {
+        return recorded.unwrap_or_default();
+    }
+    desired
+        .iter()
+        .filter(|(name, _)| !secret.contains(name.as_str()))
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect()
+}
+
+/// Which of a change's attributes the declaration called secrets.
+fn secret_names(change: &Change) -> BTreeSet<String> {
+    change
         .desired()
         .iter()
         .filter(|(_, wanted)| wanted.is_secret())
         .map(|(name, _)| name.clone())
-        .collect();
-    let shown = if kind == Sending::Delete {
-        recorded.unwrap_or_default()
-    } else {
-        desired
-            .iter()
-            .filter(|(name, _)| !secret.contains(name.as_str()))
-            .map(|(name, value)| (name.clone(), value.clone()))
-            .collect()
-    };
-    (shown, secret)
+        .collect()
+}
+
+/// The first secret attribute carried by an operation that does not say it is
+/// carrying one.
+///
+/// The provider marks the operation and this checks the marking, so that a
+/// provider which forgets is caught by something that did not do the marking.
+/// An unmarked write is answered by the far end with what it read back — which,
+/// for a secret, is the secret.
+fn unflagged(planned: &Planned, secret: &BTreeSet<String>) -> Option<String> {
+    for (at, carried) in &planned.carries {
+        let Some(name) = secret.iter().find(|name| carried.contains(name.as_str())) else {
+            continue;
+        };
+        let marked = matches!(
+            planned.operations.get(*at),
+            Some(nerpa_proto::Operation::File { secret: true, .. })
+        );
+        if !marked {
+            return Some(name.clone());
+        }
+    }
+    None
 }
 
 // ENFORCES: INV-PROVIDER-002
@@ -832,6 +881,22 @@ pub enum RunError {
         /// The resource it was declared on.
         address: Address,
         /// The secret attribute nothing carries.
+        attribute: String,
+    },
+    /// A secret is carried by an operation that does not say it is carrying one.
+    ///
+    /// A write marked secret is answered with a sealed digest; an unmarked one is
+    /// answered with what the far end read back, which for a secret is the
+    /// secret. The provider marks it and this is the other claim: they have to
+    /// line up.
+    #[error(
+        "{address}: {attribute} is a secret, and what carries it does not say so, \
+         so the machine would answer with the value"
+    )]
+    Unflagged {
+        /// The resource it was declared on.
+        address: Address,
+        /// The secret attribute an unmarked operation carries.
         attribute: String,
     },
     /// A value that depends on a fact was still open when its stage ran.

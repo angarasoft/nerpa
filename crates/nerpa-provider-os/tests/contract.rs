@@ -72,6 +72,7 @@ fn a_file_is_one_write_that_carries_what_it_was_given() {
             desired: &desired,
             recorded: None,
             facts: observed.facts_of(None),
+            secret: &BTreeSet::new(),
         })
         .unwrap();
 
@@ -81,6 +82,7 @@ fn a_file_is_one_write_that_carries_what_it_was_given() {
             path: "/etc/motd".to_owned(),
             content: b"hello\n".to_vec(),
             mode: 0o644,
+            secret: false,
         }]
     );
     assert_eq!(
@@ -152,6 +154,7 @@ fn a_replacement_is_one_batch_with_the_forgetting_between_its_halves() {
             desired: &desired,
             recorded: Some(&recorded),
             facts: observed.facts_of(None),
+            secret: &BTreeSet::new(),
         })
         .unwrap();
 
@@ -197,6 +200,7 @@ fn a_removal_is_built_from_what_was_recorded_and_concludes_gone() {
             desired: &nothing,
             recorded: Some(&recorded),
             facts: observed.facts_of(None),
+            secret: &BTreeSet::new(),
         })
         .unwrap();
     assert_eq!(
@@ -238,6 +242,7 @@ fn a_package_is_installed_and_then_looked_at_again() {
             desired: &desired,
             recorded: None,
             facts: observed.facts_of(Some(&node)),
+            secret: &BTreeSet::new(),
         })
         .unwrap();
 
@@ -270,6 +275,7 @@ fn a_service_that_is_roused_settles_before_it_is_restarted_and_is_watched_after(
                 desired: &desired,
                 recorded: None,
                 facts: observed.facts_of(Some(&node)),
+                secret: &BTreeSet::new(),
             })
             .unwrap()
             .operations
@@ -312,4 +318,48 @@ fn only_a_change_that_sends_something_reaches_a_provider() {
     assert_eq!(Sending::of(ChangeKind::Reorder), None);
     assert_eq!(Sending::of(ChangeKind::Replace), Some(Sending::Replace));
     assert_eq!(Sending::of(ChangeKind::React), Some(Sending::React));
+}
+
+/// The write that carries a secret says so, and one that carries none does not.
+///
+/// The mark is what makes the far end answer with a sealed digest instead of
+/// with what it read back — which, for a file whose contents are a password, is
+/// the password. The provider marks it because the provider is what knows which
+/// operation carries which attribute; the engine checks the mark against the
+/// names it settled, so the two claims have to line up.
+#[test]
+fn a_write_that_carries_a_secret_says_so() {
+    let observed = Observed::new();
+    let desired = file_of("/etc/shadow", "correct-horse", Some("0600"));
+
+    let prepared = |secret: &BTreeSet<String>| {
+        Os::new()
+            .prepare(&Prepared {
+                address: &address("os:file.shadow@web-01"),
+                kind: Sending::Create,
+                roused: false,
+                resent: false,
+                desired: &desired,
+                recorded: None,
+                facts: observed.facts_of(None),
+                secret,
+            })
+            .unwrap()
+            .operations
+    };
+
+    let told: BTreeSet<String> = ["content".to_owned()].into_iter().collect();
+    assert!(
+        matches!(prepared(&told)[0], Operation::File { secret: true, .. }),
+        "a write carrying a secret says so: {:?}",
+        prepared(&told)
+    );
+    assert!(
+        matches!(
+            prepared(&BTreeSet::new())[0],
+            Operation::File { secret: false, .. }
+        ),
+        "and the same write carries none when nothing was called one: {:?}",
+        prepared(&BTreeSet::new())
+    );
 }

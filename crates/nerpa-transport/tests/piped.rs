@@ -63,6 +63,7 @@ fn one_connection_carries_a_whole_run() {
                 path: file.display().to_string(),
                 content: b"hello\n".to_vec(),
                 mode: 0o644,
+                secret: false,
             }],
             seal: None,
         })

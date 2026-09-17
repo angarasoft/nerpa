@@ -71,6 +71,7 @@ fn a_whole_conversation_survives_the_pipe() {
                 path: file.display().to_string(),
                 content: b"hello\n".to_vec(),
                 mode: 0o644,
+                secret: false,
             }],
             seal: None,
         },

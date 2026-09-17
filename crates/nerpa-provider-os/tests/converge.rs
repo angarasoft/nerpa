@@ -1411,6 +1411,7 @@ fn one_provider_serves_two_threads_at_once() {
                         desired: &wanted,
                         recorded: None,
                         facts: facts.facts_of(None),
+                        secret: &BTreeSet::new(),
                     })
                     .expect("it knows what to send");
                 let asked = planned.operations.len();
