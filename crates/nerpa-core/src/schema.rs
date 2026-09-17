@@ -26,6 +26,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::address::{Address, Kind, Provider};
+use crate::value::Value;
 
 /// What each resource kind refuses to change in place.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -241,4 +242,17 @@ pub fn mode_of(written: &str) -> Option<u32> {
     u32::from_str_radix(digits, 8)
         .ok()
         .filter(|mode| *mode <= 0o7777)
+}
+
+/// The mode a declared value spells: text, as [`mode_of`] reads it, or a number,
+/// as Starlark's `0o600` evaluates to.
+///
+/// `None` for anything else, and for a number beyond the permission bits.
+#[must_use]
+pub fn mode_of_value(value: &Value) -> Option<u32> {
+    match value {
+        Value::Text(written) => mode_of(written),
+        Value::Integer(number) => u32::try_from(*number).ok().filter(|mode| *mode <= 0o7777),
+        _ => None,
+    }
 }

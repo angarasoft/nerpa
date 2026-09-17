@@ -1286,6 +1286,38 @@ fn a_file_declared_where_a_replacement_moves_one_away_is_made_after_it() {
     }
 }
 
+/// A mode written as a number, as Starlark's `0o600` evaluates to, is the mode the
+/// file gets, and converges. It was neither refused nor applied: the provider fell
+/// back to its default, and every run changed it again. Found by the review of RFC
+/// 0001's fifth revision.
+#[test]
+fn a_mode_written_as_a_number_is_the_mode_the_file_gets() {
+    let scratch = Scratch::new("mode-number");
+    let path = scratch.join("f");
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.number@localhost"))
+            .with("path", path.clone())
+            .with("content", "m\n")
+            .with("mode", 0o600_i64),
+    ]);
+    let mut state = State::new();
+    run_once(&graph, &mut state).expect("the first run applies");
+
+    let on_disk = std::os::unix::fs::PermissionsExt::mode(
+        &fs::metadata(&path).expect("written").permissions(),
+    );
+    assert_eq!(
+        on_disk & 0o7777,
+        0o600,
+        "the declared mode is the one on disk"
+    );
+    let again = next_plan(&graph, &state);
+    assert!(
+        again.is_empty(),
+        "and the next run has nothing to do: {again:?}"
+    );
+}
+
 /// State is written as the run goes, not once when it finishes.
 ///
 /// A run that stops half way has made real changes. Recording them only at the

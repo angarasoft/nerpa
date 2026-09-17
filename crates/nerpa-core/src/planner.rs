@@ -1192,20 +1192,24 @@ fn change_for(
             });
         }
         // ENFORCES: INV-PLAN-012
-        // A mode is the number it spells. Compared as written, "644" never matched
+        // A mode is the number it spells, written as text or, as Starlark's `0o600`
+        // is, as a number. Compared as written, "644" never matched
         // the "0644" a reading reports, and every run changed it again; one beyond
         // the permission bits never matched at all, because a machine keeps only
         // those. So it is compared as a number, and what spells no mode a file can
         // have is refused here, before anything is done on the strength of it.
         let mode = schema.is_mode(address, name);
         if mode
-            && let Confidence::Known(Value::Text(written)) = &after
-            && crate::schema::mode_of(written).is_none()
+            && let Confidence::Known(written) = &after
+            && crate::schema::mode_of_value(written).is_none()
         {
             return Err(PlanError::NotAMode {
                 address: address.clone(),
                 attribute: name.clone(),
-                value: written.clone(),
+                value: match written {
+                    Value::Text(text) => text.clone(),
+                    other => other.to_string(),
+                },
             });
         }
         desired.push((name.clone(), after.clone()));
@@ -1383,9 +1387,9 @@ fn resolve(
 /// Whether a mode on the machine is the mode declared, as numbers.
 fn same_mode(before: Option<&Recorded>, after: &Confidence) -> bool {
     match (before, after) {
-        (Some(Recorded::Plain(Value::Text(current))), Confidence::Known(Value::Text(wanted))) => {
-            crate::schema::mode_of(current).is_some()
-                && crate::schema::mode_of(current) == crate::schema::mode_of(wanted)
+        (Some(Recorded::Plain(current)), Confidence::Known(wanted)) => {
+            crate::schema::mode_of_value(current).is_some()
+                && crate::schema::mode_of_value(current) == crate::schema::mode_of_value(wanted)
         }
         _ => settled(before, after),
     }

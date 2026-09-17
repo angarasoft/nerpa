@@ -434,14 +434,15 @@ fn content_of(attributes: &Attributes, address: &Address) -> Result<Vec<u8>, Pro
     }
 }
 
-/// Reads a mode written the way anybody writes one: `"0644"`.
+/// Reads a mode written the way anybody writes one: `"0644"`, or `0o644`, which
+/// Starlark makes a number.
 fn mode(attributes: &Attributes, address: &Address, default: u32) -> Result<u32, ProviderError> {
-    let Some(written) = text(attributes, "mode") else {
+    let Some(written) = attributes.get("mode") else {
         return Ok(default);
     };
-    nerpa_core::schema::mode_of(&written).ok_or_else(|| ProviderError::Declaration {
+    nerpa_core::schema::mode_of_value(written).ok_or_else(|| ProviderError::Declaration {
         address: address.clone(),
-        problem: format!("mode {written:?} is not an octal file mode such as \"0644\""),
+        problem: format!("mode {written} is not a file mode such as \"0644\""),
     })
 }
 

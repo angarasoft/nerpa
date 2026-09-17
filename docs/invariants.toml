@@ -1040,7 +1040,7 @@ adversarial = [
 [[invariant]]
 id = "INV-PLAN-012"
 status = "enforced"
-statement = "A file mode is compared as the number it spells, and one no file can have is refused while planning."
+statement = "A file mode, written as text or as a number, is compared as the number it spells, and one no file can have is refused while planning."
 rationale = """
 A mode was compared as the text it was written in. Written "644" or "0o644", it \
 never matched the "0644" a reading reports, and one beyond the permission bits, \
@@ -1053,6 +1053,7 @@ enforced_by = ["crates/nerpa-core/src/planner.rs", "crates/nerpa-core/src/schema
 tests = [
   "a_mode_is_compared_as_the_number_it_spells",
   "a_mode_beyond_the_permission_bits_is_refused_while_planning",
+  "a_mode_written_as_a_number_is_the_mode_the_file_gets",
 ]
 adversarial = ["a_mode_is_compared_as_the_number_it_spells"]
 
