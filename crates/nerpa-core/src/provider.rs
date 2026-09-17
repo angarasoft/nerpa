@@ -20,14 +20,14 @@
 //! matters more here than usual, because most of them will be written by people
 //! who are not reading this ([0015](../../../docs/decisions)).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::address::{Address, Provider as ProviderName, Target};
 use crate::observed::Facts;
 use crate::plan::ChangeKind;
 use crate::schema::Schema;
 use crate::value::Value;
-use nerpa_proto::Premise;
+use nerpa_proto::{Operation, Premise, Seen};
 
 /// What a provider carries a resource's state as.
 pub type Attributes = BTreeMap<String, Value>;
@@ -169,6 +169,138 @@ pub enum ProviderError {
     },
 }
 
+/// The kinds of change that send something.
+///
+/// An adoption and a reorder write state down and nothing else, so neither ever
+/// reaches a provider ([`ChangeKind::sends_anything`]). Kept apart from
+/// [`ChangeKind`] for that reason: what a provider is asked to build is the
+/// smaller set, and a provider that has to handle a kind it can never be given
+/// is a provider with untested arms in it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[non_exhaustive]
+pub enum Sending {
+    /// It does not exist, and will.
+    Create,
+    /// It exists, and some attribute changes in place.
+    Update,
+    /// It exists, and what changed cannot change in place: what is there goes,
+    /// and a new one takes its address.
+    Replace,
+    /// It exists and is no longer declared, so it goes.
+    Delete,
+    /// It matches its declaration, and something it reacts to changed.
+    React,
+}
+
+impl Sending {
+    /// What a planned change sends, or `None` where nothing is sent.
+    #[must_use]
+    pub fn of(kind: ChangeKind) -> Option<Self> {
+        match kind {
+            ChangeKind::Create => Some(Self::Create),
+            ChangeKind::Update => Some(Self::Update),
+            ChangeKind::Replace => Some(Self::Replace),
+            ChangeKind::Delete => Some(Self::Delete),
+            ChangeKind::React => Some(Self::React),
+            ChangeKind::Adopt | ChangeKind::Reorder => None,
+        }
+    }
+}
+
+/// Everything a provider is told in order to build one change.
+///
+/// No connection among it: a provider decides what to send, and sending it is
+/// somebody else's job.
+#[derive(Debug)]
+pub struct Prepared<'a> {
+    /// The resource being changed.
+    pub address: &'a Address,
+    /// What is happening to it.
+    pub kind: Sending,
+    /// Something it reacts to changed, or an earlier run left that reaction
+    /// unpaid.
+    pub roused: bool,
+    /// Sent again: an earlier run marked this change and never recorded it, and
+    /// this run's reading matches the declaration, so the same change goes
+    /// again rather than being worked out afresh.
+    pub resent: bool,
+    /// Settled values, secrets included; empty for a removal.
+    pub desired: &'a Attributes,
+    /// What state recorded, for a replacement and a removal.
+    pub recorded: Option<&'a Attributes>,
+    /// What the machine said about itself.
+    pub facts: Facts<'a>,
+}
+
+/// What a provider is told when its change is over: the change with no secret
+/// value in it.
+///
+/// A secret lives inside the operation that carries it until that operation is
+/// written, and nothing downstream of sending ever holds one. See 0027.
+#[derive(Debug)]
+pub struct Concluding<'a> {
+    /// The resource that was changed.
+    pub address: &'a Address,
+    /// What happened to it.
+    pub kind: Sending,
+    /// Whether it was roused as well.
+    pub roused: bool,
+    /// What the machine said about itself.
+    pub facts: Facts<'a>,
+    /// Settled values that are not secrets.
+    pub plain: &'a Attributes,
+    /// The names of those that were.
+    pub secret: &'a BTreeSet<String>,
+}
+
+/// The operations one change is made of.
+#[derive(Debug, Default, Clone)]
+pub struct Planned {
+    /// What to send, in order. One change's operations are contiguous: they are
+    /// never interleaved with another change's.
+    pub operations: Vec<Operation>,
+    /// For a replacement, how many of the operations remove what was there. The
+    /// resource is recorded as forgotten after them, because between the two
+    /// halves it is gone and nothing is there yet. `None` for every other kind.
+    pub forget_after: Option<usize>,
+    /// For each operation that writes, the declared attributes its answer
+    /// confirms. Counted over the operations of the whole change, a
+    /// replacement's two halves included.
+    pub carries: BTreeMap<usize, BTreeSet<String>>,
+}
+
+/// One operation's answer, as the engine hands it to a provider.
+///
+/// The engine's shape, not the wire's. It exists so that what a provider is told
+/// can differ from what came back: a write is answered with a digest the engine
+/// checks against what it sent, and the provider is told that it matched rather
+/// than handed the bytes again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Answered {
+    /// What the far end said it saw.
+    Saw(Seen),
+}
+
+/// What a change turned out to be.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Concluded {
+    /// It is there, and these are its attributes.
+    Became(Attributes),
+    /// It is not there any more, and state forgets it.
+    Gone,
+}
+
+/// What the next run does with a change that a run marked and never recorded.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Afterwards {
+    /// Reading sees every declared attribute the change sets, so the next run
+    /// reads what is there and decides from it.
+    Read,
+    /// Reading cannot tell whether the change happened, so it is sent again.
+    SendAgain,
+}
+
 /// Reads and changes resources of the kinds it owns.
 // ENFORCES: INV-PROVIDER-001
 pub trait Provider: Send + Sync {
@@ -203,6 +335,45 @@ pub trait Provider: Send + Sync {
         facts: Facts<'_>,
         reach: &dyn Reach,
     ) -> Result<Read, ProviderError>;
+
+    /// The operations that make this change, and what their answers confirm.
+    ///
+    /// No machine among the arguments, which is the whole of the rule: a
+    /// provider says what to send, and the engine sends it. A replacement is one
+    /// call — the operations that remove what is there, then the ones that make
+    /// what should be, with [`Planned::forget_after`] between them.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError`] if the declaration cannot be turned into
+    /// operations: an attribute missing, a kind this provider does not own, or a
+    /// machine that did not say what it is.
+    fn prepare(&self, change: &Prepared<'_>) -> Result<Planned, ProviderError>;
+
+    /// What the change became, from the answers to exactly its own operations.
+    ///
+    /// Handed every answer of the change, in the order it asked for them, once
+    /// the last of them has run. What it reports is what state records.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError`] if the answers say the change did not take: a
+    /// path not there after writing it, a package still absent after installing
+    /// it, a service that will not stay up.
+    fn conclude(
+        &self,
+        change: &Concluding<'_>,
+        became: &[Answered],
+    ) -> Result<Concluded, ProviderError>;
+
+    /// What the next run does with this change if a run marked it and stopped
+    /// before recording it.
+    ///
+    /// [`Afterwards::Read`] wherever reading sees every declared attribute the
+    /// change sets, which is most kinds. [`Afterwards::SendAgain`] where it does
+    /// not: a package is registered before its post-install has run, so finding
+    /// it installed does not mean the change finished.
+    fn afterwards(&self, address: &Address, kind: Sending) -> Afterwards;
 
     /// Makes the resource match `attributes`, and reports what it became.
     ///

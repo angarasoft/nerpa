@@ -34,9 +34,14 @@ mod service;
 use package::Family;
 use service::Init;
 
+use std::collections::{BTreeMap, BTreeSet};
+
 use nerpa_core::observed::Facts;
 use nerpa_core::plan::ChangeKind;
-use nerpa_core::provider::{Attributes, Provider, ProviderError, Reach, Read, Reading};
+use nerpa_core::provider::{
+    Afterwards, Answered, Attributes, Concluded, Concluding, Planned, Prepared, Provider,
+    ProviderError, Reach, Read, Reading, Sending,
+};
 use nerpa_core::schema::Schema;
 use nerpa_core::value::Value;
 use nerpa_proto::{Answer, Ask, Entry, Observation, Operation, Premise, Seen};
@@ -109,17 +114,6 @@ fn all(answer: Answer, address: &Address, asked: usize) -> Result<Vec<Seen>, Pro
             problem: format!("the far end said something unexpected: {other:?}"),
         }),
     }
-}
-
-/// The same, for an ask about exactly one thing.
-fn one(answer: Answer, address: &Address) -> Result<Seen, ProviderError> {
-    all(answer, address, 1)?
-        .into_iter()
-        .next()
-        .ok_or_else(|| ProviderError::World {
-            address: address.clone(),
-            problem: "the far end answered about nothing at all".to_owned(),
-        })
 }
 
 /// What a reading of a path amounts to, as attributes.
@@ -211,80 +205,6 @@ impl Asked {
                 }))
             }
         }
-    }
-}
-
-/// Makes a service match what was declared, and reads back that it does.
-///
-/// A `React` change is a restart, not a start: being roused is what `reacts_to`
-/// asks for, and a service that is already running would otherwise be left
-/// exactly as it was by the change that exists to disturb it. See decision 0026.
-///
-/// A service that is not running is not restarted either — it was not running
-/// before the file changed, and starting it now would be a change nobody
-/// declared.
-fn settle_service(
-    address: &Address,
-    kind: ChangeKind,
-    roused: bool,
-    attributes: &Attributes,
-    facts: Facts<'_>,
-    premise: &[Premise],
-    reach: &dyn Reach,
-) -> Result<Attributes, ProviderError> {
-    let init = init(address, facts)?;
-    let name = address.name().as_str();
-    let wanted = |what: &str| matches!(attributes.get(what), Some(Value::Boolean(true)));
-
-    let mut operations = if kind == ChangeKind::React {
-        vec![init.rouse(name)]
-    } else {
-        let mut settling = init.settle(name, wanted("running"), wanted("enabled"));
-        // ENFORCES: INV-REACT-004
-        // Roused as well as changed: settled first, then restarted if it is
-        // running. This used to settle and stop there; `start` does nothing to a
-        // running unit, and the fresh record cleared the debt, which left a new
-        // file, an old process and nothing owed.
-        if roused {
-            settling.push(init.rouse(name));
-        }
-        settling
-    };
-    // Whether it is running is read back rather than echoed: `systemctl start`
-    // and `rc-service start` both report success for a service that came up and
-    // fell over a second later, which is the ordinary way a service fails.
-    operations.push(init.watch(name));
-
-    let asked = operations.len();
-    let became = all(
-        reach.ask(&Ask::Perform {
-            plan: None,
-            premise: premise.to_vec(),
-            operations,
-            seal: None,
-        })?,
-        address,
-        asked,
-    )?;
-    let Some(afterwards) = became.last() else {
-        return Err(ProviderError::World {
-            address: address.clone(),
-            problem: format!("the far end did not say what {name} became"),
-        });
-    };
-
-    match init.running(name, afterwards) {
-        Ok(Some(running)) => Ok(service::as_attributes(running, wanted("enabled"))
-            .into_iter()
-            .collect()),
-        Ok(None) => Err(ProviderError::World {
-            address: address.clone(),
-            problem: format!("there is no service {name} on this machine after asking for it"),
-        }),
-        Err(problem) => Err(ProviderError::World {
-            address: address.clone(),
-            problem,
-        }),
     }
 }
 
@@ -453,56 +373,246 @@ fn required_path(attributes: &Attributes, address: &Address) -> Result<String, P
     })
 }
 
-/// Makes a package present at the version the declaration names.
-///
-/// Two operations in one batch rather than one and a guess: the install, and
-/// then the same question the read asked, so what the machine ended up with
-/// is read back rather than echoed from the declaration. `dnf` and `emerge`
-/// both report success for work they did not do, and a version that did not
-/// change would otherwise be recorded as though it had.
-fn install(
-    address: &Address,
+/// What state recorded, which a removal and a replacement are built from.
+fn recorded_of<'a>(change: &Prepared<'a>) -> Result<&'a Attributes, ProviderError> {
+    change.recorded.ok_or_else(|| ProviderError::World {
+        address: change.address.clone(),
+        problem: "what is there now is described by what state recorded, and nothing was \
+                  recorded"
+            .to_owned(),
+    })
+}
+
+/// The write that makes a path what the declaration says.
+fn write_of(
+    path: String,
     attributes: &Attributes,
-    facts: Facts<'_>,
-    premise: &[Premise],
-    reach: &dyn Reach,
-) -> Result<Attributes, ProviderError> {
+    address: &Address,
+    provider: &ProviderName,
+) -> Result<Operation, ProviderError> {
+    match address.kind().as_str() {
+        "directory" => Ok(Operation::Directory {
+            path,
+            mode: mode(attributes, address, DEFAULT_DIRECTORY_MODE)?,
+        }),
+        "file" => Ok(Operation::File {
+            path,
+            content: content_of(attributes, address)?,
+            mode: mode(attributes, address, DEFAULT_FILE_MODE)?,
+        }),
+        _ => Err(ProviderError::UnknownKind {
+            provider: provider.clone(),
+            address: address.clone(),
+        }),
+    }
+}
+
+/// The declared attributes a write's answer confirms.
+///
+/// What the far end reads back after writing describes the path, its contents
+/// and its mode, so a matching answer is a claim about exactly those — and only
+/// about the ones the declaration named.
+fn carried(attributes: &Attributes) -> BTreeSet<String> {
+    ["content", "mode", "path"]
+        .into_iter()
+        .filter(|name| attributes.contains_key(*name))
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+/// A path is made, or removed — and replaced by doing both.
+fn prepare_path(change: &Prepared<'_>, provider: &ProviderName) -> Result<Planned, ProviderError> {
+    let address = change.address;
+    if change.kind == Sending::Delete {
+        return Ok(Planned {
+            operations: vec![Operation::Remove {
+                path: required_path(recorded_of(change)?, address)?,
+            }],
+            forget_after: None,
+            carries: BTreeMap::new(),
+        });
+    }
+
+    let mut operations = Vec::new();
+    let mut forget_after = None;
+    // Destroy before create, and only for a replacement: what is there is in the
+    // way of what should be, and only state knows where the first one actually
+    // is. The record is dropped between the two halves, because in between the
+    // old one is gone and the new one is not there yet.
+    if change.kind == Sending::Replace {
+        operations.push(Operation::Remove {
+            path: required_path(recorded_of(change)?, address)?,
+        });
+        forget_after = Some(operations.len());
+    }
+
+    let path = required_path(change.desired, address)?;
+    operations.push(write_of(path, change.desired, address, provider)?);
+    let mut carries = BTreeMap::new();
+    carries.insert(operations.len() - 1, carried(change.desired));
+    Ok(Planned {
+        operations,
+        forget_after,
+        carries,
+    })
+}
+
+/// What a path became, from what the far end read back after writing it.
+fn conclude_path(change: &Concluding<'_>, became: &Seen) -> Result<Concluded, ProviderError> {
+    if change.kind == Sending::Delete {
+        return Ok(Concluded::Gone);
+    }
+    let path = required_path(change.plain, change.address)?;
+    // Read back rather than echoed: the far end reports what the path became
+    // after it wrote, so writing nothing is noticed.
+    as_attributes(&path, became, change.address)?
+        .map(Concluded::Became)
+        .ok_or_else(|| ProviderError::World {
+            address: change.address.clone(),
+            problem: format!("{path} was not there after writing it"),
+        })
+}
+
+/// Two operations rather than one and a guess: the change, and then the same
+/// question the read asked.
+///
+/// `dnf` and `emerge` both report success for work they did not do, so what the
+/// machine ended up with is read back rather than echoed from the declaration.
+fn prepare_package(change: &Prepared<'_>) -> Result<Planned, ProviderError> {
+    let address = change.address;
     let atom = atom(address);
-    let family = family(address, facts)?;
-    // Required, because "whatever is newest" is not a state a plan can
-    // describe: what it does depends on when it runs. See 0038.
-    let Some(version) = text(attributes, "version") else {
+    let family = family(address, change.facts)?;
+
+    // Installing a version already there runs no post-install, so sending a
+    // package again is a different command — `dnf reinstall`, `emerge
+    // --oneshot` — and nothing here has one yet. Refused by name rather than
+    // sent on the chance that it works. Nothing sets this until state carries
+    // marks (RFC 0001 §5.6).
+    if change.resent {
         return Err(ProviderError::World {
             address: address.clone(),
-            problem: "a package says which version it is, because \"the newest \
+            problem: format!(
+                "{atom} was left unrecorded by a run that stopped, and merging it a second \
+                 time is a command this provider does not have yet"
+            ),
+        });
+    }
+
+    let operations = if change.kind == Sending::Delete {
+        vec![family.remove(&atom), look_again(family, &atom)]
+    } else {
+        // Required, because "whatever is newest" is not a state a plan can
+        // describe: what it does depends on when it runs. See 0038.
+        let Some(version) = text(change.desired, "version") else {
+            return Err(ProviderError::World {
+                address: address.clone(),
+                problem: "a package says which version it is, because \"the newest \
                           there is\" depends on when a run happens and no plan can \
                           carry a number over that"
-                .to_owned(),
-        });
+                    .to_owned(),
+            });
+        };
+        vec![family.install(&atom, &version), look_again(family, &atom)]
     };
 
-    let became = all(
-        reach.ask(&Ask::Perform {
-            plan: None,
-            premise: premise.to_vec(),
-            operations: vec![family.install(&atom, &version), look_again(family, &atom)],
-            seal: None,
-        })?,
-        address,
-        2,
-    )?;
-    let Some(afterwards) = became.last() else {
-        return Err(ProviderError::World {
+    Ok(Planned {
+        operations,
+        forget_after: None,
+        carries: BTreeMap::new(),
+    })
+}
+
+/// What a package became, from the version the machine reports afterwards.
+fn conclude_package(change: &Concluding<'_>, became: &Seen) -> Result<Concluded, ProviderError> {
+    let address = change.address;
+    let atom = atom(address);
+    let family = family(address, change.facts)?;
+    match (change.kind, family.installed(&atom, became)) {
+        (Sending::Delete, Ok(None)) => Ok(Concluded::Gone),
+        (Sending::Delete, Ok(Some(still))) => Err(ProviderError::World {
             address: address.clone(),
-            problem: "the far end did not say what the package became".to_owned(),
-        });
-    };
-
-    match family.installed(&atom, afterwards) {
-        Ok(Some(became)) => Ok(package::as_attributes(&became).into_iter().collect()),
-        Ok(None) => Err(ProviderError::World {
+            problem: format!("{atom} is still installed, at {still}, after removing it"),
+        }),
+        (_, Ok(Some(version))) => Ok(Concluded::Became(
+            package::as_attributes(&version).into_iter().collect(),
+        )),
+        (_, Ok(None)) => Err(ProviderError::World {
             address: address.clone(),
             problem: format!("{atom} is still not installed after installing it"),
+        }),
+        (_, Err(problem)) => Err(ProviderError::World {
+            address: address.clone(),
+            problem,
+        }),
+    }
+}
+
+/// Makes a service match what was declared, and reads back that it does.
+///
+/// A `React` change is a restart, not a start: being roused is what `reacts_to`
+/// asks for, and a service that is already running would otherwise be left
+/// exactly as it was by the change that exists to disturb it. See decision 0026.
+///
+/// A service that is not running is not restarted either — it was not running
+/// before the file changed, and starting it now would be a change nobody
+/// declared.
+fn prepare_service(change: &Prepared<'_>) -> Result<Planned, ProviderError> {
+    let address = change.address;
+    let init = init(address, change.facts)?;
+    let name = address.name().as_str();
+    let wanted = |what: &str| matches!(change.desired.get(what), Some(Value::Boolean(true)));
+
+    let mut operations = match change.kind {
+        Sending::React => vec![init.rouse(name)],
+        // No longer declared means no longer wanted running. The unit itself
+        // came from a package and stays: removing it is that package's
+        // business, not this one's.
+        Sending::Delete => init.settle(name, false, false),
+        _ => {
+            let mut settling = init.settle(name, wanted("running"), wanted("enabled"));
+            // ENFORCES: INV-REACT-004
+            // Roused as well as changed: settled first, then restarted if it is
+            // running. This used to settle and stop there; `start` does nothing to a
+            // running unit, and the fresh record cleared the debt, which left a new
+            // file, an old process and nothing owed.
+            if change.roused {
+                settling.push(init.rouse(name));
+            }
+            settling
+        }
+    };
+    // Whether it is running is read back rather than echoed: `systemctl start`
+    // and `rc-service start` both report success for a service that came up and
+    // fell over a second later, which is the ordinary way a service fails.
+    operations.push(init.watch(name));
+
+    Ok(Planned {
+        operations,
+        forget_after: None,
+        carries: BTreeMap::new(),
+    })
+}
+
+/// What a service became, from what it was doing after it was settled.
+fn conclude_service(change: &Concluding<'_>, became: &Seen) -> Result<Concluded, ProviderError> {
+    let address = change.address;
+    let init = init(address, change.facts)?;
+    let name = address.name().as_str();
+    match init.running(name, became) {
+        // Stopped and disabled, with the unit left where it was: as far as state
+        // is concerned the resource is gone.
+        Ok(Some(_)) if change.kind == Sending::Delete => Ok(Concluded::Gone),
+        Ok(Some(running)) => {
+            let enabled = matches!(change.plain.get("enabled"), Some(Value::Boolean(true)));
+            Ok(Concluded::Became(
+                service::as_attributes(running, enabled)
+                    .into_iter()
+                    .collect(),
+            ))
+        }
+        Ok(None) => Err(ProviderError::World {
+            address: address.clone(),
+            problem: format!("there is no service {name} on this machine after asking for it"),
         }),
         Err(problem) => Err(ProviderError::World {
             address: address.clone(),
@@ -511,48 +621,25 @@ fn install(
     }
 }
 
-/// Makes a package absent, and reads back that it is.
-///
-/// The same two operations as installing, for the same reason: a removal
-/// that reported success and left the package there would be recorded as
-/// gone.
-fn uninstall(
+/// One change, sent as one batch, with an answer for each operation.
+fn sent(
+    planned: Planned,
     address: &Address,
-    facts: Facts<'_>,
     premise: &[Premise],
     reach: &dyn Reach,
-) -> Result<(), ProviderError> {
-    let atom = atom(address);
-    let family = family(address, facts)?;
-
+) -> Result<Vec<Answered>, ProviderError> {
+    let asked = planned.operations.len();
     let became = all(
         reach.ask(&Ask::Perform {
             plan: None,
             premise: premise.to_vec(),
-            operations: vec![family.remove(&atom), look_again(family, &atom)],
+            operations: planned.operations,
             seal: None,
         })?,
         address,
-        2,
+        asked,
     )?;
-    let Some(afterwards) = became.last() else {
-        return Err(ProviderError::World {
-            address: address.clone(),
-            problem: "the far end did not say what the package became".to_owned(),
-        });
-    };
-
-    match family.installed(&atom, afterwards) {
-        Ok(None) => Ok(()),
-        Ok(Some(still)) => Err(ProviderError::World {
-            address: address.clone(),
-            problem: format!("{atom} is still installed, at {still}, after removing it"),
-        }),
-        Err(problem) => Err(ProviderError::World {
-            address: address.clone(),
-            problem,
-        }),
-    }
+    Ok(became.into_iter().map(Answered::Saw).collect())
 }
 
 impl Provider for Os {
@@ -688,6 +775,59 @@ impl Provider for Os {
         Ok(found)
     }
 
+    fn prepare(&self, change: &Prepared<'_>) -> Result<Planned, ProviderError> {
+        match change.address.kind().as_str() {
+            "package" => prepare_package(change),
+            "service" => prepare_service(change),
+            "file" | "directory" => prepare_path(change, &self.name),
+            _ => Err(ProviderError::UnknownKind {
+                provider: self.name.clone(),
+                address: change.address.clone(),
+            }),
+        }
+    }
+
+    fn conclude(
+        &self,
+        change: &Concluding<'_>,
+        became: &[Answered],
+    ) -> Result<Concluded, ProviderError> {
+        // Every kind here reads its resource back with its last operation, so
+        // that is the answer the change is concluded from.
+        let Some(Answered::Saw(became)) = became.last() else {
+            return Err(ProviderError::World {
+                address: change.address.clone(),
+                problem: "the far end did not say what it became".to_owned(),
+            });
+        };
+        match change.address.kind().as_str() {
+            "package" => conclude_package(change, became),
+            "service" => conclude_service(change, became),
+            "file" | "directory" => conclude_path(change, became),
+            _ => Err(ProviderError::UnknownKind {
+                provider: self.name.clone(),
+                address: change.address.clone(),
+            }),
+        }
+    }
+
+    /// A package is registered before its post-install has run, so finding it
+    /// installed does not mean the change finished. Everything else this
+    /// provider owns is seen in full by the next run's reading.
+    fn afterwards(&self, address: &Address, _kind: Sending) -> Afterwards {
+        if address.kind().as_str() == "package" {
+            Afterwards::SendAgain
+        } else {
+            Afterwards::Read
+        }
+    }
+
+    /// Prepared, sent in one batch, concluded.
+    ///
+    /// The engine still asks a provider to do the sending, so the journey is
+    /// here rather than there. It moves when the engine runs machines side by
+    /// side (RFC 0001 §5.4); until then this is the same batch as before, built
+    /// by the same code that will build it afterwards.
     fn apply(
         &self,
         address: &Address,
@@ -698,46 +838,51 @@ impl Provider for Os {
         facts: Facts<'_>,
         reach: &dyn Reach,
     ) -> Result<Attributes, ProviderError> {
-        if address.kind().as_str() == "package" {
-            return install(address, attributes, facts, premise, reach);
-        }
-        if address.kind().as_str() == "service" {
-            return settle_service(address, kind, roused, attributes, facts, premise, reach);
-        }
-
-        let path = required_path(attributes, address)?;
-        let operation = match address.kind().as_str() {
-            "directory" => Operation::Directory {
-                path: path.clone(),
-                mode: mode(attributes, address, DEFAULT_DIRECTORY_MODE)?,
-            },
-            "file" => Operation::File {
-                path: path.clone(),
-                content: content_of(attributes, address)?,
-                mode: mode(attributes, address, DEFAULT_FILE_MODE)?,
-            },
-            _ => {
-                return Err(ProviderError::UnknownKind {
-                    provider: self.name.clone(),
+        let sending = match Sending::of(kind) {
+            // The engine removes what a replacement replaces before it calls
+            // this, so what is left to do here is make the new one.
+            Some(Sending::Replace) => Sending::Create,
+            Some(Sending::Delete) | None => {
+                return Err(ProviderError::World {
                     address: address.clone(),
+                    problem: format!("{kind:?} makes nothing, so there is nothing to send"),
                 });
             }
+            Some(sending) => sending,
         };
 
-        let answer = reach.ask(&Ask::Perform {
-            plan: None,
-            premise: premise.to_vec(),
-            operations: vec![operation],
-            seal: None,
+        let planned = self.prepare(&Prepared {
+            address,
+            kind: sending,
+            roused,
+            resent: false,
+            desired: attributes,
+            recorded: None,
+            facts,
         })?;
+        let became = sent(planned, address, premise, reach)?;
 
-        // Read back rather than echoed: the far end reports what the path became
-        // after it wrote, so writing nothing is noticed.
-        let seen = one(answer, address)?;
-        as_attributes(&path, &seen, address)?.ok_or_else(|| ProviderError::World {
-            address: address.clone(),
-            problem: format!("{path} was not there after writing it"),
-        })
+        // Which attributes are secret is the engine's knowledge, and it does not
+        // hand it over yet: today `apply` is given every settled value, so this
+        // passes on what it was given and names none of it secret.
+        let secret = BTreeSet::new();
+        match self.conclude(
+            &Concluding {
+                address,
+                kind: sending,
+                roused,
+                facts,
+                plain: attributes,
+                secret: &secret,
+            },
+            &became,
+        )? {
+            Concluded::Became(attributes) => Ok(attributes),
+            Concluded::Gone => Err(ProviderError::World {
+                address: address.clone(),
+                problem: "nothing is there after making it".to_owned(),
+            }),
+        }
     }
 
     fn delete(
@@ -748,33 +893,31 @@ impl Provider for Os {
         facts: Facts<'_>,
         reach: &dyn Reach,
     ) -> Result<(), ProviderError> {
-        if address.kind().as_str() == "package" {
-            return uninstall(address, facts, premise, reach);
-        }
-        if address.kind().as_str() == "service" {
-            // No longer declared means no longer wanted running. The unit itself
-            // came from a package and stays: removing it is that package's
-            // business, not this one's.
-            return settle_service(
-                address,
-                ChangeKind::Update,
-                false,
-                &Attributes::new(),
-                facts,
-                premise,
-                reach,
-            )
-            .map(|_| ());
-        }
-
-        let path = required_path(recorded, address)?;
-        let answer = reach.ask(&Ask::Perform {
-            plan: None,
-            premise: premise.to_vec(),
-            operations: vec![Operation::Remove { path }],
-            seal: None,
+        let nothing = Attributes::new();
+        let planned = self.prepare(&Prepared {
+            address,
+            kind: Sending::Delete,
+            roused: false,
+            resent: false,
+            desired: &nothing,
+            recorded: Some(recorded),
+            facts,
         })?;
-        one(answer, address).map(|_| ())
+        let became = sent(planned, address, premise, reach)?;
+
+        let secret = BTreeSet::new();
+        self.conclude(
+            &Concluding {
+                address,
+                kind: Sending::Delete,
+                roused: false,
+                facts,
+                plain: recorded,
+                secret: &secret,
+            },
+            &became,
+        )
+        .map(|_| ())
     }
 
     /// Nothing to fake.

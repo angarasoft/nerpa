@@ -68,6 +68,28 @@ impl Provider for Empty {
     ) -> Result<(), ProviderError> {
         Ok(())
     }
+    fn prepare(
+        &self,
+        _change: &nerpa_core::provider::Prepared<'_>,
+    ) -> Result<nerpa_core::provider::Planned, ProviderError> {
+        Ok(nerpa_core::provider::Planned::default())
+    }
+    fn conclude(
+        &self,
+        change: &nerpa_core::provider::Concluding<'_>,
+        _became: &[nerpa_core::provider::Answered],
+    ) -> Result<nerpa_core::provider::Concluded, ProviderError> {
+        Ok(nerpa_core::provider::Concluded::Became(
+            change.plain.clone(),
+        ))
+    }
+    fn afterwards(
+        &self,
+        _address: &Address,
+        _kind: nerpa_core::provider::Sending,
+    ) -> nerpa_core::provider::Afterwards {
+        nerpa_core::provider::Afterwards::Read
+    }
     fn fake() -> Self {
         Self
     }

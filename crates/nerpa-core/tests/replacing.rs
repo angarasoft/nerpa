@@ -85,6 +85,35 @@ impl Provider for DeletesButCannotCreate {
         Ok(())
     }
 
+    fn prepare(
+        &self,
+        change: &nerpa_core::provider::Prepared<'_>,
+    ) -> Result<nerpa_core::provider::Planned, ProviderError> {
+        if change.kind == nerpa_core::provider::Sending::Delete {
+            return Ok(nerpa_core::provider::Planned::default());
+        }
+        Err(ProviderError::World {
+            address: change.address.clone(),
+            problem: "there is no room for another one".to_owned(),
+        })
+    }
+
+    fn conclude(
+        &self,
+        _change: &nerpa_core::provider::Concluding<'_>,
+        _became: &[nerpa_core::provider::Answered],
+    ) -> Result<nerpa_core::provider::Concluded, ProviderError> {
+        Ok(nerpa_core::provider::Concluded::Gone)
+    }
+
+    fn afterwards(
+        &self,
+        _address: &Address,
+        _kind: nerpa_core::provider::Sending,
+    ) -> nerpa_core::provider::Afterwards {
+        nerpa_core::provider::Afterwards::Read
+    }
+
     fn fake() -> Self {
         Self
     }

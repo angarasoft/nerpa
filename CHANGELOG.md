@@ -647,6 +647,16 @@ without ceremony until the first stage is complete.
   gone rather than kept in step — including the mutation job that was waiting for
   a runner nobody is going to install now.
 
+- A provider says what a change is made of, and nothing about when to send it.
+  `prepare` returns the operations one change needs, which of them write and what
+  a write's answer confirms, and where a replacement stops being recorded;
+  `conclude` turns the answers to exactly those operations into what the resource
+  became; `afterwards` says whether a change that a stopped run left unrecorded
+  can be read back next time or has to be sent again. The `os` provider builds
+  paths, packages and services through them, so the batch it used to assemble in
+  three separate places is assembled in one. `apply` and `delete` remain as the
+  engine's way in, now thin: prepare, one batch, conclude. RFC 0001 §5.2.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

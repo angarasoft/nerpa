@@ -142,6 +142,29 @@ impl Provider for Watching {
         unreachable!("this provider is only ever read from")
     }
 
+    fn prepare(
+        &self,
+        _change: &nerpa_core::provider::Prepared<'_>,
+    ) -> Result<nerpa_core::provider::Planned, ProviderError> {
+        unreachable!("this provider is only ever read from")
+    }
+
+    fn conclude(
+        &self,
+        _change: &nerpa_core::provider::Concluding<'_>,
+        _became: &[nerpa_core::provider::Answered],
+    ) -> Result<nerpa_core::provider::Concluded, ProviderError> {
+        unreachable!("this provider is only ever read from")
+    }
+
+    fn afterwards(
+        &self,
+        _address: &Address,
+        _kind: nerpa_core::provider::Sending,
+    ) -> nerpa_core::provider::Afterwards {
+        nerpa_core::provider::Afterwards::Read
+    }
+
     fn fake() -> Self {
         Self(Ledger::default())
     }
