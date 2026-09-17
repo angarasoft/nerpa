@@ -690,7 +690,7 @@ fn answers(
         }),
         nerpa_proto::Answer::Failed { at, problem } => Err(ProviderError::World {
             address: address.clone(),
-            problem: format!("at {at}: {problem}"),
+            problem: format!("{at}: {problem}"),
         }),
         other => Err(ProviderError::World {
             address: address.clone(),

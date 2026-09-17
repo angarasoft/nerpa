@@ -679,6 +679,14 @@ without ceremony until the first stage is complete.
   nobody checked had arrived — the one recording that cannot be corrected by
   looking, because looking is what a secret does not allow.
 
+- A failure on the wire says where it stopped: before anything, at a premise, at
+  an operation, or at an observation. All four were the index zero, so a batch
+  refused for a missing seal read exactly like one that stopped at its first
+  premise, and nothing could tell a batch that never started from one that got as
+  far as its first check. The protocol version is 5 with it, which is one
+  reinstall on every machine that has an executor — 0040 already refuses a machine
+  carrying a build this nerpa did not ship.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

@@ -35,7 +35,7 @@ use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use nerpa_proto::{Answer, Ask, Entry, Observation, Operation, Premise, Seal, Seen};
+use nerpa_proto::{Answer, Ask, At, Entry, Observation, Operation, Premise, Seal, Seen};
 
 /// What this executor says to one request.
 #[must_use]
@@ -54,11 +54,11 @@ pub fn answer(ask: &Ask) -> Answer {
         // invented number would be worse than none, because the engine would
         // skip a machine on the strength of it.
         Ask::Fingerprint => Answer::Failed {
-            at: 0,
+            at: At::Before,
             problem: "this executor does not keep a fingerprint yet".to_owned(),
         },
         _ => Answer::Failed {
-            at: 0,
+            at: At::Before,
             problem: "this executor does not understand that request".to_owned(),
         },
     }
@@ -78,7 +78,7 @@ fn build() -> Answer {
             digest: nerpa_proto::build_of(&binary),
         },
         Err(error) => Answer::Failed {
-            at: 0,
+            at: At::Before,
             problem: format!("this executor cannot read itself to say which build it is: {error}"),
         },
     }
@@ -89,7 +89,12 @@ fn look(observations: &[Observation], seal: Option<&Seal>) -> Answer {
     for (at, observation) in observations.iter().enumerate() {
         match observe(observation, seal) {
             Ok(found) => seen.push(found),
-            Err(problem) => return Answer::Failed { at, problem },
+            Err(problem) => {
+                return Answer::Failed {
+                    at: At::Observation(at),
+                    problem,
+                };
+            }
         }
     }
     Answer::Found { seen }
@@ -105,7 +110,7 @@ fn perform(premise: &[Premise], operations: &[Operation], seal: Option<&Seal>) -
         (None, true) => None,
         (None, false) => {
             return Answer::Failed {
-                at: 0,
+                at: At::Before,
                 problem: "a premise arrived without its seal, and one is not compared bare"
                     .to_owned(),
             };
@@ -120,7 +125,12 @@ fn perform(premise: &[Premise], operations: &[Operation], seal: Option<&Seal>) -
         match observe(&held.observation, Some(seal)) {
             Ok(now) if nerpa_proto::sealed(seal, &nerpa_proto::digest(&now)) == held.digest => {}
             Ok(_) => return Answer::Moved { at },
-            Err(problem) => return Answer::Failed { at, problem },
+            Err(problem) => {
+                return Answer::Failed {
+                    at: At::Premise(at),
+                    problem,
+                };
+            }
         }
     }
 
@@ -128,7 +138,12 @@ fn perform(premise: &[Premise], operations: &[Operation], seal: Option<&Seal>) -
     for (at, operation) in operations.iter().enumerate() {
         match act(operation) {
             Ok(result) => became.push(result),
-            Err(problem) => return Answer::Failed { at, problem },
+            Err(problem) => {
+                return Answer::Failed {
+                    at: At::Operation(at),
+                    problem,
+                };
+            }
         }
     }
     Answer::Done { became }

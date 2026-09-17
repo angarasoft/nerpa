@@ -10,7 +10,7 @@
 
 use nerpa_core::Target;
 use nerpa_core::provider::{ProviderError, Reach};
-use nerpa_proto::{Answer, Ask, Entry, Observation, Operation, Seen};
+use nerpa_proto::{Answer, Ask, At, Entry, Observation, Operation, Seen};
 use nerpa_transport::Piped;
 
 fn node(name: &str) -> Target {
@@ -182,7 +182,7 @@ fn a_far_end_that_cannot_say_which_build_it_is_is_not_taken_for_the_right_one() 
     impl Reach for Older {
         fn ask(&self, _: &Ask) -> Result<Answer, ProviderError> {
             Ok(Answer::Failed {
-                at: 0,
+                at: At::Before,
                 problem: "this executor does not understand that request".to_owned(),
             })
         }

@@ -216,7 +216,7 @@ impl Reach for NoRoom {
             });
         }
         Ok(nerpa_proto::Answer::Failed {
-            at: 0,
+            at: nerpa_proto::At::Operation(0),
             problem: "there is no room for another one".to_owned(),
         })
     }

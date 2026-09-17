@@ -279,7 +279,7 @@ fn answered(
         Answer::Failed { at, problem } => {
             return Err(ProviderError::World {
                 address: address.clone(),
-                problem: format!("at {at}: {problem}"),
+                problem: format!("{at}: {problem}"),
             });
         }
         other => {

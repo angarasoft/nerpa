@@ -10,7 +10,7 @@
 use std::io::Cursor;
 
 use nerpa_proto::{
-    Answer, Ask, Entry, MAX_FRAME, Observation, Operation, PROTOCOL_VERSION, Premise, Request,
+    Answer, Ask, At, Entry, MAX_FRAME, Observation, Operation, PROTOCOL_VERSION, Premise, Request,
     Response, Seal, Seen, WireError,
 };
 
@@ -105,7 +105,7 @@ fn every_answer_survives_the_trip() {
             digest: "9f86d081".to_owned(),
         },
         Answer::Failed {
-            at: 2,
+            at: At::Operation(2),
             problem: "permission denied".to_owned(),
         },
     ] {

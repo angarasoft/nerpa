@@ -106,7 +106,7 @@ fn all(answer: Answer, address: &Address, asked: usize) -> Result<Vec<Seen>, Pro
         }),
         Answer::Failed { at, problem } => Err(ProviderError::World {
             address: address.clone(),
-            problem: format!("at {at}: {problem}"),
+            problem: format!("{at}: {problem}"),
         }),
         other => Err(ProviderError::World {
             address: address.clone(),

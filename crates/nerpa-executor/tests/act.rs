@@ -8,7 +8,7 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::Path;
 
 use nerpa_executor::answer;
-use nerpa_proto::{Answer, Ask, Entry, Observation, Operation, Premise, Seal, Seen};
+use nerpa_proto::{Answer, Ask, At, Entry, Observation, Operation, Premise, Seal, Seen};
 
 /// What every premise in these tests is sealed with, standing for one machine's.
 const SEAL: Seal = Seal([5; 32]);
@@ -80,7 +80,11 @@ fn a_path_it_may_not_read_is_a_failure_rather_than_nothing() {
     let Answer::Failed { at: index, problem } = look(vec![at(&file), at(&file)]) else {
         panic!("an unreadable file is not an absent one")
     };
-    assert_eq!(index, 0, "and it names which one stopped it");
+    assert_eq!(
+        index,
+        At::Observation(0),
+        "and it names which one stopped it"
+    );
     assert!(problem.contains("Permission denied"), "{problem}");
 }
 
@@ -451,4 +455,65 @@ fn a_sealed_observation_answers_with_a_seal_and_never_the_contents() {
         seal: Some(SEAL),
     });
     assert!(matches!(nested, Answer::Failed { .. }), "{nested:?}");
+}
+
+/// A failure says where it happened, and "before anything" is not "at the first
+/// premise".
+///
+/// Both were index zero: a batch refused for a missing seal and a batch that
+/// stopped at its first premise arrived as the same answer, so nothing reading
+/// it could tell a batch that never started from one that got as far as its
+/// first check. Found by reading the wire against what the engine does with it.
+#[test]
+fn a_refusal_before_anything_is_not_where_the_first_premise_is() {
+    let scratch = scratch();
+    let watched = scratch.path().join("conf");
+    let written = scratch.path().join("motd");
+    fs::write(&watched, "as planned\n").unwrap();
+
+    let write = Operation::File {
+        path: written.display().to_string(),
+        content: b"hello\n".to_vec(),
+        mode: 0o644,
+    };
+
+    // Refused before anything is looked at: a premise arrived bare.
+    let bare = answer(&Ask::Perform {
+        plan: None,
+        premise: vec![Premise {
+            observation: at(&watched),
+            digest: as_planned(&watched),
+        }],
+        operations: vec![write.clone()],
+        seal: None,
+    });
+    let Answer::Failed { at: before, .. } = bare else {
+        panic!("a premise without its seal is refused, and was answered {bare:?}")
+    };
+
+    // Stopped at the first premise: it has its seal, and what it names cannot be
+    // read.
+    fs::set_permissions(&watched, fs::Permissions::from_mode(0o000)).unwrap();
+    assert!(
+        fs::read(&watched).is_err(),
+        "this test needs a file it cannot read; running as root?"
+    );
+    let unreadable = answer(&Ask::Perform {
+        plan: None,
+        premise: vec![Premise {
+            observation: at(&watched),
+            digest: [0; 32],
+        }],
+        operations: vec![write],
+        seal: Some(SEAL),
+    });
+    let Answer::Failed { at: first, .. } = unreadable else {
+        panic!("a premise nobody can read is a failure, and was answered {unreadable:?}")
+    };
+
+    assert_ne!(
+        before, first,
+        "a refusal before anything and a failure at the first premise are different places"
+    );
+    assert!(!written.exists(), "and neither of them wrote anything");
 }

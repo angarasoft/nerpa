@@ -48,7 +48,7 @@ use serde::{Deserialize, Serialize};
 /// Four since a premise travels sealed for the machine it describes, and an
 /// observation can be asked for as a seal rather than as the thing. See decision
 /// 0041.
-pub const PROTOCOL_VERSION: u32 = 4;
+pub const PROTOCOL_VERSION: u32 = 5;
 
 /// The largest frame either end will read.
 ///
@@ -359,6 +359,43 @@ impl Operation {
     }
 }
 
+/// Where a batch stopped.
+///
+/// Every one of these was the index zero once, which made a refusal before
+/// anything was looked at indistinguishable from a failure at the first premise:
+/// the engine could not tell a batch that never started from one that got as far
+/// as its first check. An index alone cannot say that, because the places are not
+/// one sequence.
+///
+/// The number is an index rather than a path, because not everything either end
+/// talks about has one — and it doubles as how many went through before it, so
+/// the engine knows what happened rather than assuming nothing did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum At {
+    /// Nothing was looked at and nothing was done. A request refused for what it
+    /// was, such as a premise or a secret write that arrived without its seal.
+    Before,
+    /// Checking the premise with this index, in a `Perform`.
+    Premise(usize),
+    /// Carrying out the operation with this index, in a `Perform`.
+    Operation(usize),
+    /// Looking at the observation with this index, in a `Look`.
+    Observation(usize),
+}
+
+impl std::fmt::Display for At {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            At::Before => write!(f, "before anything was done"),
+            At::Premise(at) => write!(f, "at premise {at}"),
+            At::Operation(at) => write!(f, "at operation {at}"),
+            At::Observation(at) => write!(f, "at observation {at}"),
+        }
+    }
+}
+
 /// What the executor says back.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Response {
@@ -429,13 +466,8 @@ pub enum Answer {
     },
     /// It could not be done, and this is as far as it got.
     Failed {
-        /// Which operation or observation stopped it, by index.
-        ///
-        /// An index rather than a path, because not everything either end talks
-        /// about has one — and because it doubles as how many went through
-        /// before it, so the engine knows what happened rather than assuming
-        /// nothing did.
-        at: usize,
+        /// Where it stopped.
+        at: At,
         /// What the machine said.
         problem: String,
     },

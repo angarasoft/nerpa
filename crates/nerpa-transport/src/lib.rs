@@ -33,7 +33,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::sync::Mutex;
 
 use nerpa_core::provider::{ProviderError, Reach};
-use nerpa_proto::{Answer, Ask, Request};
+use nerpa_proto::{Answer, Ask, At, Request};
 
 /// How long a machine has to answer before it counts as not answering.
 ///
@@ -354,7 +354,7 @@ impl Reach for Held {
                         }
                         _ => {
                             return Ok(Answer::Failed {
-                                at: became.len(),
+                                at: At::Operation(became.len()),
                                 problem: "a machine in memory cannot run a program".to_owned(),
                             });
                         }
@@ -363,7 +363,7 @@ impl Reach for Held {
                 Answer::Done { became }
             }
             _ => Answer::Failed {
-                at: 0,
+                at: At::Before,
                 problem: "a machine in memory does not answer that".to_owned(),
             },
         })
