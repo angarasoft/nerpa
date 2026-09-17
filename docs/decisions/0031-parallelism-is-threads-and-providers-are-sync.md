@@ -2,6 +2,10 @@
 
 - Status: accepted
 - Date: 2026-09-06
+- Corrected: 2026-09-17 — "state is written from one place" was built as one
+  writer of one file, which made every machine wait for every other machine's
+  write. 0045 keeps the recorder as the one place that decides the order and
+  gives each machine's shard a writer of its own.
 
 ## Context
 
