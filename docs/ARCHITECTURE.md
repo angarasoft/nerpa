@@ -253,6 +253,16 @@ operations and contains no provider code, so a provider is a translator: reading
 become things to look at, a change becomes things to do, and the answers become
 attributes.
 
+A provider says what a change is made of and does not send it. `prepare` returns
+the operations, which of them write and what a matching answer confirms, and
+where a replacement stops being recorded; `conclude` turns the answers to exactly
+those operations into what the resource became; `afterwards` says whether a
+change that a stopped run left unrecorded can be read back next time or has to be
+sent again. The engine builds the batch, seals it, sends it to the machine the
+resource lives on, and counts the answers against what it asked. `read` is the
+only method handed a connection, because reading is a journey of its own, and
+`INV-PROVIDER-002` says what that separation is worth. RFC 0001 §5.2.
+
 Nobody else plans centrally and runs the logic centrally. Ansible ships the module
 and runs it there; Salt keeps a daemon that already has it; Puppet compiles a
 catalog centrally and applies it with providers on the node. The reason they
