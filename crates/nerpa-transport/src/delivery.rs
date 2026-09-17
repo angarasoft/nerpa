@@ -196,7 +196,7 @@ fn run(
 }
 
 /// How much of each stream is kept, as a conversation keeps its standard error.
-const KEPT: usize = 64 * 1024;
+pub(crate) const KEPT: usize = 64 * 1024;
 
 /// Runs a command, writing `stdin` to it while both its streams are read.
 ///
@@ -238,7 +238,7 @@ fn spoken(
 
 /// The last [`KEPT`] bytes of a stream, read to its end so that nothing on the far
 /// side is ever left blocked writing.
-fn tail(mut stream: impl std::io::Read) -> Vec<u8> {
+pub(crate) fn tail(mut stream: impl std::io::Read) -> Vec<u8> {
     let mut kept: Vec<u8> = Vec::new();
     let mut chunk = [0_u8; 8192];
     while let Ok(read) = stream.read(&mut chunk) {

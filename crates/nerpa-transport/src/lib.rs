@@ -70,6 +70,23 @@ pub struct Piped {
     /// `None` once the far end has gone away, so a second ask says that rather
     /// than blocking on a pipe nobody is reading.
     talking: Mutex<Option<Talking>>,
+    /// The thread draining what the far end writes to its standard error.
+    ///
+    /// Drained on a thread of its own, because a far end that fills that pipe
+    /// and waits would otherwise hold the conversation. Kept because it is the
+    /// only thing an executor of another protocol version says before it goes:
+    /// it refuses the frame by complaining and exiting without an answer, and
+    /// without this the report is a pipe that broke for no stated reason. See
+    /// 0040 and RFC 0001 §5.3.
+    ///
+    /// Joined rather than peeked at. Reading whatever the thread had managed so
+    /// far raced with it: the same test passed four times in five and the gate
+    /// caught the fifth. The pipe ends when the far end does, so once the
+    /// conversation has been ended the thread finishes on its own and what it
+    /// returns is all there was.
+    drain: Mutex<Option<std::thread::JoinHandle<Vec<u8>>>>,
+    /// What that thread returned, once it has been joined.
+    said: Mutex<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -97,7 +114,7 @@ impl Piped {
             .args(arguments)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stderr(Stdio::piped())
             .spawn()
             .map_err(|error| ProviderError::Unreachable {
                 node: node.clone(),
@@ -115,6 +132,11 @@ impl Piped {
             });
         };
 
+        let drain = child
+            .stderr
+            .take()
+            .map(|complaining| std::thread::spawn(move || delivery::tail(complaining)));
+
         Ok(Self {
             node: node.clone(),
             described,
@@ -123,6 +145,8 @@ impl Piped {
                 sending,
                 reading,
             })),
+            drain: Mutex::new(drain),
+            said: Mutex::new(Vec::new()),
         })
     }
 }
@@ -140,6 +164,51 @@ impl Drop for Piped {
     }
 }
 
+impl Piped {
+    /// This machine being out of reach, with whatever the far end said about it.
+    ///
+    /// Everything that can go wrong in a conversation is the machine ceasing to
+    /// be reachable: the pipe broke, the far end went away, a thread died
+    /// holding it. That is the one failure a run survives, and it is about a
+    /// machine rather than about any resource on it — so it is reported as what
+    /// it is instead of being attributed to whatever was being asked about at
+    /// the time.
+    fn out_of_reach(&self, problem: &str) -> ProviderError {
+        ProviderError::Unreachable {
+            node: self.node.clone(),
+            problem: format!("{}: {problem}{}", self.described, self.last_words()),
+        }
+    }
+
+    /// What the far end said on its way out, if it said anything.
+    ///
+    /// Read when something has already gone wrong, so the draining thread has
+    /// usually finished; what it has by then is what there is. An empty answer
+    /// reads as nothing rather than as a gap, because a far end that went
+    /// quietly is a different thing to report than one that explained itself.
+    fn last_words(&self) -> String {
+        // Joined here, and only here, because by now the far end has been ended
+        // and its pipe closed: the thread returns what it read and stops. Asked
+        // twice, the second answer comes from what the first one kept.
+        if let Ok(mut drain) = self.drain.lock()
+            && let Some(draining) = drain.take()
+            && let Ok(words) = draining.join()
+            && let Ok(mut kept) = self.said.lock()
+        {
+            *kept = words;
+        }
+        let Ok(kept) = self.said.lock() else {
+            return String::new();
+        };
+        let words = String::from_utf8_lossy(&kept);
+        let words = words.trim();
+        if words.is_empty() {
+            return String::new();
+        }
+        format!("; it said: {words}")
+    }
+}
+
 impl Reach for Piped {
     fn ask(&self, ask: &Ask) -> Result<Answer, ProviderError> {
         // Everything that can go wrong here is the machine ceasing to be
@@ -148,17 +217,11 @@ impl Reach for Piped {
         // machine rather than about any resource on it — so it is reported as
         // what it is instead of being attributed to whatever was being asked
         // about at the time.
-        let out_of_reach = |problem: String| ProviderError::Unreachable {
-            node: self.node.clone(),
-            problem: format!("{}: {problem}", self.described),
+        let Ok(mut held) = self.talking.lock() else {
+            return Err(self.out_of_reach("a thread died holding this connection"));
         };
-
-        let mut held = self
-            .talking
-            .lock()
-            .map_err(|_| out_of_reach("a thread died holding this connection".to_owned()))?;
         let Some(talking) = held.as_mut() else {
-            return Err(out_of_reach("the far end has gone away".to_owned()));
+            return Err(self.out_of_reach("the far end has gone away"));
         };
 
         let exchanged = exchange(talking, ask);
@@ -172,7 +235,10 @@ impl Reach for Piped {
         {
             end(broken);
         }
-        exchanged.map_err(out_of_reach)
+        // The lock goes before the words are asked for: ending the far end is
+        // what lets the draining thread finish, and it is joined for them.
+        drop(held);
+        exchanged.map_err(|problem| self.out_of_reach(&problem))
     }
 }
 

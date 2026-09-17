@@ -244,3 +244,46 @@ fn a_conversation_that_broke_is_not_asked_again_as_though_it_were_in_step() {
     };
     assert!(problem.contains("gone away"), "{problem}");
 }
+
+/// A far end that says why it is going says it into the refusal.
+///
+/// An executor built for an older protocol refuses a frame it cannot read by
+/// writing to its standard error and exiting without answering — which is how
+/// this nerpa's first frame will look to every executor already installed
+/// (0040, RFC 0001 §5.3). That standard error went to whatever terminal the run
+/// had, so what reached the report was a pipe that broke and nothing about why.
+#[test]
+fn a_far_end_that_complains_before_it_goes_is_quoted_in_the_refusal() {
+    // Said from a file rather than written into the command, because the
+    // refusal names the command it ran: a phrase in the arguments would be
+    // found there whether or not anybody listened to the far end. The first
+    // version of this test passed for exactly that reason.
+    let scratch = tempfile::tempdir().expect("a scratch directory");
+    let words = scratch.path().join("complaint");
+    std::fs::write(&words, "this executor speaks protocol version 4, not 5\n").unwrap();
+
+    let reach = Piped::running(
+        &node("web-01"),
+        "sh",
+        &[
+            "-c".to_owned(),
+            format!("cat {} >&2; exit 0", words.display()),
+        ],
+    )
+    .expect("sh starts");
+
+    let refusal = reach
+        .ask(&Ask::Look {
+            observations: Vec::new(),
+            seal: None,
+        })
+        .expect_err("there is nobody there to answer");
+
+    let ProviderError::Unreachable { problem, .. } = &refusal else {
+        panic!("a far end that went away is the machine being out of reach: {refusal:?}")
+    };
+    assert!(
+        problem.contains("protocol version 4"),
+        "the refusal should carry what the far end said: {problem}"
+    );
+}

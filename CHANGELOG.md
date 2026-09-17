@@ -722,6 +722,14 @@ without ceremony until the first stage is complete.
   saying the input was withheld. No operation the `os` provider builds is private
   yet, so this closes it before the first one that would.
 
+- A machine that goes away is reported with what it said on its way out. A
+  conversation let the far end's standard error through to whatever terminal the
+  run had, so the report held a pipe that broke and nothing about why — and the
+  case that matters is the one protocol 5 creates: an executor built for protocol
+  4 refuses the first frame by complaining and exiting without an answer. It is
+  drained on a thread of its own and kept to its last 64 KiB, which is the rule
+  delivery already used and now shares.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the
