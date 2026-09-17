@@ -15,7 +15,10 @@ use crate::attribute::Attribute;
 use crate::graph::{Graph, GraphError};
 use crate::observed::Observed;
 use crate::plan::{Change, ChangeKind, Confidence, Plan};
-use crate::provider::{Attributes, Machines, ProviderError, Providers, Reach, Reading};
+use crate::provider::{
+    Answered, Attributes, Concluded, Concluding, Machines, Planned, Prepared, ProviderError,
+    Providers, Reach, Reading, Sending,
+};
 use crate::resource::Resource;
 use crate::secret::{FetchError, Recorded, Secrets};
 use crate::state::{Record, Recording, State};
@@ -299,16 +302,7 @@ pub fn apply(
             // whole state file for each would be thousands of writes saying that
             // nothing happened.
             if !change.kind().sends_anything() {
-                let found = observed.get(address);
-                requires!(
-                    found.is_some(),
-                    "{address} was planned as found, and this run was handed a reading without it"
-                );
-                if let Some(found) = found {
-                    let recorded = recording(found, change, secrets);
-                    state.record(address.clone(), Record::new(recorded, dependencies(change)));
-                    adopted = true;
-                }
+                adopted |= adopt(state, &observed, change, secrets);
                 changed += 1;
                 continue;
             }
@@ -331,127 +325,83 @@ pub fn apply(
             // depends on it. Read in the same run, before anything was applied.
             let facts = observed.facts_of(address.target());
 
-            // ENFORCES: INV-REACT-002
-            // Owed before its cause is sent, not when the reaction's own stage
-            // comes. Written there, a debt was lost by exactly the run that
-            // stopped in between — a machine gone, a Ctrl-C, a failure in a
-            // stage between the two — which left a new file, an old process and
-            // nothing recording that fact: the state 0026 exists to make
-            // unreachable. The window between this write and the reaction
-            // resolves toward reporting a debt that was in fact paid: one
-            // redundant restart, against an outage nobody knows about.
-            if let Some(reactors) = rousing.get(address) {
-                for reactor in reactors {
-                    owe_before(state, reactor, address, &observed, secrets);
-                }
-            }
-            // ENFORCES: INV-REACT-006
-            // And on the records of reacting resources this plan cannot reach,
-            // which the planner found to have one. Paid in whichever later run
-            // their machine answers in.
-            for reactor in change.owed_by() {
-                requires!(
-                    state.get(reactor).is_some(),
-                    "{reactor} was planned as owing a reaction on its record, and this run was handed a state without one"
-                );
-                state.owe(reactor, std::slice::from_ref(address));
-            }
-            if rousing.contains_key(address) || !change.owed_by().is_empty() {
-                record(state).map_err(RunError::Record)?;
-            }
+            owe(state, change, &rousing, &observed, secrets, record)?;
 
-            if change.kind() == ChangeKind::Delete {
-                if let Some(record) = state.get(address) {
-                    provider.delete(address, &record.locator(), change.premise(), facts, reach)?;
-                }
+            let Some(kind) = Sending::of(change.kind()) else {
+                // Adoptions and reorders left this loop a few lines above.
+                requires!(
+                    false,
+                    "{address} was planned as sending something, and its kind sends nothing"
+                );
+                continue;
+            };
+            let recorded = state.get(address).map(Record::locator);
+
+            // A removal of something state does not remember has nothing to
+            // remove: state is the only thing that knows where it was.
+            if kind == Sending::Delete && recorded.is_none() {
                 state.forget(address);
                 record(state).map_err(RunError::Record)?;
                 changed += 1;
                 continue;
             }
 
-            // Destroy before create, and only for a replacement: the resource
-            // that is there is in the way of the one that should be, and only
-            // state knows where the first one actually is.
-            //
-            // ENFORCES: INV-STATE-005
-            // The destruction is a change like any other, so it is written down
-            // before anything else is attempted. Creating the replacement can
-            // fail — no quota, no address, no image — and until this was here
-            // that failure left state saying where the old one was, for a
-            // resource that had already been destroyed. Every later plan then
-            // reasoned from that.
-            // The locator is taken out first because `record` here is the
-            // callback that writes state down, and a `Record` borrowed from
-            // state would shadow it — which is how the write came to be missing.
-            let mut premise = change.premise();
-            if change.kind() == ChangeKind::Replace
-                && let Some(locator) = state.get(address).map(Record::locator)
-            {
-                provider.delete(address, &locator, premise, facts, reach)?;
-                state.forget(address);
-                record(state).map_err(RunError::Record)?;
-                // The premise describes the world before this change, and this
-                // change has just altered it: the thing it names is the thing
-                // that was deleted a line ago. Checking it again would refuse
-                // the run for a difference this run made on purpose.
-                premise = &[];
-            }
-
-            let attributes = settle(change, &observed, secrets)?;
+            let desired = if kind == Sending::Delete {
+                Attributes::new()
+            } else {
+                settle(change, &observed, secrets)?
+            };
             // ENFORCES: INV-REACT-004
             // Told whether it was roused, whatever else changed. A service whose own
             // attributes change in the same plan as its file is one Update, and the
             // provider has to know to restart it as well.
             let roused = !(change.roused_by().is_empty() && change.owed().is_empty());
-            let result = provider.apply(
+
+            let planned = provider.prepare(&Prepared {
                 address,
-                change.kind(),
+                kind,
                 roused,
-                &attributes,
-                premise,
+                // Nothing marks a change as sent again until state carries marks.
+                resent: false,
+                desired: &desired,
+                recorded: recorded.as_ref(),
                 facts,
-                reach,
+            })?;
+
+            let became = send(planned, reach, change, state, record)?;
+            let (shown, secret) = told(change, kind, &desired, recorded);
+            let result = match provider.conclude(
+                &Concluding {
+                    address,
+                    kind,
+                    roused,
+                    facts,
+                    plain: &shown,
+                    secret: &secret,
+                },
+                &became,
+            )? {
+                // Forgotten on every `Gone`, whatever the change was: a removal
+                // that only settles — a service stopped, its unit left where it
+                // was — says it is gone the same way.
+                Concluded::Gone => {
+                    state.forget(address);
+                    record(state).map_err(RunError::Record)?;
+                    changed += 1;
+                    continue;
+                }
+                Concluded::Became(result) => result,
+            };
+
+            wrote(
+                state,
+                &mut observed,
+                change,
+                &result,
+                &desired,
+                secrets,
+                record,
             )?;
-
-            // A fresh record owes nothing, which is how a debt written before
-            // its cause was sent is cleared: paid by having got this far.
-            state.record(
-                address.clone(),
-                Record::new(recording(&result, change, secrets), dependencies(change)),
-            );
-            observed.record(address.clone(), result.clone());
-            // Written down before the next resource is touched. State used to be
-            // saved once, after this whole loop returned, so anything that
-            // stopped it — a contract violation panicking by design, a machine
-            // going away, somebody's Ctrl-C — left every resource this run had
-            // already made with nothing recording that it exists. They were not
-            // rolled back; they were forgotten.
-            // ENFORCES: INV-STATE-005
-            record(state).map_err(RunError::Record)?;
-
-            // Checked after the record, not before it. The resource has been
-            // made by now, and refusing without writing that down would leave it
-            // owned by nobody — the failure this whole loop was rearranged to
-            // stop.
-            //
-            // Reporting an attribute back is the provider's claim that it took
-            // it. One that goes in and does not come out never settles: the next
-            // plan finds it missing from the reading, proposes the same change,
-            // and every run after that does the same for ever. Measured on a
-            // file declared with an attribute the `os` provider does not own —
-            // it applied cleanly and re-planned until somebody noticed.
-            //
-            // A provider that cannot read a value back — a credential the cloud
-            // will not return — echoes it, and the echo is the claim. What it
-            // may not do is say nothing.
-            // ENFORCES: INV-PLAN-005
-            if let Some(name) = attributes.keys().find(|name| !result.contains_key(*name)) {
-                return Err(RunError::Unreported {
-                    address: address.clone(),
-                    attribute: name.clone(),
-                });
-            }
             changed += 1;
         }
     }
@@ -467,6 +417,262 @@ pub fn apply(
         "every change in the plan was carried out, or the run stopped"
     );
     Ok(Applied { observed, changed })
+}
+
+/// Writes down something that already matches its declaration.
+///
+/// Nothing is sent, so there is nothing to conclude from: what is written down
+/// is what was read there, secrets reduced to digests as for everything else.
+/// Says whether it wrote anything, because the write itself waits — see
+/// `INV-STATE-006` where this is called.
+fn adopt(state: &mut State, observed: &Observed, change: &Change, secrets: Secrets<'_>) -> bool {
+    let address = change.address();
+    let found = observed.get(address);
+    requires!(
+        found.is_some(),
+        "{address} was planned as found, and this run was handed a reading without it"
+    );
+    let Some(found) = found else {
+        return false;
+    };
+    state.record(
+        address.clone(),
+        Record::new(recording(found, change, secrets), dependencies(change)),
+    );
+    true
+}
+
+/// Writes down what this change rouses, before the change is sent.
+///
+/// ENFORCES: INV-REACT-002
+/// Owed before its cause is sent, not when the reaction's own stage comes.
+/// Written there, a debt was lost by exactly the run that stopped in between — a
+/// machine gone, a Ctrl-C, a failure in a stage between the two — which left a
+/// new file, an old process and nothing recording that fact: the state 0026
+/// exists to make unreachable. The window between this write and the reaction
+/// resolves toward reporting a debt that was in fact paid: one redundant
+/// restart, against an outage nobody knows about.
+///
+/// ENFORCES: INV-REACT-006
+/// And on the records of reacting resources this plan cannot reach, which the
+/// planner found to have one. Paid in whichever later run their machine answers
+/// in.
+fn owe(
+    state: &mut State,
+    change: &Change,
+    rousing: &BTreeMap<&Address, Vec<&Change>>,
+    observed: &Observed,
+    secrets: Secrets<'_>,
+    record: &mut dyn FnMut(&State) -> Result<(), String>,
+) -> Result<(), RunError> {
+    let address = change.address();
+    if let Some(reactors) = rousing.get(address) {
+        for reactor in reactors {
+            owe_before(state, reactor, address, observed, secrets);
+        }
+    }
+    for reactor in change.owed_by() {
+        requires!(
+            state.get(reactor).is_some(),
+            "{reactor} was planned as owing a reaction on its record, and this run was handed a state without one"
+        );
+        state.owe(reactor, std::slice::from_ref(address));
+    }
+    if rousing.contains_key(address) || !change.owed_by().is_empty() {
+        record(state).map_err(RunError::Record)?;
+    }
+    Ok(())
+}
+
+/// Writes down what the change became, and refuses what it did not report back.
+///
+/// ENFORCES: INV-STATE-005
+/// Written down before the next resource is touched. State used to be saved
+/// once, after the whole loop returned, so anything that stopped it — a contract
+/// violation panicking by design, a machine going away, somebody's Ctrl-C — left
+/// every resource this run had already made with nothing recording that it
+/// exists. They were not rolled back; they were forgotten.
+///
+/// The refusal comes after the record, not before it. The resource has been made
+/// by now, and refusing without writing that down would leave it owned by
+/// nobody — the failure this loop was rearranged to stop.
+///
+/// ENFORCES: INV-PLAN-005
+/// Reporting an attribute back is the provider's claim that it took it. One that
+/// goes in and does not come out never settles: the next plan finds it missing
+/// from the reading, proposes the same change, and every run after that does the
+/// same for ever. Measured on a file declared with an attribute the `os`
+/// provider does not own — it applied cleanly and re-planned until somebody
+/// noticed. A provider that cannot read a value back — a credential the cloud
+/// will not return — echoes it, and the echo is the claim. What it may not do is
+/// say nothing.
+///
+/// # Errors
+///
+/// Returns [`RunError::Record`] if state could not be written, and
+/// [`RunError::Unreported`] for an attribute the provider was given and did not
+/// report back.
+fn wrote(
+    state: &mut State,
+    observed: &mut Observed,
+    change: &Change,
+    result: &Attributes,
+    desired: &Attributes,
+    secrets: Secrets<'_>,
+    record: &mut dyn FnMut(&State) -> Result<(), String>,
+) -> Result<(), RunError> {
+    let address = change.address();
+    // A fresh record owes nothing, which is how a debt written before its cause
+    // was sent is cleared: paid by having got this far.
+    state.record(
+        address.clone(),
+        Record::new(recording(result, change, secrets), dependencies(change)),
+    );
+    observed.record(address.clone(), result.clone());
+    record(state).map_err(RunError::Record)?;
+
+    if let Some(name) = desired.keys().find(|name| !result.contains_key(*name)) {
+        return Err(RunError::Unreported {
+            address: address.clone(),
+            attribute: name.clone(),
+        });
+    }
+    Ok(())
+}
+
+/// One change, sent: one batch, or two where a replacement forgets in between.
+///
+/// ENFORCES: INV-STATE-005
+/// A replacement is two halves of one batch, and the record is dropped between
+/// them: in between, the old one is gone and the new one is not there yet.
+/// Making the replacement can fail — no quota, no address, no image — and until
+/// this was here that failure left state saying where the old one was, for a
+/// resource that had already been destroyed. Every later plan then reasoned from
+/// that.
+fn send(
+    planned: Planned,
+    reach: &dyn Reach,
+    change: &Change,
+    state: &mut State,
+    record: &mut dyn FnMut(&State) -> Result<(), String>,
+) -> Result<Vec<Answered>, RunError> {
+    let address = change.address();
+    let Some(forgetting) = planned.forget_after else {
+        return Ok(perform(
+            reach,
+            planned.operations,
+            change.premise(),
+            address,
+        )?);
+    };
+
+    requires!(
+        forgetting <= planned.operations.len(),
+        "{address} was prepared as forgotten after {forgetting} operations, and has {}",
+        planned.operations.len()
+    );
+    let (removing, making) = planned.operations.split_at(forgetting);
+    let mut became = perform(reach, removing.to_vec(), change.premise(), address)?;
+    state.forget(address);
+    record(state).map_err(RunError::Record)?;
+    // The premise describes the world before this change, and this change has
+    // just altered it: what it names is what was removed a moment ago. Checking
+    // it again would refuse the run for a difference this run made on purpose.
+    became.extend(perform(reach, making.to_vec(), &[], address)?);
+    Ok(became)
+}
+
+/// What a provider is told when its change is over, and which of its attributes
+/// were secrets.
+///
+/// No secret value among it: a secret went into the operation that carries it
+/// and stops there. A removal is told what state recorded, because the
+/// declaration that described it is gone.
+fn told(
+    change: &Change,
+    kind: Sending,
+    desired: &Attributes,
+    recorded: Option<Attributes>,
+) -> (Attributes, BTreeSet<String>) {
+    let secret: BTreeSet<String> = change
+        .desired()
+        .iter()
+        .filter(|(_, wanted)| wanted.is_secret())
+        .map(|(name, _)| name.clone())
+        .collect();
+    let shown = if kind == Sending::Delete {
+        recorded.unwrap_or_default()
+    } else {
+        desired
+            .iter()
+            .filter(|(name, _)| !secret.contains(name.as_str()))
+            .map(|(name, value)| (name.clone(), value.clone()))
+            .collect()
+    };
+    (shown, secret)
+}
+
+/// One batch, sent, with an answer for each operation in it.
+///
+/// Nothing is sent for a change that has no operations: a provider may conclude
+/// from what it was told without asking the machine anything.
+fn perform(
+    reach: &dyn Reach,
+    operations: Vec<nerpa_proto::Operation>,
+    premise: &[nerpa_proto::Premise],
+    address: &Address,
+) -> Result<Vec<Answered>, ProviderError> {
+    let asked = operations.len();
+    if asked == 0 {
+        return Ok(Vec::new());
+    }
+    let answer = reach.ask(&nerpa_proto::Ask::Perform {
+        plan: None,
+        premise: premise.to_vec(),
+        operations,
+        seal: None,
+    })?;
+    answers(answer, address, asked)
+}
+
+/// What the far end said about each operation, counted.
+///
+/// Answers are read by position: one too few and the last operation is described
+/// by nothing, one too many and each is described by its neighbour's.
+fn answers(
+    answer: nerpa_proto::Answer,
+    address: &Address,
+    asked: usize,
+) -> Result<Vec<Answered>, ProviderError> {
+    match answer {
+        nerpa_proto::Answer::Found { seen } | nerpa_proto::Answer::Done { became: seen }
+            if seen.len() == asked =>
+        {
+            Ok(seen.into_iter().map(Answered::Saw).collect())
+        }
+        nerpa_proto::Answer::Found { seen } | nerpa_proto::Answer::Done { became: seen } => {
+            Err(ProviderError::World {
+                address: address.clone(),
+                problem: format!(
+                    "the far end answered {} things about {asked} it was asked, and they are \
+                     read by position",
+                    seen.len()
+                ),
+            })
+        }
+        nerpa_proto::Answer::Moved { at } => Err(ProviderError::World {
+            address: address.clone(),
+            problem: format!("the machine is not what the plan was computed from, at premise {at}"),
+        }),
+        nerpa_proto::Answer::Failed { at, problem } => Err(ProviderError::World {
+            address: address.clone(),
+            problem: format!("at {at}: {problem}"),
+        }),
+        other => Err(ProviderError::World {
+            address: address.clone(),
+            problem: format!("the far end said something unexpected: {other:?}"),
+        }),
+    }
 }
 
 /// What each change in `plan` rouses, by cause, in plan order.

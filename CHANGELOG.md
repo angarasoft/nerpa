@@ -657,6 +657,16 @@ without ceremony until the first stage is complete.
   three separate places is assembled in one. `apply` and `delete` remain as the
   engine's way in, now thin: prepare, one batch, conclude. RFC 0001 §5.2.
 
+- The engine sends what a provider prepared, and no provider is handed a
+  connection to send it with. One batch for a change, and two where a replacement
+  has to drop its record in between: the half that removes goes with the change's
+  premises, the record is forgotten and written down, and only then does the half
+  that makes it go. What comes back is counted against what was asked, because
+  answers are read by position and one too few describes the last operation by
+  nothing. A change is sent to the machine its resource lives on, so a resource
+  in the `control` domain — which has no machine — is refused by name rather than
+  sent nowhere.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

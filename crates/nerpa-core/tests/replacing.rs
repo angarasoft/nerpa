@@ -85,25 +85,50 @@ impl Provider for DeletesButCannotCreate {
         Ok(())
     }
 
+    /// A replacement is one batch with the forgetting in the middle: what is
+    /// there is destroyed, and then the new one is made. Whether the second half
+    /// works is the machine's answer, not this provider's decision.
     fn prepare(
         &self,
         change: &nerpa_core::provider::Prepared<'_>,
     ) -> Result<nerpa_core::provider::Planned, ProviderError> {
-        if change.kind == nerpa_core::provider::Sending::Delete {
-            return Ok(nerpa_core::provider::Planned::default());
+        let step = |what: &str| nerpa_proto::Operation::Process {
+            program: what.to_owned(),
+            arguments: Vec::new(),
+            stdin: Vec::new(),
+            private: false,
+            expect: vec![0],
+        };
+        match change.kind {
+            nerpa_core::provider::Sending::Delete => Ok(nerpa_core::provider::Planned {
+                operations: vec![step("destroy")],
+                forget_after: None,
+                carries: BTreeMap::new(),
+            }),
+            nerpa_core::provider::Sending::Replace => Ok(nerpa_core::provider::Planned {
+                operations: vec![step("destroy"), step("create")],
+                forget_after: Some(1),
+                carries: BTreeMap::new(),
+            }),
+            _ => Ok(nerpa_core::provider::Planned {
+                operations: vec![step("create")],
+                forget_after: None,
+                carries: BTreeMap::new(),
+            }),
         }
-        Err(ProviderError::World {
-            address: change.address.clone(),
-            problem: "there is no room for another one".to_owned(),
-        })
     }
 
     fn conclude(
         &self,
-        _change: &nerpa_core::provider::Concluding<'_>,
+        change: &nerpa_core::provider::Concluding<'_>,
         _became: &[nerpa_core::provider::Answered],
     ) -> Result<nerpa_core::provider::Concluded, ProviderError> {
-        Ok(nerpa_core::provider::Concluded::Gone)
+        if change.kind == nerpa_core::provider::Sending::Delete {
+            return Ok(nerpa_core::provider::Concluded::Gone);
+        }
+        Ok(nerpa_core::provider::Concluded::Became(
+            change.plain.clone(),
+        ))
     }
 
     fn afterwards(
@@ -123,9 +148,13 @@ impl Provider for DeletesButCannotCreate {
 // being called after it, in a branch of the loop that did not have one.
 #[test]
 fn a_replacement_that_could_not_create_does_not_leave_state_saying_the_old_one_is_there() {
-    let instance = address("yandex:instance.db");
+    // On a machine, because the engine sends a change to where the resource
+    // lives: a resource in the `control` domain has no machine to send to, and
+    // the engine says so rather than sending anywhere.
+    let instance = address("yandex:instance.db@web-01");
 
     let mut graph = Graph::new();
+    graph.preexisting(nerpa_core::Target::new("web-01").unwrap());
     graph
         .insert(
             Resource::new(instance.clone())
@@ -164,7 +193,7 @@ fn a_replacement_that_could_not_create_does_not_leave_state_saying_the_old_one_i
     let outcome = apply(
         &plan,
         &providers,
-        &Machines::new().everywhere(Box::new(Nowhere)),
+        &Machines::new().everywhere(Box::new(NoRoom::default())),
         &observed,
         &mut state,
         secrets(),
@@ -187,12 +216,35 @@ fn a_replacement_that_could_not_create_does_not_leave_state_saying_the_old_one_i
     );
 }
 
-/// Reaches nothing, because this provider never asks.
-#[derive(Debug)]
-struct Nowhere;
+/// A machine with room for nothing more: it destroys what is there, and refuses
+/// to make anything after that.
+///
+/// The ordinary shape of a replacement that goes wrong — no quota, no address,
+/// no image — and the failure arrives where it really does, on the second half
+/// of the batch, after the first half has already happened.
+#[derive(Debug, Default)]
+struct NoRoom {
+    batches: std::sync::Mutex<usize>,
+}
 
-impl Reach for Nowhere {
-    fn ask(&self, _ask: &nerpa_proto::Ask) -> Result<nerpa_proto::Answer, ProviderError> {
-        panic!("this provider does not speak to a machine")
+impl Reach for NoRoom {
+    fn ask(&self, ask: &nerpa_proto::Ask) -> Result<nerpa_proto::Answer, ProviderError> {
+        let nerpa_proto::Ask::Perform { operations, .. } = ask else {
+            panic!("nothing is looked at in this test: {ask:?}");
+        };
+        let mut batches = self.batches.lock().unwrap();
+        *batches += 1;
+        if *batches == 1 {
+            return Ok(nerpa_proto::Answer::Done {
+                became: operations
+                    .iter()
+                    .map(|_| nerpa_proto::Seen::Nothing)
+                    .collect(),
+            });
+        }
+        Ok(nerpa_proto::Answer::Failed {
+            at: 0,
+            problem: "there is no room for another one".to_owned(),
+        })
     }
 }
