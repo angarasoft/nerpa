@@ -164,30 +164,6 @@ impl Provider for Writes {
         Afterwards::Read
     }
 
-    fn apply(
-        &self,
-        _address: &Address,
-        _kind: nerpa_core::ChangeKind,
-        _roused: bool,
-        attributes: &Attributes,
-        _premise: &[nerpa_proto::Premise],
-        _facts: nerpa_core::observed::Facts<'_>,
-        _reach: &dyn Reach,
-    ) -> Result<Attributes, ProviderError> {
-        Ok(attributes.clone())
-    }
-
-    fn delete(
-        &self,
-        _address: &Address,
-        _recorded: &Attributes,
-        _premise: &[nerpa_proto::Premise],
-        _facts: nerpa_core::observed::Facts<'_>,
-        _reach: &dyn Reach,
-    ) -> Result<(), ProviderError> {
-        Ok(())
-    }
-
     fn fake() -> Self {
         Self
     }

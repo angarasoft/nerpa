@@ -70,7 +70,7 @@ has written a test that carries that bypass out. An entry marked `enforced` has
 been attacked; one marked `claimed` is believed and undemonstrated, and its
 `bypass` field says exactly where it is thin.
 
-Five entries are `claimed` as this is written, and the ways around them are
+Six entries are `claimed` as this is written, and the ways around them are
 published rather than hidden:
 
 * `INV-PLAN-001` and `INV-SECRET-004` — an opaque value or a secret reaching a
@@ -83,10 +83,14 @@ published rather than hidden:
 * `INV-PLAN-003` — an attribute a provider does not report back never settles.
 * `INV-STATE-004` — the state file's rename is atomic against a stopped process,
   not against a stopped machine.
+* `INV-PROVIDER-002` — a provider is handed a connection only to read, and the
+  engine sends what a change is made of. Nothing stops a provider from doing
+  the work itself: the trait no longer invites it, and the language still
+  allows it.
 
 Telling us about one of those is welcome as an ordinary issue and is not a
 vulnerability report: it is written down, and a private channel buys nothing for
-something already public. **Finding a fifth one is exactly what this section is
+something already public. **Finding another one is exactly what this section is
 for** — a guarantee marked `enforced` that you can bypass is a real report, and
 the most valuable kind, because the registry is what everything else here rests
 on.

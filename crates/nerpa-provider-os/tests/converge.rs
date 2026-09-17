@@ -3,6 +3,7 @@
 // Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;
 
@@ -11,11 +12,14 @@ use nerpa_core::address::address;
 use nerpa_core::attribute::{Choice, Fact};
 use nerpa_core::planner::plan;
 use nerpa_core::provider::Machines;
-use nerpa_core::provider::{Attributes, Provider, Providers};
+use nerpa_core::provider::{
+    Answered, Attributes, Concluding, Prepared, Provider, Providers, Reach, Sending,
+};
 use nerpa_core::run::{apply, observe};
 use nerpa_core::secret::{Key, Remembered, Secrets};
 use nerpa_core::state::State;
 use nerpa_core::{ChangeKind, Graph, Reference, Resource, Target, Value};
+use nerpa_proto::{Answer, Ask};
 use nerpa_provider_os::Os;
 use nerpa_transport::Here;
 
@@ -1393,17 +1397,47 @@ fn one_provider_serves_two_threads_at_once() {
                 let mut wanted = Attributes::new();
                 wanted.insert("path".to_owned(), Value::Text(path.clone()));
                 wanted.insert("content".to_owned(), Value::Text(format!("{index}\n")));
-                providers
+                let provider = providers
                     .for_address(&address("os:file.subject@localhost"))
-                    .expect("registered")
-                    .apply(
-                        &address("os:file.subject@localhost"),
-                        ChangeKind::Create,
-                        false,
-                        &wanted,
-                        &[],
-                        Observed::new().facts_of(None),
-                        &Here,
+                    .expect("registered");
+                let subject = address("os:file.subject@localhost");
+                let facts = Observed::new();
+                let planned = provider
+                    .prepare(&Prepared {
+                        address: &subject,
+                        kind: Sending::Create,
+                        roused: false,
+                        resent: false,
+                        desired: &wanted,
+                        recorded: None,
+                        facts: facts.facts_of(None),
+                    })
+                    .expect("it knows what to send");
+                let asked = planned.operations.len();
+                let answer = Here
+                    .ask(&Ask::Perform {
+                        plan: None,
+                        premise: Vec::new(),
+                        operations: planned.operations,
+                        seal: None,
+                    })
+                    .expect("the machine answers");
+                let Answer::Done { became } = answer else {
+                    panic!("a batch is answered with what each operation became: {answer:?}");
+                };
+                assert_eq!(became.len(), asked);
+                let secret = BTreeSet::new();
+                provider
+                    .conclude(
+                        &Concluding {
+                            address: &subject,
+                            kind: Sending::Create,
+                            roused: false,
+                            facts: facts.facts_of(None),
+                            plain: &wanted,
+                            secret: &secret,
+                        },
+                        &became.into_iter().map(Answered::Saw).collect::<Vec<_>>(),
                     )
                     .expect("it writes");
             });

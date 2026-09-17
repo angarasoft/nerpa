@@ -37,7 +37,6 @@ use service::Init;
 use std::collections::{BTreeMap, BTreeSet};
 
 use nerpa_core::observed::Facts;
-use nerpa_core::plan::ChangeKind;
 use nerpa_core::provider::{
     Afterwards, Answered, Attributes, Concluded, Concluding, Planned, Prepared, Provider,
     ProviderError, Reach, Read, Reading, Sending,
@@ -621,27 +620,6 @@ fn conclude_service(change: &Concluding<'_>, became: &Seen) -> Result<Concluded,
     }
 }
 
-/// One change, sent as one batch, with an answer for each operation.
-fn sent(
-    planned: Planned,
-    address: &Address,
-    premise: &[Premise],
-    reach: &dyn Reach,
-) -> Result<Vec<Answered>, ProviderError> {
-    let asked = planned.operations.len();
-    let became = all(
-        reach.ask(&Ask::Perform {
-            plan: None,
-            premise: premise.to_vec(),
-            operations: planned.operations,
-            seal: None,
-        })?,
-        address,
-        asked,
-    )?;
-    Ok(became.into_iter().map(Answered::Saw).collect())
-}
-
 impl Provider for Os {
     fn name(&self) -> &ProviderName {
         &self.name
@@ -820,104 +798,6 @@ impl Provider for Os {
         } else {
             Afterwards::Read
         }
-    }
-
-    /// Prepared, sent in one batch, concluded.
-    ///
-    /// The engine still asks a provider to do the sending, so the journey is
-    /// here rather than there. It moves when the engine runs machines side by
-    /// side (RFC 0001 §5.4); until then this is the same batch as before, built
-    /// by the same code that will build it afterwards.
-    fn apply(
-        &self,
-        address: &Address,
-        kind: ChangeKind,
-        roused: bool,
-        attributes: &Attributes,
-        premise: &[Premise],
-        facts: Facts<'_>,
-        reach: &dyn Reach,
-    ) -> Result<Attributes, ProviderError> {
-        let sending = match Sending::of(kind) {
-            // The engine removes what a replacement replaces before it calls
-            // this, so what is left to do here is make the new one.
-            Some(Sending::Replace) => Sending::Create,
-            Some(Sending::Delete) | None => {
-                return Err(ProviderError::World {
-                    address: address.clone(),
-                    problem: format!("{kind:?} makes nothing, so there is nothing to send"),
-                });
-            }
-            Some(sending) => sending,
-        };
-
-        let planned = self.prepare(&Prepared {
-            address,
-            kind: sending,
-            roused,
-            resent: false,
-            desired: attributes,
-            recorded: None,
-            facts,
-        })?;
-        let became = sent(planned, address, premise, reach)?;
-
-        // Which attributes are secret is the engine's knowledge, and it does not
-        // hand it over yet: today `apply` is given every settled value, so this
-        // passes on what it was given and names none of it secret.
-        let secret = BTreeSet::new();
-        match self.conclude(
-            &Concluding {
-                address,
-                kind: sending,
-                roused,
-                facts,
-                plain: attributes,
-                secret: &secret,
-            },
-            &became,
-        )? {
-            Concluded::Became(attributes) => Ok(attributes),
-            Concluded::Gone => Err(ProviderError::World {
-                address: address.clone(),
-                problem: "nothing is there after making it".to_owned(),
-            }),
-        }
-    }
-
-    fn delete(
-        &self,
-        address: &Address,
-        recorded: &Attributes,
-        premise: &[Premise],
-        facts: Facts<'_>,
-        reach: &dyn Reach,
-    ) -> Result<(), ProviderError> {
-        let nothing = Attributes::new();
-        let planned = self.prepare(&Prepared {
-            address,
-            kind: Sending::Delete,
-            roused: false,
-            resent: false,
-            desired: &nothing,
-            recorded: Some(recorded),
-            facts,
-        })?;
-        let became = sent(planned, address, premise, reach)?;
-
-        let secret = BTreeSet::new();
-        self.conclude(
-            &Concluding {
-                address,
-                kind: Sending::Delete,
-                roused: false,
-                facts,
-                plain: recorded,
-                secret: &secret,
-            },
-            &became,
-        )
-        .map(|_| ())
     }
 
     /// Nothing to fake.

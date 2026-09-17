@@ -9,11 +9,8 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
 use nerpa_core::address::address;
-use nerpa_core::plan::ChangeKind;
 use nerpa_core::planner::plan;
-use nerpa_core::provider::{
-    Attributes, Machines, Provider, ProviderError, Providers, Reach, Read, Reading,
-};
+use nerpa_core::provider::{Machines, Provider, ProviderError, Providers, Reach, Read, Reading};
 use nerpa_core::run::{RunError, apply, observe};
 use nerpa_core::schema::Schema;
 use nerpa_core::secret::{Key, Remembered, Secrets};
@@ -59,34 +56,6 @@ impl Provider for Selective {
         _reach: &dyn Reach,
     ) -> Result<Read, ProviderError> {
         Ok(Read::new())
-    }
-
-    fn apply(
-        &self,
-        _address: &Address,
-        _kind: ChangeKind,
-        _roused: bool,
-        attributes: &Attributes,
-        _premise: &[nerpa_proto::Premise],
-        _facts: nerpa_core::observed::Facts<'_>,
-        _reach: &dyn Reach,
-    ) -> Result<Attributes, ProviderError> {
-        Ok(attributes
-            .iter()
-            .filter(|(name, _)| name.as_str() == self.owns)
-            .map(|(name, value)| (name.clone(), value.clone()))
-            .collect())
-    }
-
-    fn delete(
-        &self,
-        _address: &Address,
-        _recorded: &Attributes,
-        _premise: &[nerpa_proto::Premise],
-        _facts: nerpa_core::observed::Facts<'_>,
-        _reach: &dyn Reach,
-    ) -> Result<(), ProviderError> {
-        Ok(())
     }
 
     fn prepare(

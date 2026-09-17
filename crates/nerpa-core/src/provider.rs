@@ -303,6 +303,9 @@ pub enum Afterwards {
 
 /// Reads and changes resources of the kinds it owns.
 // ENFORCES: INV-PROVIDER-001
+// ENFORCES: INV-PROVIDER-002
+// `read` is the only method here that is handed a connection. What a change is
+// made of is said, not done: the engine sends it.
 pub trait Provider: Send + Sync {
     /// The name this provider answers to in an address.
     fn name(&self) -> &ProviderName;
@@ -374,55 +377,6 @@ pub trait Provider: Send + Sync {
     /// not: a package is registered before its post-install has run, so finding
     /// it installed does not mean the change finished.
     fn afterwards(&self, address: &Address, kind: Sending) -> Afterwards;
-
-    /// Makes the resource match `attributes`, and reports what it became.
-    ///
-    /// Every value here is settled: whatever was unresolved at plan time has been
-    /// resolved from what earlier stages produced.
-    ///
-    /// `roused` says whether something this resource reacts to changes in this
-    /// plan, or an earlier run left that reaction unpaid. A `React` always is; an
-    /// `Update` can be as well, because a service whose own attributes change in
-    /// the same plan as its file is one change, and a provider that acts on being
-    /// roused has to do it then too. See decision 0026.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ProviderError`] if the declaration is unusable or the world
-    /// refuses the change.
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "what a provider is told about one change, one argument each"
-    )]
-    fn apply(
-        &self,
-        address: &Address,
-        kind: ChangeKind,
-        roused: bool,
-        attributes: &Attributes,
-        premise: &[Premise],
-        facts: Facts<'_>,
-        reach: &dyn Reach,
-    ) -> Result<Attributes, ProviderError>;
-
-    /// Removes the resource `recorded` describes.
-    ///
-    /// Takes what state remembers rather than what the configuration says,
-    /// because by the time something is being removed the configuration that
-    /// described it is gone.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`ProviderError`] if the resource could not be removed. Already
-    /// being gone is not a failure.
-    fn delete(
-        &self,
-        address: &Address,
-        recorded: &Attributes,
-        premise: &[Premise],
-        facts: Facts<'_>,
-        reach: &dyn Reach,
-    ) -> Result<(), ProviderError>;
 
     /// A version of this provider that touches nothing.
     ///

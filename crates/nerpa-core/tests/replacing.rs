@@ -58,33 +58,6 @@ impl Provider for DeletesButCannotCreate {
         Ok(Read::new())
     }
 
-    fn apply(
-        &self,
-        address: &Address,
-        _kind: ChangeKind,
-        _roused: bool,
-        _attributes: &Attributes,
-        _premise: &[nerpa_proto::Premise],
-        _facts: nerpa_core::observed::Facts<'_>,
-        _reach: &dyn Reach,
-    ) -> Result<Attributes, ProviderError> {
-        Err(ProviderError::World {
-            address: address.clone(),
-            problem: "there is no room for another one".to_owned(),
-        })
-    }
-
-    fn delete(
-        &self,
-        _address: &Address,
-        _recorded: &Attributes,
-        _premise: &[nerpa_proto::Premise],
-        _facts: nerpa_core::observed::Facts<'_>,
-        _reach: &dyn Reach,
-    ) -> Result<(), ProviderError> {
-        Ok(())
-    }
-
     /// A replacement is one batch with the forgetting in the middle: what is
     /// there is destroyed, and then the new one is made. Whether the second half
     /// works is the machine's answer, not this provider's decision.

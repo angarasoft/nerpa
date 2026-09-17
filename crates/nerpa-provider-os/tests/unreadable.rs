@@ -9,15 +9,20 @@
 // Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
+use std::collections::BTreeSet;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
-use nerpa_core::Observed;
 use nerpa_core::address::address;
-use nerpa_core::plan::ChangeKind;
-use nerpa_core::provider::{Attributes, Provider, Reading};
+use nerpa_core::observed::Facts;
+use nerpa_core::provider::{
+    Answered, Attributes, Concluded, Concluding, Planned, Prepared, Provider, ProviderError, Reach,
+    Reading, Sending,
+};
 use nerpa_core::value::Value;
+use nerpa_core::{Address, Observed};
+use nerpa_proto::{Answer, Ask};
 use nerpa_provider_os::Os;
 use nerpa_transport::Here;
 
@@ -185,17 +190,15 @@ fn a_binary_file_converges() {
 
     let mut wanted = at(&path);
     wanted.insert("content".to_owned(), Value::Bytes(bytes.clone()));
-    let written = Os::new()
-        .apply(
-            &address("os:file.subject@localhost"),
-            ChangeKind::Create,
-            false,
-            &wanted,
-            &[],
-            Observed::new().facts_of(None),
-            &HERE,
-        )
-        .expect("it writes");
+    let written = applied(
+        &address("os:file.subject@localhost"),
+        Sending::Create,
+        false,
+        &wanted,
+        Observed::new().facts_of(None),
+        &HERE,
+    )
+    .expect("it writes");
 
     assert_eq!(
         fs::read(&path).unwrap(),
@@ -223,17 +226,15 @@ fn writing_where_a_symlink_is_replaces_the_link_and_leaves_its_target_alone() {
         "content".to_owned(),
         Value::Text("declared here".to_owned()),
     );
-    Os::new()
-        .apply(
-            &address("os:file.subject@localhost"),
-            ChangeKind::Update,
-            false,
-            &wanted,
-            &[],
-            Observed::new().facts_of(None),
-            &HERE,
-        )
-        .expect("it writes");
+    applied(
+        &address("os:file.subject@localhost"),
+        Sending::Update,
+        false,
+        &wanted,
+        Observed::new().facts_of(None),
+        &HERE,
+    )
+    .expect("it writes");
 
     assert_eq!(fs::read_to_string(&link).unwrap(), "declared here");
     assert_eq!(
@@ -260,15 +261,13 @@ fn deleting_a_directory_does_not_take_what_nerpa_did_not_make() {
     let stranger = directory.join("written-by-somebody-else.conf");
     fs::write(&stranger, "not ours").unwrap();
 
-    let refusal = Os::new()
-        .delete(
-            &address("os:directory.confd@localhost"),
-            &at(&directory),
-            &[],
-            Observed::new().facts_of(None),
-            &HERE,
-        )
-        .expect_err("a directory with something in it is not empty");
+    let refusal = removed(
+        &address("os:directory.confd@localhost"),
+        &at(&directory),
+        Observed::new().facts_of(None),
+        &HERE,
+    )
+    .expect_err("a directory with something in it is not empty");
     assert!(
         refusal.to_string().contains("conf.d"),
         "the refusal should name the directory: {refusal}"
@@ -286,15 +285,13 @@ fn an_empty_directory_is_still_removed() {
     let directory = scratch.join("conf.d");
     fs::create_dir_all(&directory).unwrap();
 
-    Os::new()
-        .delete(
-            &address("os:directory.confd@localhost"),
-            &at(&directory),
-            &[],
-            Observed::new().facts_of(None),
-            &HERE,
-        )
-        .expect("an empty directory goes");
+    removed(
+        &address("os:directory.confd@localhost"),
+        &at(&directory),
+        Observed::new().facts_of(None),
+        &HERE,
+    )
+    .expect("an empty directory goes");
     assert!(!directory.exists());
 }
 
@@ -314,17 +311,15 @@ fn making_a_directory_where_a_symlink_is_leaves_what_it_pointed_at_alone() {
 
     let mut wanted = at(&link);
     wanted.insert("mode".to_owned(), Value::Text("0777".to_owned()));
-    Os::new()
-        .apply(
-            &address("os:directory.subject@localhost"),
-            ChangeKind::Create,
-            false,
-            &wanted,
-            &[],
-            Observed::new().facts_of(None),
-            &HERE,
-        )
-        .expect("it makes the directory");
+    applied(
+        &address("os:directory.subject@localhost"),
+        Sending::Create,
+        false,
+        &wanted,
+        Observed::new().facts_of(None),
+        &HERE,
+    )
+    .expect("it makes the directory");
 
     assert_eq!(
         fs::metadata(&target).unwrap().permissions().mode() & 0o777,
@@ -361,17 +356,15 @@ fn a_file_ends_up_with_the_mode_it_was_declared() {
     let mut wanted = at(&path);
     wanted.insert("content".to_owned(), Value::Text("hunter2\n".to_owned()));
     wanted.insert("mode".to_owned(), Value::Text("0600".to_owned()));
-    Os::new()
-        .apply(
-            &address("os:file.subject@localhost"),
-            ChangeKind::Create,
-            false,
-            &wanted,
-            &[],
-            Observed::new().facts_of(None),
-            &HERE,
-        )
-        .expect("it writes");
+    applied(
+        &address("os:file.subject@localhost"),
+        Sending::Create,
+        false,
+        &wanted,
+        Observed::new().facts_of(None),
+        &HERE,
+    )
+    .expect("it writes");
 
     assert_eq!(
         fs::metadata(&path).unwrap().permissions().mode() & 0o777,
@@ -383,12 +376,9 @@ fn a_file_ends_up_with_the_mode_it_was_declared() {
 #[derive(Debug)]
 struct Miscounting(usize);
 
-impl nerpa_core::provider::Reach for Miscounting {
-    fn ask(
-        &self,
-        _: &nerpa_proto::Ask,
-    ) -> Result<nerpa_proto::Answer, nerpa_core::provider::ProviderError> {
-        Ok(nerpa_proto::Answer::Found {
+impl Reach for Miscounting {
+    fn ask(&self, _: &Ask) -> Result<Answer, ProviderError> {
+        Ok(Answer::Found {
             seen: vec![nerpa_proto::Seen::Nothing; self.0],
         })
     }
@@ -427,11 +417,8 @@ fn a_reading_answered_with_the_wrong_number_of_things_is_refused() {
 #[derive(Debug)]
 struct Untouchable;
 
-impl nerpa_core::provider::Reach for Untouchable {
-    fn ask(
-        &self,
-        _: &nerpa_proto::Ask,
-    ) -> Result<nerpa_proto::Answer, nerpa_core::provider::ProviderError> {
+impl Reach for Untouchable {
+    fn ask(&self, _: &Ask) -> Result<Answer, ProviderError> {
         panic!("the machine was asked, and nothing should have been sent")
     }
 }
@@ -460,17 +447,15 @@ fn content_too_large_is_refused_before_the_machine_is_asked() {
         Value::Text("x".repeat(nerpa_proto::MAX_CONTENT + 1)),
     );
 
-    let refusal = Os::new()
-        .apply(
-            &address("os:file.big@localhost"),
-            ChangeKind::Create,
-            false,
-            &attributes,
-            &[],
-            Observed::new().facts_of(None),
-            &Untouchable,
-        )
-        .expect_err("over the bound");
+    let refusal = applied(
+        &address("os:file.big@localhost"),
+        Sending::Create,
+        false,
+        &attributes,
+        Observed::new().facts_of(None),
+        &Untouchable,
+    )
+    .expect_err("over the bound");
     assert!(
         refusal.to_string().contains("most one operation carries"),
         "{refusal}"
@@ -490,4 +475,107 @@ fn the_os_provider_names_files_and_directories_by_path_in_one_namespace() {
         schema.identity_of(&address("os:directory.b@localhost")),
         Some(("path", "path"))
     );
+}
+
+/// One change, the way the engine does it: prepared, sent as one batch, and
+/// concluded from the answers. A provider does not send anything itself.
+fn applied(
+    address: &Address,
+    kind: Sending,
+    roused: bool,
+    attributes: &Attributes,
+    facts: Facts<'_>,
+    reach: &dyn Reach,
+) -> Result<Attributes, ProviderError> {
+    let os = Os::new();
+    let planned = os.prepare(&Prepared {
+        address,
+        kind,
+        roused,
+        resent: false,
+        desired: attributes,
+        recorded: None,
+        facts,
+    })?;
+    let became = answered(planned, address, reach)?;
+    let secret = BTreeSet::new();
+    match os.conclude(
+        &Concluding {
+            address,
+            kind,
+            roused,
+            facts,
+            plain: attributes,
+            secret: &secret,
+        },
+        &became,
+    )? {
+        Concluded::Became(attributes) => Ok(attributes),
+        Concluded::Gone => Ok(Attributes::new()),
+    }
+}
+
+/// The same for a removal, which is built from what state recorded.
+fn removed(
+    address: &Address,
+    recorded: &Attributes,
+    facts: Facts<'_>,
+    reach: &dyn Reach,
+) -> Result<(), ProviderError> {
+    let os = Os::new();
+    let nothing = Attributes::new();
+    let planned = os.prepare(&Prepared {
+        address,
+        kind: Sending::Delete,
+        roused: false,
+        resent: false,
+        desired: &nothing,
+        recorded: Some(recorded),
+        facts,
+    })?;
+    let became = answered(planned, address, reach)?;
+    let secret = BTreeSet::new();
+    os.conclude(
+        &Concluding {
+            address,
+            kind: Sending::Delete,
+            roused: false,
+            facts,
+            plain: recorded,
+            secret: &secret,
+        },
+        &became,
+    )
+    .map(|_| ())
+}
+
+/// What the far end said about each operation, counted as the engine counts it.
+fn answered(
+    planned: Planned,
+    address: &Address,
+    reach: &dyn Reach,
+) -> Result<Vec<Answered>, ProviderError> {
+    let asked = planned.operations.len();
+    let answer = reach.ask(&Ask::Perform {
+        plan: None,
+        premise: Vec::new(),
+        operations: planned.operations,
+        seal: None,
+    })?;
+    let seen = match answer {
+        Answer::Done { became } | Answer::Found { seen: became } if became.len() == asked => became,
+        Answer::Failed { at, problem } => {
+            return Err(ProviderError::World {
+                address: address.clone(),
+                problem: format!("at {at}: {problem}"),
+            });
+        }
+        other => {
+            return Err(ProviderError::World {
+                address: address.clone(),
+                problem: format!("the far end said something unexpected: {other:?}"),
+            });
+        }
+    };
+    Ok(seen.into_iter().map(Answered::Saw).collect())
 }

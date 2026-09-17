@@ -667,6 +667,11 @@ without ceremony until the first stage is complete.
   in the `control` domain — which has no machine — is refused by name rather than
   sent nowhere.
 
+- `Provider` has no `apply` and no `delete`. A change is `prepare`, a batch the
+  engine sends, and `conclude`; the only connection left on the trait is the one
+  `read` needs, and `INV-PROVIDER-002` records what that is worth and how it
+  could still be got around.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

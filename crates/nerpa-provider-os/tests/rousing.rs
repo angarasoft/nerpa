@@ -10,14 +10,18 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use nerpa_core::address::address;
+use nerpa_core::observed::Facts;
 use nerpa_core::plan::ChangeKind;
 use nerpa_core::planner::plan;
-use nerpa_core::provider::{Attributes, Machines, Provider, ProviderError, Providers, Reach};
+use nerpa_core::provider::{
+    Answered, Attributes, Concluded, Concluding, Machines, Planned, Prepared, Provider,
+    ProviderError, Providers, Reach, Sending,
+};
 use nerpa_core::run::apply;
 use nerpa_core::secret::{Key, Remembered, Secrets};
 use nerpa_core::state::{Record, State};
 use nerpa_core::value::Value;
-use nerpa_core::{Graph, Observed, Resource, Target};
+use nerpa_core::{Address, Graph, Observed, Resource, Target};
 use nerpa_proto::{Answer, Ask, Operation, Seen};
 use nerpa_provider_os::Os;
 
@@ -74,12 +78,11 @@ fn sent_for(init: &str, kind: ChangeKind, roused: bool) -> Vec<Vec<String>> {
     attributes.insert("enabled".to_owned(), Value::Boolean(true));
 
     let machine = Obliging::default();
-    let _ = Os::new().apply(
+    let _ = applied(
         &address("os:service.nginx@web-01"),
-        kind,
+        Sending::of(kind).expect("a service change sends something"),
         roused,
         &attributes,
-        &[],
         observed.facts_of(Some(&node)),
         &machine,
     );
@@ -218,4 +221,73 @@ fn a_service_owed_a_restart_is_restarted_when_it_changes_as_well() {
             .any(|program| program == &["systemctl", "try-restart", "nginx"]),
         "owed a restart, and restarted: {sent:?}"
     );
+}
+
+/// One change, the way the engine does it: prepared, sent as one batch, and
+/// concluded from the answers. A provider does not send anything itself.
+fn applied(
+    address: &Address,
+    kind: Sending,
+    roused: bool,
+    attributes: &Attributes,
+    facts: Facts<'_>,
+    reach: &dyn Reach,
+) -> Result<Attributes, ProviderError> {
+    let os = Os::new();
+    let planned = os.prepare(&Prepared {
+        address,
+        kind,
+        roused,
+        resent: false,
+        desired: attributes,
+        recorded: None,
+        facts,
+    })?;
+    let became = answered(planned, address, reach)?;
+    let secret = BTreeSet::new();
+    match os.conclude(
+        &Concluding {
+            address,
+            kind,
+            roused,
+            facts,
+            plain: attributes,
+            secret: &secret,
+        },
+        &became,
+    )? {
+        Concluded::Became(attributes) => Ok(attributes),
+        Concluded::Gone => Ok(Attributes::new()),
+    }
+}
+
+/// What the far end said about each operation, counted as the engine counts it.
+fn answered(
+    planned: Planned,
+    address: &Address,
+    reach: &dyn Reach,
+) -> Result<Vec<Answered>, ProviderError> {
+    let asked = planned.operations.len();
+    let answer = reach.ask(&Ask::Perform {
+        plan: None,
+        premise: Vec::new(),
+        operations: planned.operations,
+        seal: None,
+    })?;
+    let seen = match answer {
+        Answer::Done { became } | Answer::Found { seen: became } if became.len() == asked => became,
+        Answer::Failed { at, problem } => {
+            return Err(ProviderError::World {
+                address: address.clone(),
+                problem: format!("at {at}: {problem}"),
+            });
+        }
+        other => {
+            return Err(ProviderError::World {
+                address: address.clone(),
+                problem: format!("the far end said something unexpected: {other:?}"),
+            });
+        }
+    };
+    Ok(seen.into_iter().map(Answered::Saw).collect())
 }

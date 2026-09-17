@@ -832,30 +832,6 @@ impl Provider for Refusing {
         }
     }
 
-    fn apply(
-        &self,
-        _address: &Address,
-        _kind: ChangeKind,
-        _roused: bool,
-        _attributes: &Attributes,
-        _premise: &[nerpa_proto::Premise],
-        _facts: nerpa_core::observed::Facts<'_>,
-        _reach: &dyn Reach,
-    ) -> Result<Attributes, ProviderError> {
-        unreachable!("this provider is only ever read from")
-    }
-
-    fn delete(
-        &self,
-        _address: &Address,
-        _recorded: &Attributes,
-        _premise: &[nerpa_proto::Premise],
-        _facts: nerpa_core::observed::Facts<'_>,
-        _reach: &dyn Reach,
-    ) -> Result<(), ProviderError> {
-        unreachable!("this provider is only ever read from")
-    }
-
     fn prepare(
         &self,
         _change: &nerpa_core::provider::Prepared<'_>,

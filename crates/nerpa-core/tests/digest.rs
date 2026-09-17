@@ -13,7 +13,7 @@ use nerpa_core::address::address;
 use nerpa_core::attribute::{Attribute, Reference};
 use nerpa_core::plan::PlanDigest;
 use nerpa_core::planner::plan_at;
-use nerpa_core::provider::{Attributes, Provider, ProviderError, Providers, Reach, Read, Reading};
+use nerpa_core::provider::{Provider, ProviderError, Providers, Reach, Read, Reading};
 use nerpa_core::schema::Schema;
 use nerpa_core::secret::{Key, Remembered, Secrets};
 use nerpa_core::state::{State, Written};
@@ -45,28 +45,6 @@ impl Provider for Empty {
         _reach: &dyn Reach,
     ) -> Result<Read, ProviderError> {
         Ok(Read::new())
-    }
-    fn apply(
-        &self,
-        _address: &Address,
-        _kind: nerpa_core::ChangeKind,
-        _roused: bool,
-        attributes: &Attributes,
-        _premise: &[nerpa_proto::Premise],
-        _facts: nerpa_core::observed::Facts<'_>,
-        _reach: &dyn Reach,
-    ) -> Result<Attributes, ProviderError> {
-        Ok(attributes.clone())
-    }
-    fn delete(
-        &self,
-        _address: &Address,
-        _recorded: &Attributes,
-        _premise: &[nerpa_proto::Premise],
-        _facts: nerpa_core::observed::Facts<'_>,
-        _reach: &dyn Reach,
-    ) -> Result<(), ProviderError> {
-        Ok(())
     }
     fn prepare(
         &self,

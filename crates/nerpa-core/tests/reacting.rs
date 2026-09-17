@@ -13,9 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use nerpa_core::Address;
 use nerpa_core::address::address;
 use nerpa_core::planner::plan;
-use nerpa_core::provider::{
-    Attributes, Machines, Provider, ProviderError, Providers, Reach, Read, Reading,
-};
+use nerpa_core::provider::{Machines, Provider, ProviderError, Providers, Reach, Read, Reading};
 use nerpa_core::run::apply;
 use nerpa_core::schema::Schema;
 use nerpa_core::secret::{Key, Remembered, Secrets};
@@ -268,36 +266,6 @@ impl Provider for StopsAt {
         _reach: &dyn Reach,
     ) -> Result<Read, ProviderError> {
         Ok(Read::new())
-    }
-
-    fn apply(
-        &self,
-        address: &Address,
-        _kind: ChangeKind,
-        _roused: bool,
-        attributes: &Attributes,
-        _premise: &[nerpa_proto::Premise],
-        _facts: nerpa_core::observed::Facts<'_>,
-        _reach: &dyn Reach,
-    ) -> Result<Attributes, ProviderError> {
-        if address.to_string() == self.0 {
-            return Err(ProviderError::World {
-                address: address.clone(),
-                problem: "the machine went away".to_owned(),
-            });
-        }
-        Ok(attributes.clone())
-    }
-
-    fn delete(
-        &self,
-        _address: &Address,
-        _recorded: &Attributes,
-        _premise: &[nerpa_proto::Premise],
-        _facts: nerpa_core::observed::Facts<'_>,
-        _reach: &dyn Reach,
-    ) -> Result<(), ProviderError> {
-        Ok(())
     }
 
     fn prepare(

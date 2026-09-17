@@ -612,6 +612,7 @@ fn told(
     (shown, secret)
 }
 
+// ENFORCES: INV-PROVIDER-002
 /// One batch, sent, with an answer for each operation in it.
 ///
 /// Nothing is sent for a change that has no operations: a provider may conclude

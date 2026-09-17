@@ -11,7 +11,6 @@
 use std::sync::{Arc, Mutex};
 
 use nerpa_core::address::address;
-use nerpa_core::plan::ChangeKind;
 use nerpa_core::provider::{
     Attributes, Machines, Provider, ProviderError, Providers, Reach, Read, Reading,
 };
@@ -116,30 +115,6 @@ impl Provider for Watching {
     ) -> Result<Read, ProviderError> {
         self.0.note(batch);
         Ok(Read::new())
-    }
-
-    fn apply(
-        &self,
-        _address: &Address,
-        _kind: ChangeKind,
-        _roused: bool,
-        _attributes: &Attributes,
-        _premise: &[nerpa_proto::Premise],
-        _facts: nerpa_core::observed::Facts<'_>,
-        _reach: &dyn Reach,
-    ) -> Result<Attributes, ProviderError> {
-        unreachable!("this provider is only ever read from")
-    }
-
-    fn delete(
-        &self,
-        _address: &Address,
-        _recorded: &Attributes,
-        _premise: &[nerpa_proto::Premise],
-        _facts: nerpa_core::observed::Facts<'_>,
-        _reach: &dyn Reach,
-    ) -> Result<(), ProviderError> {
-        unreachable!("this provider is only ever read from")
     }
 
     fn prepare(
