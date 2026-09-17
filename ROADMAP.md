@@ -159,7 +159,7 @@ Code generation from provider JSON schemas: Starlark stubs, an in-tree `yandex`
 provider covering ten to fifteen types, a `tfstate` reader. Import moves secrets
 out of state rather than copying them. Machines are visited in parallel, because
 a fleet is where sequential stops being acceptable. For applying, how is
-[RFC 0001](docs/rfcs/0001-applying-in-streamed-batches.md), in review: machines side
+[RFC 0001](docs/rfcs/0001-applying-in-streamed-batches.md), accepted: machines side
 by side, one recorder, state in a shard per machine. Batching a machine's changes
 into one conversation waits for it and for what it alone gains
 ([RFC 0003](docs/rfcs/0003-streamed-batches.md)).

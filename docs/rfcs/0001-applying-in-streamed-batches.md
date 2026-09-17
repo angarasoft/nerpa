@@ -1,6 +1,6 @@
 # RFC 0001. Applying machines in parallel, with state in shards
 
-- Status: in review; revision 7, after the narrow round (§9)
+- Status: accepted, at revision 7, after seven reviews (§9)
 - Date: 2026-09-11
 - Revised: 2026-09-17, after each of seven reviews
 - Scope: what was step 1. Replacing an installed executor is
