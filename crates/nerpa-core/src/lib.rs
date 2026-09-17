@@ -76,6 +76,7 @@ pub mod resource;
 pub mod run;
 pub mod schema;
 pub mod secret;
+pub mod shards;
 pub mod state;
 pub mod store;
 pub mod value;

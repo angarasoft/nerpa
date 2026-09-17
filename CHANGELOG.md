@@ -753,6 +753,13 @@ without ceremony until the first stage is complete.
   request was what was wrong, not the path it named, and an index pointed at the
   machine instead of at the asking.
 
+- State can be written as a directory with a shard for each machine, so that one
+  machine's outcome reaches the disk without the fleet's. `key` is written first
+  because nothing can be read without it, `format` last because it says the
+  directory is finished, and loading refuses any name the format does not define
+  rather than reading past it. Nothing uses it yet: the marks, the entries, the
+  lock and the migration from format 4 come after it.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

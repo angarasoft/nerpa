@@ -2134,3 +2134,14 @@ What changed after the narrow round, finding by finding.
 | S7-12 | §5.5 | `INV-APPLY-001` asks for an outcome durable: a record, a removal's forget, or a replacement's create |
 | S7-13 | §5.6 | The property's case for a removal that finished |
 | S7-14 | §7 | A hold removes the number rather than changing it |
+
+### Corrected while building
+
+What building step 1 turned up that this document has wrong. Each row is a commit
+that departs from the text above, and says why; the text stays as the reviewers
+left it, because a document rewritten to match what happened stops being evidence
+of what was decided.
+
+| What it says | What was built | Why |
+| --- | --- | --- |
+| §5.6: a shard is named by the hexadecimal of a SHA-256 of the target | blake3 of the target, in hexadecimal | The property asked for is a name of fixed length whatever the target is called (S4-16), and either digest gives it. SHA-256 is not in this workspace; blake3 is, and takes every other digest here. A dependency added for a filename is a cost with nothing behind it |

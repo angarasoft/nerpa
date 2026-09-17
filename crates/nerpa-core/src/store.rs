@@ -106,22 +106,79 @@ struct Document {
 }
 
 #[derive(Serialize, Deserialize)]
-struct StoredRecord {
-    attributes: Attributes,
+pub(crate) struct StoredRecord {
+    pub(crate) attributes: Attributes,
     /// Digests of the attributes that were secret. Absent when there were none,
     /// so that an ordinary state file is not littered with empty maps.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    secrets: BTreeMap<String, Digest>,
-    depends_on: Vec<String>,
+    pub(crate) secrets: BTreeMap<String, Digest>,
+    pub(crate) depends_on: Vec<String>,
     /// Reactions this resource owes: what roused it, and was not paid before
     /// the run stopped. Absent when there are none, so an ordinary state file
     /// carries no sign of a mechanism that did not fire.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    owed: Vec<String>,
+    pub(crate) owed: Vec<String>,
     /// Seconds since the epoch, and the only reason a clock is read at all: how
     /// old what we know about a machine is, when that machine will not answer.
     /// See decision 0020.
-    written: u64,
+    pub(crate) written: u64,
+}
+
+/// What one record looks like on disk.
+pub(crate) fn stored(record: &Record) -> StoredRecord {
+    StoredRecord {
+        attributes: record.locator(),
+        secrets: record
+            .attributes()
+            .iter()
+            .filter_map(|(name, recorded)| match recorded {
+                Recorded::Secret(digest) => Some((name.clone(), *digest)),
+                Recorded::Plain(_) => None,
+            })
+            .collect(),
+        depends_on: record
+            .depends_on()
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        owed: record.owed().iter().map(ToString::to_string).collect(),
+        written: record.written().seconds(),
+    }
+}
+
+/// And what it is when it comes back.
+///
+/// # Errors
+///
+/// Returns [`StoreError::Format`] if an address it names is not one this model
+/// accepts: a file naming something unaddressable is a file this cannot act on,
+/// and reading past it would drop what it said.
+pub(crate) fn recorded(where_from: &Path, stored: StoredRecord) -> Result<Record, StoreError> {
+    let refuse = |problem: String| StoreError::Format {
+        path: where_from.display().to_string(),
+        problem,
+    };
+    let depends_on = stored
+        .depends_on
+        .iter()
+        .map(|text| {
+            text.parse::<Address>()
+                .map_err(|error| refuse(format!("{text:?}: {error}")))
+        })
+        .collect::<Result<_, _>>()?;
+    let owed = stored
+        .owed
+        .iter()
+        .map(|text| {
+            text.parse::<Address>()
+                .map_err(|error| refuse(format!("{text:?}: {error}")))
+        })
+        .collect::<Result<_, _>>()?;
+    let mut attributes: Recording = Recorded::all(stored.attributes);
+    for (name, digest) in stored.secrets {
+        attributes.insert(name, Recorded::Secret(digest));
+    }
+    Ok(Record::written_at(attributes, depends_on, Written::at(stored.written)).owing(owed))
 }
 
 /// Holds the lock for as long as it exists.
@@ -354,7 +411,7 @@ pub fn save(path: &Path, state: &State, key: &Key) -> Result<(), StoreError> {
 /// at all. Three calls make the difference, and this module's promise of "whole
 /// or not at all" was worth two of them less than it said.
 // ENFORCES: INV-STATE-004
-fn durably(temporary: &Path, path: &Path, bytes: &[u8]) -> Result<(), std::io::Error> {
+pub(crate) fn durably(temporary: &Path, path: &Path, bytes: &[u8]) -> Result<(), std::io::Error> {
     use std::io::Write as _;
 
     let mut file = fs::File::create(temporary)?;
@@ -370,7 +427,7 @@ fn durably(temporary: &Path, path: &Path, bytes: &[u8]) -> Result<(), std::io::E
 }
 
 /// The directory a path sits in, which for a bare name is the current one.
-fn directory_of(path: &Path) -> &Path {
+pub(crate) fn directory_of(path: &Path) -> &Path {
     match path.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
         _ => Path::new("."),
