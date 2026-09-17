@@ -154,51 +154,97 @@ fn run(
         problem: format!("{host}: {problem}"),
     };
 
-    let mut spoken = Command::new("ssh");
-    spoken
+    let mut asking = Command::new("ssh");
+    asking
         .arg("-o")
         .arg("BatchMode=yes")
         .arg("-o")
         .arg(format!("ConnectTimeout={}", crate::ANSWERS_WITHIN));
     if let Some(named) = config {
-        spoken.arg("-F").arg(named);
+        asking.arg("-F").arg(named);
     }
-    let mut child = spoken
-        .arg(host)
-        .arg(command)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|error| out_of_reach(error.to_string()))?;
+    asking.arg(host).arg(command);
 
-    if let Some(mut pipe) = child.stdin.take() {
-        pipe.write_all(stdin)
-            .map_err(|error| out_of_reach(error.to_string()))?;
-    }
-    let done = child
-        .wait_with_output()
-        .map_err(|error| out_of_reach(error.to_string()))?;
+    let (status, said, complained) =
+        spoken(asking, stdin).map_err(|error| out_of_reach(error.to_string()))?;
 
     // 255 is `ssh` failing rather than the far side answering: it could not
     // connect, could not authenticate, was refused. The three commands here
     // return 0 or 1 and never 255, so the code says which of the two happened,
     // and a machine that was never reached is not asked again.
-    if done.status.code() == Some(255) {
+    if status.code() == Some(255) {
         return Err(out_of_reach(
-            String::from_utf8_lossy(&done.stderr).trim().to_owned(),
+            String::from_utf8_lossy(&complained).trim().to_owned(),
         ));
     }
 
-    let text = if done.stdout.is_empty() {
-        String::from_utf8_lossy(&done.stderr).into_owned()
+    let text = if said.is_empty() {
+        String::from_utf8_lossy(&complained).into_owned()
     } else {
-        String::from_utf8_lossy(&done.stdout).into_owned()
+        String::from_utf8_lossy(&said).into_owned()
     };
     Ok(Said {
-        answered: done.status.success(),
+        answered: status.success(),
         text,
     })
+}
+
+/// How much of each stream is kept, as a conversation keeps its standard error.
+const KEPT: usize = 64 * 1024;
+
+/// Runs a command, writing `stdin` to it while both its streams are read.
+///
+/// Both at once, on threads of their own. Writing eight hundred kilobytes and only
+/// then reading hangs for ever against a far side that fills a pipe with what it
+/// says and stops reading — a verbose route, a shell complaining about every line —
+/// and delivery is the one place that pushes a whole binary. There is no deadline
+/// on it and no way to kill it: it is not a transport, and it holds a worker of the
+/// pool. Only the last [`KEPT`] bytes of each stream are kept.
+fn spoken(
+    mut asking: Command,
+    stdin: &[u8],
+) -> std::io::Result<(std::process::ExitStatus, Vec<u8>, Vec<u8>)> {
+    let mut child = asking
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    let mut input = child.stdin.take();
+    let out = child.stdout.take();
+    let err = child.stderr.take();
+
+    let (said, complained) = std::thread::scope(|scope| {
+        let reading_out = scope.spawn(move || out.map(tail).unwrap_or_default());
+        let reading_err = scope.spawn(move || err.map(tail).unwrap_or_default());
+        if let Some(mut pipe) = input.take() {
+            // A far side that has gone, or that refuses the rest, says so by its
+            // status; what it wrote is read either way.
+            let _ = pipe.write_all(stdin);
+        }
+        (
+            reading_out.join().unwrap_or_default(),
+            reading_err.join().unwrap_or_default(),
+        )
+    });
+
+    Ok((child.wait()?, said, complained))
+}
+
+/// The last [`KEPT`] bytes of a stream, read to its end so that nothing on the far
+/// side is ever left blocked writing.
+fn tail(mut stream: impl std::io::Read) -> Vec<u8> {
+    let mut kept: Vec<u8> = Vec::new();
+    let mut chunk = [0_u8; 8192];
+    while let Ok(read) = stream.read(&mut chunk) {
+        if read == 0 {
+            break;
+        }
+        kept.extend_from_slice(chunk.get(..read).unwrap_or_default());
+        if kept.len() > KEPT {
+            kept.drain(..kept.len() - KEPT);
+        }
+    }
+    kept
 }
 
 #[cfg(test)]
@@ -223,6 +269,35 @@ mod tests {
             pipe.write_all(input).expect("the input is taken");
         }
         shell.wait().expect("the shell ends").success()
+    }
+
+    /// A far side that fills its standard error while the copy is being written to
+    /// it is read as it goes. Writing the whole executor first and reading
+    /// afterwards hung for ever, holding a worker of the pool with no deadline and
+    /// nothing to kill. Found by the narrow review of RFC 0001's sixth revision.
+    #[test]
+    fn a_far_side_that_talks_while_it_is_written_to_does_not_hang() {
+        let (sending, sent) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut asking = Command::new("sh");
+            asking
+                .arg("-c")
+                .arg("yes error | head -c 400000 >&2; cat > /dev/null");
+            let outcome = super::spoken(asking, &vec![7_u8; 800_000]);
+            let _ = sending
+                .send(outcome.map(|(status, _, complained)| (status.success(), complained.len())));
+        });
+
+        let (ended, complained) = sent
+            .recv_timeout(std::time::Duration::from_secs(30))
+            .expect("it ends rather than hanging")
+            .expect("the shell runs");
+        assert!(ended, "the far side ended well");
+        assert_eq!(
+            complained,
+            64 * 1024,
+            "and the last of what it said was kept"
+        );
     }
 
     /// A copy whose input ends early is never put under the executor's name. It
