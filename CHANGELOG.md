@@ -276,6 +276,11 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- Delivery sweeps what an attempt that was killed left beside the executor's name.
+  A far side that is killed never reaches the removal at the end of the copy, and
+  delivery is retried, so each attempt left another part of a binary behind for
+  good. Found by the narrow review of RFC 0001's sixth revision.
+
 - Delivery reads what the far side says while it writes the executor to it. It
   wrote all eight hundred kilobytes and only then read, so a far side that filled a
   pipe with what it said stopped reading and both sides waited for ever, holding a

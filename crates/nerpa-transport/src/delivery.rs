@@ -53,9 +53,15 @@ fn present(path: &str, length: usize) -> String {
 /// file, so an `ssh` killed part way left a short copy, and it was moved under the
 /// final name, where the test above took it for the executor. A copy an earlier
 /// session is still writing never lands on this one's name.
+///
+/// What earlier attempts left is swept first. A far side that is killed never
+/// reaches the removal at the end, and §5.3 of RFC 0001 retries delivery, so
+/// without this each attempt left another part of a binary behind for good. A copy
+/// another session is writing at that moment goes on writing to a file with no
+/// name, and its own move finds nothing, which it reports.
 fn copy(path: &str, length: usize) -> String {
     format!(
-        "mkdir -p .cache/nerpa && partial={path}.part.$$ && cat > \"$partial\" \
+        "mkdir -p .cache/nerpa && rm -f {path}.part.* && partial={path}.part.$$ && cat > \"$partial\" \
          && test \"$(($(wc -c < \"$partial\")))\" -eq {length} \
          && chmod +x \"$partial\" && mv \"$partial\" {path} \
          || {{ rm -f \"$partial\"; exit 1; }}"
@@ -331,6 +337,38 @@ mod tests {
         assert_eq!(
             std::fs::read(dir.path().join(&path)).expect("there").len(),
             whole.len()
+        );
+    }
+
+    /// And what an attempt that was killed left behind is swept by the next one. A
+    /// far side that is killed never reaches the removal at the end, and delivery is
+    /// retried, so each attempt used to leave another part of a binary behind. Found
+    /// by the narrow review of RFC 0001's sixth revision.
+    #[test]
+    fn what_an_earlier_attempt_left_behind_is_swept() {
+        let dir = tempfile::tempdir().expect("a scratch directory");
+        let path = named("0123456789abcdef");
+        let beside = dir.path().join(".cache/nerpa");
+        std::fs::create_dir_all(&beside).expect("made");
+        std::fs::write(
+            beside.join("nerpa-executor-0123456789abcdef.part.99"),
+            [7_u8; 3000],
+        )
+        .expect("a part of an earlier attempt");
+
+        let whole = vec![7_u8; 8192];
+        assert!(
+            far_side(dir.path(), &copy(&path, whole.len()), &whole),
+            "the copy is put in place"
+        );
+        let left: Vec<String> = std::fs::read_dir(&beside)
+            .expect("the directory")
+            .filter_map(|entry| Some(entry.ok()?.file_name().to_string_lossy().into_owned()))
+            .filter(|name| name.contains(".part."))
+            .collect();
+        assert!(
+            left.is_empty(),
+            "and nothing of the earlier attempt is left: {left:?}"
         );
     }
 
