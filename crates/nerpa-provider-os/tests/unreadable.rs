@@ -22,7 +22,7 @@ use nerpa_core::provider::{
 };
 use nerpa_core::value::Value;
 use nerpa_core::{Address, Observed};
-use nerpa_proto::{Answer, Ask};
+use nerpa_proto::{Answer, Ask, Seen};
 use nerpa_provider_os::Os;
 use nerpa_transport::Here;
 
@@ -379,7 +379,7 @@ struct Miscounting(usize);
 impl Reach for Miscounting {
     fn ask(&self, _: &Ask) -> Result<Answer, ProviderError> {
         Ok(Answer::Found {
-            seen: vec![nerpa_proto::Seen::Nothing; self.0],
+            seen: vec![Seen::Nothing; self.0],
         })
     }
 }
@@ -579,5 +579,13 @@ fn answered(
             });
         }
     };
-    Ok(seen.into_iter().map(Answered::Saw).collect())
+    // The engine is what compares a write's digest against what it sent, and
+    // these tests stand in for it: a digest coming back means the write took.
+    Ok(seen
+        .into_iter()
+        .map(|seen| match seen {
+            Seen::Digest { .. } | Seen::Sealed { .. } => Answered::Written,
+            other => Answered::Saw(other),
+        })
+        .collect())
 }

@@ -90,18 +90,26 @@ fn a_whole_conversation_survives_the_pipe() {
         },
         "there was nothing there to begin with"
     );
-    assert!(
-        matches!(&answers[1], Answer::Done { became } if matches!(&became[0], Seen::Entry(Entry::File { content, .. }) if content == b"hello\n")),
-        "{:?}",
-        answers[1]
+    // The write is answered with what the path hashed to, and looking again
+    // finds the thing that hashes to exactly that: one conversation, two answers
+    // about the same file, agreeing across the pipe.
+    let afterwards = Seen::Entry(Entry::File {
+        content: b"hello\n".to_vec(),
+        mode: 0o644,
+    });
+    assert_eq!(
+        answers[1],
+        Answer::Done {
+            became: vec![Seen::Digest {
+                digest: nerpa_proto::digest(&afterwards)
+            }]
+        },
+        "the write is answered with what it left behind, as a number"
     );
     assert_eq!(
         answers[2],
         Answer::Found {
-            seen: vec![Seen::Entry(Entry::File {
-                content: b"hello\n".to_vec(),
-                mode: 0o644,
-            })]
+            seen: vec![afterwards]
         },
         "and looking again finds what was written"
     );

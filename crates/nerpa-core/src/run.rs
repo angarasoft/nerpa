@@ -16,8 +16,8 @@ use crate::graph::{Graph, GraphError};
 use crate::observed::Observed;
 use crate::plan::{Change, ChangeKind, Confidence, Plan};
 use crate::provider::{
-    Answered, Attributes, Concluded, Concluding, Machines, Planned, Prepared, ProviderError,
-    Providers, Reach, Reading, Sending,
+    Answered, Attributes, Concluded, Concluding, Machines, Planned, Prepared, Provider,
+    ProviderError, Providers, Reach, Reading, Sending,
 };
 use crate::resource::Resource;
 use crate::secret::{FetchError, Recorded, Secrets};
@@ -313,9 +313,10 @@ pub fn apply(
             // The seal goes on here, where the machine is known, and not in the
             // plan, where it would travel with the JSON. Providers never see it:
             // they build the batch, and this seals it as it leaves. Decision 0041.
-            let sealing = address.target().map(|node| Sealing {
+            let seal = address.target().map(|node| secrets.key().seal_for(node));
+            let sealing = seal.map(|seal| Sealing {
                 machine: reach,
-                seal: secrets.key().seal_for(node),
+                seal,
             });
             let reach: &dyn Reach = match &sealing {
                 Some(sealing) => sealing,
@@ -346,11 +347,7 @@ pub fn apply(
                 continue;
             }
 
-            let desired = if kind == Sending::Delete {
-                Attributes::new()
-            } else {
-                settle(change, &observed, secrets)?
-            };
+            let desired = settled(change, kind, &observed, secrets)?;
             // ENFORCES: INV-REACT-004
             // Told whether it was roused, whatever else changed. A service whose own
             // attributes change in the same plan as its file is one Update, and the
@@ -371,37 +368,42 @@ pub fn apply(
             })?;
 
             let shown = told(kind, &desired, recorded, &secret);
-            withheld(&planned, &secret, address)?;
-            let became = send(planned, reach, change, state, record)?;
-            let result = match provider.conclude(
-                &Concluding {
-                    address,
-                    kind,
-                    roused,
-                    facts,
-                    plain: &shown,
-                    secret: &secret,
-                },
-                &became,
-            )? {
+            let (became, confirmed) = carried_out(
+                planned,
+                &secret,
+                reach,
+                change,
+                seal.as_ref(),
+                state,
+                record,
+            )?;
+            let concluding = Concluding {
+                address,
+                kind,
+                roused,
+                facts,
+                plain: &shown,
+                secret: &secret,
+            };
+            let Some(result) = concluded(provider, &concluding, &became)? else {
                 // Forgotten on every `Gone`, whatever the change was: a removal
                 // that only settles — a service stopped, its unit left where it
                 // was — says it is gone the same way.
-                Concluded::Gone => {
-                    state.forget(address);
-                    record(state).map_err(RunError::Record)?;
-                    changed += 1;
-                    continue;
-                }
-                Concluded::Became(result) => result,
+                state.forget(address);
+                record(state).map_err(RunError::Record)?;
+                changed += 1;
+                continue;
             };
 
             wrote(
                 state,
                 &mut observed,
                 change,
-                &result,
-                &desired,
+                &Reported {
+                    result: &result,
+                    desired: &desired,
+                    confirmed: &confirmed,
+                },
                 secrets,
                 record,
             )?;
@@ -487,6 +489,21 @@ fn owe(
     Ok(())
 }
 
+/// What is known about a change once it has been carried out.
+///
+/// Three things and not one, because they come from three places: what the
+/// provider concluded, what the engine settled and sent, and which attributes a
+/// write's checked digest confirmed.
+#[derive(Debug)]
+struct Reported<'a> {
+    /// What `conclude` said the resource became.
+    result: &'a Attributes,
+    /// What was settled and sent, secrets included.
+    desired: &'a Attributes,
+    /// What a write's digest confirmed, whether or not `conclude` mentioned it.
+    confirmed: &'a BTreeSet<String>,
+}
+
 /// Writes down what the change became, and refuses what it did not report back.
 ///
 /// ENFORCES: INV-STATE-005
@@ -519,22 +536,39 @@ fn wrote(
     state: &mut State,
     observed: &mut Observed,
     change: &Change,
-    result: &Attributes,
-    desired: &Attributes,
+    reported: &Reported<'_>,
     secrets: Secrets<'_>,
     record: &mut dyn FnMut(&State) -> Result<(), String>,
 ) -> Result<(), RunError> {
     let address = change.address();
+    // What a checked write confirmed and `conclude` never reported is supplied
+    // from what was sent. A secret is the case that needs it: nothing downstream
+    // of sending holds one, so the provider cannot hand it back, and the digest
+    // state records has to come from the engine's own copy.
+    let mut recorded = reported.result.clone();
+    for name in reported.confirmed {
+        if recorded.contains_key(name) {
+            continue;
+        }
+        if let Some(value) = reported.desired.get(name) {
+            recorded.insert(name.clone(), value.clone());
+        }
+    }
+
     // A fresh record owes nothing, which is how a debt written before its cause
     // was sent is cleared: paid by having got this far.
     state.record(
         address.clone(),
-        Record::new(recording(result, change, secrets), dependencies(change)),
+        Record::new(recording(&recorded, change, secrets), dependencies(change)),
     );
-    observed.record(address.clone(), result.clone());
+    observed.record(address.clone(), recorded.clone());
     record(state).map_err(RunError::Record)?;
 
-    if let Some(name) = desired.keys().find(|name| !result.contains_key(*name)) {
+    if let Some(name) = reported
+        .desired
+        .keys()
+        .find(|name| !recorded.contains_key(*name))
+    {
         return Err(RunError::Unreported {
             address: address.clone(),
             attribute: name.clone(),
@@ -558,7 +592,7 @@ fn send(
     change: &Change,
     state: &mut State,
     record: &mut dyn FnMut(&State) -> Result<(), String>,
-) -> Result<Vec<Answered>, RunError> {
+) -> Result<Vec<nerpa_proto::Seen>, RunError> {
     let address = change.address();
     let Some(forgetting) = planned.forget_after else {
         return Ok(perform(
@@ -585,6 +619,162 @@ fn send(
     Ok(became)
 }
 
+/// What this change is sending, settled: nothing for a removal, and everything
+/// the declaration asks for otherwise.
+///
+/// # Errors
+///
+/// Returns [`RunError::Unsettled`] for a value that depends on a fact nobody
+/// read, and [`RunError::Secret`] for one that could not be fetched.
+fn settled(
+    change: &Change,
+    kind: Sending,
+    observed: &Observed,
+    secrets: Secrets<'_>,
+) -> Result<Attributes, RunError> {
+    if kind == Sending::Delete {
+        return Ok(Attributes::new());
+    }
+    settle(change, observed, secrets)
+}
+
+/// One change, refused or sent — and what came back, checked against what went.
+///
+/// Returns the answers as a provider is told them, and the declared attributes a
+/// checked write confirmed.
+///
+/// # Errors
+///
+/// Returns whatever [`withheld`] refuses before sending, and
+/// [`RunError::Unconfirmed`] for an answer that is not what the write would have
+/// left behind.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "what carrying out one change needs, one argument each"
+)]
+fn carried_out(
+    planned: Planned,
+    secret: &BTreeSet<String>,
+    reach: &dyn Reach,
+    change: &Change,
+    seal: Option<&nerpa_proto::Seal>,
+    state: &mut State,
+    record: &mut dyn FnMut(&State) -> Result<(), String>,
+) -> Result<(Vec<Answered>, BTreeSet<String>), RunError> {
+    let address = change.address();
+    withheld(&planned, secret, seal, address)?;
+    let expecting = expected(&planned, seal);
+    let confirmed = confirmed_by(&planned, &expecting);
+    let became = checked(
+        send(planned, reach, change, state, record)?,
+        &expecting,
+        address,
+    )?;
+    Ok((became, confirmed))
+}
+
+/// What the provider made of the answers to its own change.
+///
+/// `None` is [`Concluded::Gone`]: the resource is not there any more, whatever
+/// the change was — a removal, or something that only settles and says so.
+///
+/// # Errors
+///
+/// Returns [`RunError::Provider`] if the answers say the change did not take.
+fn concluded(
+    provider: &dyn Provider,
+    concluding: &Concluding<'_>,
+    answers: &[Answered],
+) -> Result<Option<Attributes>, RunError> {
+    match provider.conclude(concluding, answers)? {
+        Concluded::Gone => Ok(None),
+        Concluded::Became(result) => Ok(Some(result)),
+    }
+}
+
+/// What each write's answer has to be, if it did what it was sent to do.
+///
+/// Worked out from what is being sent, before it is sent: the engine holds the
+/// bytes and the mode, so it knows what the path will hash to. A write that
+/// carries a secret is answered sealed for the machine, so the comparison is
+/// between two sealed digests and nothing unkeyed is anywhere.
+fn expected(
+    planned: &Planned,
+    seal: Option<&nerpa_proto::Seal>,
+) -> BTreeMap<usize, nerpa_proto::Seen> {
+    let mut wanted = BTreeMap::new();
+    for (at, operation) in planned.operations.iter().enumerate() {
+        let nerpa_proto::Operation::File {
+            content,
+            mode,
+            secret,
+            ..
+        } = operation
+        else {
+            continue;
+        };
+        let digest = nerpa_proto::digest(&nerpa_proto::Seen::Entry(nerpa_proto::Entry::File {
+            content: content.clone(),
+            mode: *mode,
+        }));
+        let answer = if *secret {
+            // Unreachable: a secret write with no seal is refused before this.
+            let Some(seal) = seal else { continue };
+            nerpa_proto::Seen::Sealed {
+                digest: nerpa_proto::sealed(seal, &digest),
+            }
+        } else {
+            nerpa_proto::Seen::Digest { digest }
+        };
+        wanted.insert(at, answer);
+    }
+    wanted
+}
+
+/// The declared attributes a matching write confirms.
+fn confirmed_by(
+    planned: &Planned,
+    expecting: &BTreeMap<usize, nerpa_proto::Seen>,
+) -> BTreeSet<String> {
+    expecting
+        .keys()
+        .filter_map(|at| planned.carries.get(at))
+        .flatten()
+        .cloned()
+        .collect()
+}
+
+/// What the far end said, checked against what it was sent.
+///
+/// A write whose digest matches becomes [`Answered::Written`], which is a
+/// provider being told that the write took rather than being handed the bytes
+/// again. One that does not match is a failure after the operations ran: the
+/// path holds something other than what was sent, and nothing downstream may
+/// record it as though it did.
+///
+/// # Errors
+///
+/// Returns [`RunError::Unconfirmed`] for an answer that is not what the write
+/// would have left behind.
+fn checked(
+    became: Vec<nerpa_proto::Seen>,
+    expecting: &BTreeMap<usize, nerpa_proto::Seen>,
+    address: &Address,
+) -> Result<Vec<Answered>, RunError> {
+    became
+        .into_iter()
+        .enumerate()
+        .map(|(at, seen)| match expecting.get(&at) {
+            None => Ok(Answered::Saw(seen)),
+            Some(wanted) if *wanted == seen => Ok(Answered::Written),
+            Some(_) => Err(RunError::Unconfirmed {
+                address: address.clone(),
+                at,
+            }),
+        })
+        .collect()
+}
+
 /// What a change may not be sent with: a secret nothing carries, and a secret
 /// carried by an operation that does not say it is carrying one.
 ///
@@ -595,8 +785,19 @@ fn send(
 fn withheld(
     planned: &Planned,
     secret: &BTreeSet<String>,
+    seal: Option<&nerpa_proto::Seal>,
     address: &Address,
 ) -> Result<(), RunError> {
+    if seal.is_none()
+        && planned
+            .operations
+            .iter()
+            .any(|operation| matches!(operation, nerpa_proto::Operation::File { secret: true, .. }))
+    {
+        return Err(RunError::Unsealed {
+            address: address.clone(),
+        });
+    }
     if let Some(attribute) = uncarried(planned, secret) {
         return Err(RunError::Uncarried {
             address: address.clone(),
@@ -694,7 +895,7 @@ fn perform(
     operations: Vec<nerpa_proto::Operation>,
     premise: &[nerpa_proto::Premise],
     address: &Address,
-) -> Result<Vec<Answered>, ProviderError> {
+) -> Result<Vec<nerpa_proto::Seen>, ProviderError> {
     let asked = operations.len();
     if asked == 0 {
         return Ok(Vec::new());
@@ -716,12 +917,12 @@ fn answers(
     answer: nerpa_proto::Answer,
     address: &Address,
     asked: usize,
-) -> Result<Vec<Answered>, ProviderError> {
+) -> Result<Vec<nerpa_proto::Seen>, ProviderError> {
     match answer {
         nerpa_proto::Answer::Found { seen } | nerpa_proto::Answer::Done { became: seen }
             if seen.len() == asked =>
         {
-            Ok(seen.into_iter().map(Answered::Saw).collect())
+            Ok(seen)
         }
         nerpa_proto::Answer::Found { seen } | nerpa_proto::Answer::Done { became: seen } => {
             Err(ProviderError::World {
@@ -882,6 +1083,31 @@ pub enum RunError {
         address: Address,
         /// The secret attribute nothing carries.
         attribute: String,
+    },
+    /// A write's answer is not what it would have left behind.
+    ///
+    /// The engine holds what it sent and knows what the path must hash to. An
+    /// answer that is anything else means the path holds something other than
+    /// what was written there, and recording it as written would be a record of
+    /// something nobody made.
+    #[error("{address}: what came back from the write at {at} is not what it was sent")]
+    Unconfirmed {
+        /// The resource it was declared on.
+        address: Address,
+        /// Which operation of the change.
+        at: usize,
+    },
+    /// A write carrying a secret has no seal to answer with.
+    ///
+    /// Its answer is a digest sealed for the machine, and a resource with no
+    /// machine has no seal. Refused rather than sent unsealed, which is what
+    /// `INV-PREMISE-002` is about.
+    #[error(
+        "{address}: a write here carries a secret, and there is no machine to seal its answer for"
+    )]
+    Unsealed {
+        /// The resource it was declared on.
+        address: Address,
     },
     /// A secret is carried by an operation that does not say it is carrying one.
     ///

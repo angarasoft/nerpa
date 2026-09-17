@@ -286,6 +286,11 @@ pub struct Planned {
 pub enum Answered {
     /// What the far end said it saw.
     Saw(Seen),
+    /// A write whose answer the engine checked against what it sent, and which
+    /// matched. What it confirms is what [`Planned::carries`] named for that
+    /// operation — so a provider is told that the write took, without being
+    /// handed the bytes again or, for a secret, at all.
+    Written,
 }
 
 /// What a change turned out to be.

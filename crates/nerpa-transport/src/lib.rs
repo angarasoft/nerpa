@@ -327,7 +327,9 @@ impl Reach for Held {
                     })
                     .collect(),
             },
-            Ask::Perform { operations, .. } => {
+            Ask::Perform {
+                operations, seal, ..
+            } => {
                 let mut became = Vec::with_capacity(operations.len());
                 for operation in operations {
                     match operation {
@@ -340,14 +342,31 @@ impl Reach for Held {
                             path,
                             content,
                             mode,
-                            ..
+                            secret,
                         } => {
                             let entry = nerpa_proto::Entry::File {
                                 content: content.clone(),
                                 mode: *mode,
                             };
                             held.insert(path.clone(), entry.clone());
-                            became.push(Seen::Entry(entry));
+                            // Answered as a machine answers: what the path holds
+                            // now, as a number, sealed when the write says it
+                            // carries a secret.
+                            let digest = nerpa_proto::digest(&Seen::Entry(entry));
+                            became.push(match (*secret, seal) {
+                                (false, _) => Seen::Digest { digest },
+                                (true, Some(seal)) => Seen::Sealed {
+                                    digest: nerpa_proto::sealed(seal, &digest),
+                                },
+                                (true, None) => {
+                                    return Ok(Answer::Failed {
+                                        at: At::Before,
+                                        problem: "a write carrying a secret arrived without a \
+                                                  seal, and its answer cannot be sealed"
+                                            .to_owned(),
+                                    });
+                                }
+                            });
                         }
                         Operation::Remove { path } => {
                             held.remove(path);

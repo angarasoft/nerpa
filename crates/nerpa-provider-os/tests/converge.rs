@@ -1438,7 +1438,9 @@ fn one_provider_serves_two_threads_at_once() {
                             plain: &wanted,
                             secret: &secret,
                         },
-                        &became.into_iter().map(Answered::Saw).collect::<Vec<_>>(),
+                        // What the engine would hand it: these are file
+                        // writes, and their digests were checked above.
+                        &vec![Answered::Written; became.len()],
                     )
                     .expect("it writes");
             });

@@ -470,19 +470,55 @@ fn prepare_path(change: &Prepared<'_>, provider: &ProviderName) -> Result<Planne
 }
 
 /// What a path became, from what the far end read back after writing it.
-fn conclude_path(change: &Concluding<'_>, became: &Seen) -> Result<Concluded, ProviderError> {
+/// What the far end saw, where that is what an answer carries.
+fn saw<'a>(answered: &'a Answered, address: &Address) -> Result<&'a Seen, ProviderError> {
+    match answered {
+        Answered::Saw(seen) => Ok(seen),
+        other => Err(ProviderError::World {
+            address: address.clone(),
+            problem: format!("this kind is concluded from what was seen, and was told {other:?}"),
+        }),
+    }
+}
+
+fn conclude_path(change: &Concluding<'_>, became: &Answered) -> Result<Concluded, ProviderError> {
     if change.kind == Sending::Delete {
         return Ok(Concluded::Gone);
     }
     let path = required_path(change.plain, change.address)?;
-    // Read back rather than echoed: the far end reports what the path became
-    // after it wrote, so writing nothing is noticed.
-    as_attributes(&path, became, change.address)?
-        .map(Concluded::Became)
-        .ok_or_else(|| ProviderError::World {
-            address: change.address.clone(),
-            problem: format!("{path} was not there after writing it"),
-        })
+    match became {
+        // The engine compared the write's digest against what it sent, so what
+        // is at the path is what was sent. Nothing is read back, and a secret is
+        // never handed to anything here to be read back with.
+        Answered::Written => Ok(Concluded::Became(as_written(&path, change)?)),
+        // A directory is still answered with what is there.
+        other => as_attributes(&path, saw(other, change.address)?, change.address)?
+            .map(Concluded::Became)
+            .ok_or_else(|| ProviderError::World {
+                address: change.address.clone(),
+                problem: format!("{path} was not there after writing it"),
+            }),
+    }
+}
+
+/// What a confirmed write left at the path, in the shape a reading of it has.
+///
+/// Built from what was declared rather than from an answer, because the answer
+/// is a digest the engine already checked. The shapes match what `read` reports
+/// so that the next run has nothing to do: bytes for contents, four octal digits
+/// for a mode.
+fn as_written(path: &str, change: &Concluding<'_>) -> Result<Attributes, ProviderError> {
+    let mut attributes = Attributes::new();
+    attributes.insert("path".to_owned(), Value::Text(path.to_owned()));
+    if change.plain.contains_key("content") {
+        attributes.insert(
+            "content".to_owned(),
+            Value::bytes(content_of(change.plain, change.address)?),
+        );
+    }
+    let mode = mode(change.plain, change.address, DEFAULT_FILE_MODE)?;
+    attributes.insert("mode".to_owned(), Value::Text(format!("{mode:04o}")));
+    Ok(attributes)
 }
 
 /// Two operations rather than one and a guess: the change, and then the same
@@ -785,15 +821,15 @@ impl Provider for Os {
     ) -> Result<Concluded, ProviderError> {
         // Every kind here reads its resource back with its last operation, so
         // that is the answer the change is concluded from.
-        let Some(Answered::Saw(became)) = became.last() else {
+        let Some(became) = became.last() else {
             return Err(ProviderError::World {
                 address: change.address.clone(),
                 problem: "the far end did not say what it became".to_owned(),
             });
         };
         match change.address.kind().as_str() {
-            "package" => conclude_package(change, became),
-            "service" => conclude_service(change, became),
+            "package" => conclude_package(change, saw(became, change.address)?),
+            "service" => conclude_service(change, saw(became, change.address)?),
             "file" | "directory" => conclude_path(change, became),
             _ => Err(ProviderError::UnknownKind {
                 provider: self.name.clone(),

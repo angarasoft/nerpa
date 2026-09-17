@@ -48,8 +48,15 @@ impl Ledger {
 
 /// A machine that answers every operation as though it had worked, and writes
 /// down what it was asked to do.
+///
+/// `truthfully` is whether its digests describe what it was sent. A machine that
+/// answers with a digest of something else is the shape of a write that did not
+/// take, or of a far end that is not doing what it says.
 #[derive(Debug)]
-struct Telling(Ledger);
+struct Telling {
+    ledger: Ledger,
+    truthfully: bool,
+}
 
 impl Reach for Telling {
     fn ask(&self, ask: &Ask) -> Result<Answer, ProviderError> {
@@ -58,15 +65,21 @@ impl Reach for Telling {
                 seen: observations.iter().map(|_| Seen::Nothing).collect(),
             }),
             Ask::Perform { operations, .. } => {
-                self.0.note(format!("sent {}", said(operations)));
+                self.ledger.note(format!("sent {}", said(operations)));
                 Ok(Answer::Done {
                     became: operations
                         .iter()
                         .map(|operation| match operation {
-                            Operation::File { content, mode, .. } => Seen::Entry(Entry::File {
-                                content: content.clone(),
-                                mode: *mode,
-                            }),
+                            Operation::File { content, mode, .. } => Seen::Digest {
+                                digest: nerpa_proto::digest(&Seen::Entry(Entry::File {
+                                    content: if self.truthfully {
+                                        content.clone()
+                                    } else {
+                                        b"something else entirely\n".to_vec()
+                                    },
+                                    mode: *mode,
+                                })),
+                            },
                             _ => Seen::Nothing,
                         })
                         .collect(),
@@ -218,7 +231,10 @@ fn attempt(
 ) -> (Ledger, State, Result<(), RunError>) {
     let ledger = Ledger::default();
     let providers = Providers::new().with(Box::new(provider));
-    let machines = Machines::new().everywhere(Box::new(Telling(ledger.clone())));
+    let machines = Machines::new().everywhere(Box::new(Telling {
+        ledger: ledger.clone(),
+        truthfully: true,
+    }));
     let intended = plan(graph, observed, &state, &providers.schema(), secrets).expect("plannable");
 
     let watching = ledger.clone();
@@ -370,5 +386,46 @@ fn a_secret_carried_by_a_write_that_is_not_marked_secret_is_refused() {
         ledger.read().iter().all(|line| !line.starts_with("sent ")),
         "and it is refused before the machine is asked anything: {:?}",
         ledger.read()
+    );
+}
+
+/// A write whose answer is not what it was sent stops the run.
+///
+/// The engine knows what the path must hash to, because it holds what it sent.
+/// An answer that is anything else means the path holds something other than
+/// what was written there — and recording it as written would be a record of
+/// something nobody made, which no later reading can correct because the record
+/// would look exactly like the truth.
+#[test]
+fn a_write_answered_with_the_wrong_digest_is_not_recorded_as_written() {
+    let ledger = Ledger::default();
+    let providers = Providers::new().with(Box::new(Writes { carrying: false }));
+    let machines = Machines::new().everywhere(Box::new(Telling {
+        ledger: ledger.clone(),
+        truthfully: false,
+    }));
+    let graph = graph_of("/etc/motd");
+    let observed = Observed::new();
+    let mut state = State::new();
+    let intended =
+        plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+
+    let outcome = apply(
+        &intended,
+        &providers,
+        &machines,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |_: &State| Ok(()),
+    );
+
+    let Err(RunError::Unconfirmed { at, .. }) = outcome else {
+        panic!("an answer that is not what was sent is not a write that took: {outcome:?}");
+    };
+    assert_eq!(at, 0);
+    assert!(
+        state.get(&address(MOTD)).is_none(),
+        "and nothing about it is recorded"
     );
 }

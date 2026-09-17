@@ -153,7 +153,7 @@ fn perform(premise: &[Premise], operations: &[Operation], seal: Option<&Seal>) -
 
     let mut became = Vec::with_capacity(operations.len());
     for (at, operation) in operations.iter().enumerate() {
-        match act(operation) {
+        match act(operation, seal) {
             Ok(result) => became.push(result),
             Err(problem) => {
                 return Answer::Failed {
@@ -243,7 +243,26 @@ fn at(path: &Path) -> Result<Seen, String> {
     Ok(Seen::Entry(Entry::File { content, mode }))
 }
 
-fn act(operation: &Operation) -> Result<Seen, String> {
+/// What a write answers with: what the path hashed to, sealed when what was
+/// written is a secret.
+///
+/// The seal is the machine's own, so a digest of a secret leaves here in a form
+/// only the engine that sealed it can compare against what it sent. See decision
+/// 0041.
+fn written(entry: &Seen, secret: bool, seal: Option<&Seal>) -> Result<Seen, String> {
+    let digest = nerpa_proto::digest(entry);
+    if !secret {
+        return Ok(Seen::Digest { digest });
+    }
+    let Some(seal) = seal else {
+        return Err("a write carrying a secret has no seal to answer with".to_owned());
+    };
+    Ok(Seen::Sealed {
+        digest: nerpa_proto::sealed(seal, &digest),
+    })
+}
+
+fn act(operation: &Operation, seal: Option<&Seal>) -> Result<Seen, String> {
     match operation {
         Operation::Directory { path, mode } => {
             let path = Path::new(path);
@@ -266,7 +285,7 @@ fn act(operation: &Operation) -> Result<Seen, String> {
             path,
             content,
             mode,
-            ..
+            secret,
         } => {
             let path = Path::new(path);
             if let Some(parent) = path.parent() {
@@ -299,7 +318,10 @@ fn act(operation: &Operation) -> Result<Seen, String> {
             drop(opened);
             fs::set_permissions(path, fs::Permissions::from_mode(*mode))
                 .map_err(|error| format!("{}: {error}", path.display()))?;
-            at(path)
+            // Looked at after writing, as before — writing nothing is still
+            // noticed — and answered with what it hashed to rather than with
+            // what it holds.
+            written(&at(path)?, *secret, seal)
         }
         Operation::Remove { path } => {
             let path = Path::new(path);

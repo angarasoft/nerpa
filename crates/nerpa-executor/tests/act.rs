@@ -103,6 +103,12 @@ fn looking_at_a_program_reports_what_it_said() {
     assert_eq!(out, b"nginx-1.27\n");
 }
 
+/// The answer describes what is at the path afterwards, not what was asked for.
+///
+/// It is a digest now rather than the entry itself, and it is still a digest of
+/// what the far end looked at after writing: an executor that echoed the request
+/// would be reporting a file it never checked, and writing nothing would go
+/// unnoticed.
 #[test]
 fn what_it_did_is_read_back_rather_than_echoed() {
     let scratch = scratch();
@@ -119,10 +125,21 @@ fn what_it_did_is_read_back_rather_than_echoed() {
     ) else {
         panic!("it should have written the file")
     };
-    assert!(
-        matches!(&became[0], Seen::Entry(Entry::File { content, mode }) if content == b"hello\n" && *mode == 0o600)
+
+    // Worked out from the file on disk, including the mode the filesystem
+    // actually gave it, rather than from what the batch asked for.
+    let written = fs::read(&file).unwrap();
+    let mode = fs::metadata(&file).unwrap().permissions().mode() & 0o7777;
+    assert_eq!(written, b"hello\n");
+    assert_eq!(
+        became,
+        vec![Seen::Digest {
+            digest: nerpa_proto::digest(&Seen::Entry(Entry::File {
+                content: written,
+                mode,
+            })),
+        }]
     );
-    assert_eq!(fs::read(&file).unwrap(), b"hello\n");
 }
 
 /// Between the looking and the doing, the machine can change. Our window is the
@@ -552,4 +569,43 @@ fn a_write_carrying_a_secret_without_a_seal_is_refused_before_anything() {
     assert_eq!(at, At::Before);
     assert!(problem.contains("seal"), "{problem}");
     assert!(!written.exists(), "and nothing was written");
+}
+
+/// A file write is answered with a digest of what is there afterwards, never
+/// with what is there.
+///
+/// Read back rather than echoed, as before — the far end still looks at the path
+/// after writing it, so writing nothing is still noticed. What changes is what
+/// comes home: a digest the engine can compare against what it sent, instead of
+/// the contents, which for a large file is the file twice over and for a secret
+/// is the secret.
+#[test]
+fn a_write_is_answered_with_a_digest_and_never_with_the_contents() {
+    let scratch = scratch();
+    let written = scratch.path().join("motd");
+
+    let Answer::Done { became } = perform(
+        Vec::new(),
+        vec![Operation::File {
+            path: written.display().to_string(),
+            content: b"correct-horse-battery-staple\n".to_vec(),
+            mode: 0o600,
+            secret: false,
+        }],
+    ) else {
+        panic!("a write that worked is answered")
+    };
+
+    // Checked by shape rather than by looking for the bytes in a printed answer:
+    // `content` is a `Vec<u8>`, which prints as a list of numbers, so a search
+    // for the text finds nothing while the whole file sits there.
+    let expected = nerpa_proto::digest(&Seen::Entry(Entry::File {
+        content: b"correct-horse-battery-staple\n".to_vec(),
+        mode: 0o600,
+    }));
+    assert_eq!(
+        became,
+        vec![Seen::Digest { digest: expected }],
+        "the answer is what the path hashed to"
+    );
 }

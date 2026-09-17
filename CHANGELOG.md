@@ -705,6 +705,16 @@ without ceremony until the first stage is complete.
   that have to line up rather than one that is trusted. `INV-PREMISE-002` covers
   it now.
 
+- A file write is answered with what the path hashed to, not with what is at it —
+  sealed for the machine when the write carries a secret. The engine works out
+  what the answer has to be before it sends, compares what comes back, and tells
+  the provider that the write took rather than handing it the bytes again. A
+  mismatch is a failure after the operations ran. `INV-PLAN-005` reads as the RFC
+  settles it: an attribute comes back from `conclude`, or is confirmed by a
+  digest the engine checked — and a secret's recorded digest comes from the
+  engine's own copy of what it sent, because nothing downstream of sending holds
+  one.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

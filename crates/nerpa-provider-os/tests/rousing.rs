@@ -290,5 +290,13 @@ fn answered(
             });
         }
     };
-    Ok(seen.into_iter().map(Answered::Saw).collect())
+    // The engine is what compares a write's digest against what it sent, and
+    // these tests stand in for it: a digest coming back means the write took.
+    Ok(seen
+        .into_iter()
+        .map(|seen| match seen {
+            Seen::Digest { .. } | Seen::Sealed { .. } => Answered::Written,
+            other => Answered::Saw(other),
+        })
+        .collect())
 }

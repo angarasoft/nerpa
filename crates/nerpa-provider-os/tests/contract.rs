@@ -19,7 +19,7 @@ use nerpa_core::provider::{
 };
 use nerpa_core::value::Value;
 use nerpa_core::{Observed, Target};
-use nerpa_proto::{Entry, Operation, Seen};
+use nerpa_proto::{Operation, Seen};
 use nerpa_provider_os::Os;
 
 /// A file's attributes, as a declaration settles them.
@@ -101,8 +101,15 @@ fn a_file_is_one_write_that_carries_what_it_was_given() {
     );
 }
 
+/// A write the engine confirmed is concluded from what was written.
+///
+/// The answer is a digest of what the far end read back, and the engine compared
+/// it against what it sent before this was called — so what the path holds is
+/// what was sent, and there is nothing left to read out of the answer. The
+/// shapes are the ones a reading of that file would report, because the next run
+/// compares the two.
 #[test]
-fn what_a_file_became_is_read_from_the_answer_and_not_from_what_was_sent() {
+fn a_write_the_engine_confirmed_is_concluded_from_what_was_written() {
     let observed = Observed::new();
     let plain = file_of("/etc/motd", "hello\n", Some("0644"));
     let secret = BTreeSet::new();
@@ -117,10 +124,7 @@ fn what_a_file_became_is_read_from_the_answer_and_not_from_what_was_sent() {
                 plain: &plain,
                 secret: &secret,
             },
-            &[Answered::Saw(Seen::Entry(Entry::File {
-                content: b"what is really there\n".to_vec(),
-                mode: 0o600,
-            }))],
+            &[Answered::Written],
         )
         .unwrap();
 
@@ -129,10 +133,10 @@ fn what_a_file_became_is_read_from_the_answer_and_not_from_what_was_sent() {
     };
     assert_eq!(
         became.get("content"),
-        Some(&Value::bytes(b"what is really there\n".to_vec())),
-        "what the machine read back, not what was sent"
+        Some(&Value::bytes(b"hello\n".to_vec())),
+        "as bytes, which is how a reading of it comes back"
     );
-    assert_eq!(became.get("mode"), Some(&Value::Text("0600".to_owned())));
+    assert_eq!(became.get("mode"), Some(&Value::Text("0644".to_owned())));
     assert_eq!(
         became.get("path"),
         Some(&Value::Text("/etc/motd".to_owned()))

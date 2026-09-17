@@ -265,6 +265,17 @@ pub enum Seen {
         /// The sealed digest.
         digest: [u8; 32],
     },
+    /// What a write left behind, as what it hashed to.
+    ///
+    /// A file write is answered with this rather than with what was read back.
+    /// The far end still looks at the path after writing it, so writing nothing
+    /// is still noticed; what changes is what comes home. The engine holds what
+    /// it sent and compares, so the bytes have no reason to travel back — and
+    /// for a large file they would be the file a second time.
+    Digest {
+        /// What is at the path now, hashed.
+        digest: [u8; 32],
+    },
 }
 
 /// Something that was true when the plan was made and has to still be true.
@@ -560,6 +571,10 @@ pub fn digest(seen: &Seen) -> [u8; 32] {
         Seen::Sealed { digest: sealed } => {
             out.push(3);
             out.extend_from_slice(sealed);
+        }
+        Seen::Digest { digest: written } => {
+            out.push(4);
+            out.extend_from_slice(written);
         }
     }
     *blake3::hash(&out).as_bytes()
