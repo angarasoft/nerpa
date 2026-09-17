@@ -87,6 +87,14 @@ pub struct Piped {
     drain: Mutex<Option<std::thread::JoinHandle<Vec<u8>>>>,
     /// What that thread returned, once it has been joined.
     said: Mutex<Vec<u8>>,
+    /// Whether the command never reached the far side at all.
+    ///
+    /// True when it ended with 255 — which is `ssh` failing to connect rather
+    /// than anything on the machine speaking — and no byte of an answer had
+    /// arrived. Both halves matter: a connection that was made and then broke
+    /// has done something, and starting over would repeat it. See RFC 0001
+    /// §5.3, and [`opened`], which is the only thing that asks.
+    never_reached: Mutex<bool>,
 }
 
 #[derive(Debug)]
@@ -147,6 +155,7 @@ impl Piped {
             })),
             drain: Mutex::new(drain),
             said: Mutex::new(Vec::new()),
+            never_reached: Mutex::new(false),
         })
     }
 }
@@ -178,6 +187,11 @@ impl Piped {
             node: self.node.clone(),
             problem: format!("{}: {problem}{}", self.described, self.last_words()),
         }
+    }
+
+    /// Whether the command never reached the far side at all. See [`opened`].
+    fn was_never_reached(&self) -> bool {
+        self.never_reached.lock().is_ok_and(|never| *never)
     }
 
     /// What the far end said on its way out, if it said anything.
@@ -225,6 +239,9 @@ impl Reach for Piped {
         };
 
         let exchanged = exchange(talking, ask);
+        // Nothing arrived if the write never got out or the read got no bytes at
+        // all; a frame that stopped part way is a far side that was speaking.
+        let nothing_read = matches!(&exchanged, Err(nerpa_proto::WireError::Connection(_)));
         // A conversation that failed part way is out of step: what arrives next is
         // the rest of the frame that broke, or an answer to a question nobody is
         // waiting on. Kept, the next ask would read that as its own answer, or wait
@@ -232,30 +249,34 @@ impl Reach for Piped {
         // every later ask says so. Only `Drop` used to clear it; review found that.
         if exchanged.is_err()
             && let Some(broken) = held.take()
+            && let Some(code) = end(broken)
+            && code == 255
+            && nothing_read
+            && let Ok(mut never) = self.never_reached.lock()
         {
-            end(broken);
+            *never = true;
         }
         // The lock goes before the words are asked for: ending the far end is
         // what lets the draining thread finish, and it is joined for them.
         drop(held);
-        exchanged.map_err(|problem| self.out_of_reach(&problem))
+        exchanged.map_err(|problem| self.out_of_reach(&problem.to_string()))
     }
 }
 
 /// One request and its answer, on a conversation that is still in step.
-fn exchange(talking: &mut Talking, ask: &Ask) -> Result<Answer, String> {
-    nerpa_proto::write(&mut talking.sending, &Request::new(ask.clone()))
-        .map_err(|error| error.to_string())?;
-    talking.sending.flush().map_err(|error| error.to_string())?;
-    nerpa_proto::read_response(&mut talking.reading)
-        .map(|response| response.body().clone())
-        .map_err(|error| error.to_string())
+fn exchange(talking: &mut Talking, ask: &Ask) -> Result<Answer, nerpa_proto::WireError> {
+    nerpa_proto::write(&mut talking.sending, &Request::new(ask.clone()))?;
+    talking
+        .sending
+        .flush()
+        .map_err(|error| nerpa_proto::WireError::Connection(error.to_string()))?;
+    nerpa_proto::read_response(&mut talking.reading).map(|response| response.body().clone())
 }
 
 /// Ends a conversation that cannot go on. Its input is closed and the far end is
 /// stopped rather than waited for, because it may be busy with something nobody
 /// will read.
-fn end(talking: Talking) {
+fn end(talking: Talking) -> Option<i32> {
     let Talking {
         mut child,
         sending,
@@ -264,7 +285,61 @@ fn end(talking: Talking) {
     drop(sending);
     drop(reading);
     let _ = child.kill();
-    let _ = child.wait();
+    // What it ended with, because 255 is how `ssh` says it never connected — the
+    // one failure worth starting over for. A child this killed has no code of
+    // its own, which reads as "it was reached and then stopped", and that is the
+    // truth of it.
+    child.wait().ok().and_then(|ended| ended.code())
+}
+
+/// Opens a machine and checks which build answered, asking again when `ssh`
+/// could not connect at all.
+///
+/// The handshake is the next connection after delivery's, and it walks into the
+/// same thing: a shared bastion drops connections at random once ten are being
+/// made at once (RFC 0001 §5.10). Starting over is safe here and nowhere later —
+/// nothing but `Build` has been written and no byte of an answer has been read,
+/// so there is nothing to repeat and nothing half-done to tidy. Once the
+/// conversation has carried anything else, a failure is a machine that went
+/// away. See RFC 0001 §5.3.
+///
+/// # Errors
+///
+/// Returns [`ProviderError::Unreachable`] if the machine could not be opened, or
+/// if what answered is not the build this nerpa carries.
+pub fn opened(
+    node: &nerpa_core::Target,
+    program: &str,
+    arguments: &[String],
+    expected: Option<&str>,
+) -> Result<Piped, ProviderError> {
+    delivery::attempted(delivery::WAITS, || {
+        let reach = Piped::running(node, program, arguments)
+            // A command that will not start is this machine missing it, which
+            // asking again will not fix.
+            .map_err(|error| delivery::Refused::Answered(error.to_string()))?;
+        let Some(build) = expected else {
+            return Ok(reach);
+        };
+        match recognised(&reach, node, build) {
+            Ok(()) => Ok(reach),
+            Err(error) if reach.was_never_reached() => {
+                Err(delivery::Refused::Connecting(error.to_string()))
+            }
+            Err(error) => Err(delivery::Refused::Answered(error.to_string())),
+        }
+    })
+    .map_err(|refused| {
+        let problem = match refused {
+            delivery::Refused::Connecting(problem) | delivery::Refused::Answered(problem) => {
+                problem
+            }
+        };
+        ProviderError::Unreachable {
+            node: node.clone(),
+            problem,
+        }
+    })
 }
 
 // ENFORCES: INV-WIRE-003

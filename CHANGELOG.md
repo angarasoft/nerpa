@@ -739,6 +739,15 @@ without ceremony until the first stage is complete.
   far side answered is not asked again: only exit 255, which is `ssh` failing to
   connect rather than the far side speaking.
 
+- The handshake is tried again on the same failure, since it is the very next
+  connection after delivery's. Opening a machine and asking which build answered
+  are one step now, because that is the part which can be started over: nothing
+  but `Build` has been written and no byte of an answer has been read, so there
+  is nothing to repeat. Two of the three conditions RFC 0001 §5.3 puts on it were
+  not knowable before — the child's exit code was thrown away when a conversation
+  ended, and a broken exchange was flattened into a string, so "it never
+  connected" could not be told from "it answered and then stopped".
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

@@ -148,10 +148,10 @@ struct Said {
 /// §5.10): a second or third attempt arrives in a different moment and gets
 /// through. More than three is holding a worker of the pool against a machine
 /// that is genuinely not there, which the run would rather hear about.
-const ATTEMPTS: usize = 3;
+pub(crate) const ATTEMPTS: usize = 3;
 
 /// How long the first wait between attempts is. Each one after it doubles.
-const WAITS: std::time::Duration = std::time::Duration::from_millis(200);
+pub(crate) const WAITS: std::time::Duration = std::time::Duration::from_millis(200);
 
 /// Why one attempt came back with nothing useful.
 ///
@@ -159,7 +159,7 @@ const WAITS: std::time::Duration = std::time::Duration::from_millis(200);
 /// to connect is a moment that may pass, and the far side answering is an answer
 /// that will not change.
 #[derive(Debug)]
-enum Refused {
+pub(crate) enum Refused {
     /// `ssh` never reached the far side, and this is what it said about that.
     Connecting(String),
     /// The far side answered, and this is what it said.
@@ -205,7 +205,7 @@ fn asked(
 /// be dropped together again. The jitter comes from the clock rather than from a
 /// dependency: spreading a handful of retries does not need randomness anybody
 /// could bet on.
-fn attempted<T>(
+pub(crate) fn attempted<T>(
     waits: std::time::Duration,
     mut attempt: impl FnMut() -> Result<T, Refused>,
 ) -> Result<T, Refused> {

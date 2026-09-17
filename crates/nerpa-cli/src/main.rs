@@ -37,7 +37,6 @@ use nerpa_core::secret::{Remembered, Secrets};
 use nerpa_core::state::State;
 use nerpa_core::store::{self, Lock};
 use nerpa_provider_os::Os;
-use nerpa_transport::Piped;
 
 #[derive(Parser)]
 #[command(
@@ -260,14 +259,14 @@ fn speaking(
             ("ssh".to_owned(), arguments, Some(carried.build.as_str()))
         }
     };
-    let reach = Piped::running(node, &program, &arguments).map_err(|error| error.to_string())?;
     // ENFORCES: INV-WIRE-003
-    // Before anything is read, because what is read is the executor's account of
-    // the machine, and an account from a build this nerpa does not ship is not
-    // one it has a reason to believe.
-    if let Some(build) = expected {
-        nerpa_transport::recognised(&reach, node, build).map_err(|error| error.to_string())?;
-    }
+    // Which build answered is asked before anything is read, because what is
+    // read is the executor's account of the machine, and an account from a build
+    // this nerpa does not ship is not one it has a reason to believe. Opening
+    // and that question are one step, because they are the part that can be
+    // started over.
+    let reach = nerpa_transport::opened(node, &program, &arguments, expected)
+        .map_err(|error| error.to_string())?;
     Ok(Box::new(reach))
 }
 

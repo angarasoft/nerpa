@@ -287,3 +287,57 @@ fn a_far_end_that_complains_before_it_goes_is_quoted_in_the_refusal() {
         "the refusal should carry what the far end said: {problem}"
     );
 }
+
+/// A connection `ssh` itself could not make is tried again, handshake and all.
+///
+/// The same failure delivery rides out: a shared bastion drops connections at
+/// random once ten are being made at once, and the handshake is the very next
+/// connection after delivery's. Nothing but `Build` has been written by then and
+/// no byte of an answer has been read, so starting over costs a connection and
+/// risks nothing — which is exactly the condition RFC 0001 §5.3 puts on it.
+#[test]
+fn a_handshake_ssh_could_not_make_is_tried_again() {
+    let scratch = tempfile::tempdir().expect("a scratch directory");
+    let counted = scratch.path().join("attempts");
+    let far_end = scratch.path().join("far-end");
+    std::fs::write(
+        &far_end,
+        format!(
+            "#!/bin/sh\n\
+             tries=$(cat {counted} 2>/dev/null || echo 0)\n\
+             tries=$((tries + 1))\n\
+             echo $tries > {counted}\n\
+             if [ $tries -lt 3 ]; then exit 255; fi\n\
+             exec {executor}\n",
+            counted = counted.display(),
+            executor = executor(),
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(
+        &far_end,
+        std::os::unix::fs::PermissionsExt::from_mode(0o755),
+    )
+    .unwrap();
+
+    let reach = nerpa_transport::opened(
+        &node("web-01"),
+        &far_end.display().to_string(),
+        &[],
+        Some(&carried()),
+    )
+    .expect("the third connection gets through");
+
+    let answer = reach
+        .ask(&Ask::Look {
+            observations: Vec::new(),
+            seal: None,
+        })
+        .expect("and the executor behind it answers");
+    assert_eq!(answer, Answer::Found { seen: Vec::new() });
+    assert_eq!(
+        std::fs::read_to_string(&counted).unwrap().trim(),
+        "3",
+        "it tried until it got through"
+    );
+}
