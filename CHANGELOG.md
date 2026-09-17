@@ -276,6 +276,13 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- An executor cut short in delivery is never taken for a whole one. The copy was
+  `cat`, which takes an input ending early for the end of the file, so an `ssh`
+  killed part way left a short executor under its final name; the file test that
+  decides whether to deliver passed on every run after, and the short binary died
+  without a word. The copy is counted before it is moved, and so is what is already
+  there. Found by the review of RFC 0001's fifth revision.
+
 - A held removal is said to wait for its root. It named the first thing recorded
   after it that could not be planned, which could be a resource waiting only for
   that removal, so the plan said each waited for the other. Found by the review of
