@@ -788,15 +788,20 @@ impl serde::Serialize for PlanDigest {
 }
 
 /// Why a plan has no digest.
+///
+/// Both counts are named, because a plan can be incomplete for either reason, and
+/// one that only waits used to say it could not look at none of its machines.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[error(
-    "a plan that could not look at {machines} of its machines has no digest: it \
-     carries how old that knowledge is, an age moves every second, and a number \
-     over it would never settle"
+    "a plan has no digest while it could not look at {machines} of its resources \
+     and {waiting} of them wait for those: it carries how old that knowledge is, an \
+     age moves every second, and a number over it would never settle"
 )]
 pub struct Unhashable {
-    /// How many machines did not answer.
+    /// How many resources their own machine could not be asked about.
     pub machines: usize,
+    /// How many wait for something that cannot be planned.
+    pub waiting: usize,
 }
 
 impl Plan {
@@ -812,6 +817,7 @@ impl Plan {
         if !self.is_complete() {
             return Err(Unhashable {
                 machines: self.unreachable.len(),
+                waiting: self.waiting.len(),
             });
         }
 

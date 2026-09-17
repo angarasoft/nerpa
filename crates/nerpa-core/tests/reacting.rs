@@ -657,3 +657,45 @@ fn a_replaced_cause_owes_its_reaction_on_a_machine_that_did_not_answer() {
     assert_eq!(file.kind(), ChangeKind::Replace, "{planned:?}");
     assert_eq!(file.owed_by(), [address(FAR_SERVICE)], "owing the reaction");
 }
+
+/// A plan with nothing out of reach, and something waiting, still has no digest,
+/// and says which it is. It said it could not look at none of its machines, because
+/// the refusal counted only what was out of reach. Found by the narrow review of RFC
+/// 0001's sixth revision.
+#[test]
+fn a_plan_that_only_waits_says_so_where_its_number_would_be() {
+    let mut graph = Graph::new();
+    graph.preexisting(nerpa_core::Target::new("web-02").unwrap());
+    graph
+        .insert(Resource::new(address("yandex:instance.db")).with("size", "large"))
+        .unwrap();
+    graph
+        .insert(
+            Resource::new(address(FAR_SERVICE))
+                .with("name", "nginx")
+                .reacting_to(address("yandex:instance.db")),
+        )
+        .unwrap();
+    let mut observed = Observed::new();
+    observed.record(
+        address("yandex:instance.db"),
+        [("size".to_owned(), Value::Text("small".to_owned()))]
+            .into_iter()
+            .collect(),
+    );
+    observed.unreachable(nerpa_core::Target::new("web-02").unwrap());
+    let mut state = State::new();
+    state.record(
+        address("yandex:instance.db"),
+        Record::new(BTreeMap::new(), BTreeSet::default()),
+    );
+
+    let held = plan(&graph, &observed, &state, &Schema::new(), secrets()).expect("plannable");
+
+    let refused = held.digest().expect_err("a plan that waits has no number");
+    assert_eq!(refused.waiting, 1, "the cause waits: {refused}");
+    assert_eq!(
+        refused.machines, 1,
+        "and the service is out of reach: {refused}"
+    );
+}

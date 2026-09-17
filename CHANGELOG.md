@@ -276,6 +276,11 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A plan with nothing out of reach, and something waiting, says which it is where
+  its number would be. The refusal counted only what was out of reach, so such a
+  plan said it could not look at none of its machines. Found by the narrow review of
+  RFC 0001's sixth revision.
+
 - A held removal names the root of the wait however many steps away it is. Only a
   resource waiting for it directly was passed over, so a plan could name a chain
   that led back to the removal and never name the machine that did not answer.
