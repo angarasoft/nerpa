@@ -100,6 +100,7 @@ pub enum WireError {
 
 /// What the engine asks for.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Request {
     version: u32,
     body: Ask,
@@ -130,7 +131,7 @@ impl Request {
 
 /// The things an executor can be asked to do.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
 pub enum Ask {
     /// What do these look like now?
@@ -192,7 +193,7 @@ pub enum Ask {
 /// it, and a wire that allowed only one of the two would send every package
 /// provider looking for a back door. See decision 0033.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
 pub enum Observation {
     /// What is at this path.
@@ -236,7 +237,7 @@ pub enum Observation {
 
 /// What one observation found.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
 pub enum Seen {
     /// There is nothing at that path.
@@ -268,6 +269,7 @@ pub enum Seen {
 
 /// Something that was true when the plan was made and has to still be true.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Premise {
     /// What to look at again.
     pub observation: Observation,
@@ -278,7 +280,7 @@ pub struct Premise {
 
 /// One thing to make true on a machine.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
 pub enum Operation {
     /// A directory, with these permissions.
@@ -371,7 +373,7 @@ impl Operation {
 /// talks about has one — and it doubles as how many went through before it, so
 /// the engine knows what happened rather than assuming nothing did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
 pub enum At {
     /// Nothing was looked at and nothing was done. A request refused for what it
@@ -398,6 +400,7 @@ impl std::fmt::Display for At {
 
 /// What the executor says back.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Response {
     version: u32,
     body: Answer,
@@ -428,7 +431,7 @@ impl Response {
 
 /// What an executor can answer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
 pub enum Answer {
     /// What each observation found, in the order they were asked about.
@@ -475,7 +478,7 @@ pub enum Answer {
 
 /// What is at a path.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
 pub enum Entry {
     /// A directory.
@@ -689,9 +692,25 @@ fn frame<R: Read>(source: &mut R) -> Result<Vec<u8>, WireError> {
     Ok(body)
 }
 
-/// What a frame's bytes say, as the shape asked for.
+/// What a frame's bytes say, as the shape asked for, to the last byte of it.
+///
+/// Read to the end rather than until the shape is satisfied. Trailing bytes
+/// inside a frame were ignored, and bytes nobody looks at are bytes a peer has
+/// somewhere to put: the length prefix says how much this end agreed to read, so
+/// everything inside it is either the shape or a disagreement about what the
+/// shape is.
 fn decode<T: for<'de> Deserialize<'de>>(body: &[u8]) -> Result<T, WireError> {
-    ciborium::from_reader(body).map_err(|error| WireError::Malformed(error.to_string()))
+    let mut source = std::io::Cursor::new(body);
+    let value = ciborium::from_reader(&mut source)
+        .map_err(|error| WireError::Malformed(error.to_string()))?;
+    let read = usize::try_from(source.position()).unwrap_or(usize::MAX);
+    if read != body.len() {
+        return Err(WireError::Malformed(format!(
+            "the shape ended after {read} bytes and the frame announced {}",
+            body.len()
+        )));
+    }
+    Ok(value)
 }
 
 /// A frame's version, and nothing else about it.
@@ -701,6 +720,9 @@ fn decode<T: for<'de> Deserialize<'de>>(body: &[u8]) -> Result<T, WireError> {
 /// reports that as an unknown variant — which is what an executor of version 2
 /// said to the first frame of version 3. The version is the reason; the variant
 /// is only how it showed.
+/// Deliberately not `deny_unknown_fields`: this reads one field out of a frame
+/// that carries more, and the rest of it is the body this has not decided to
+/// believe yet.
 #[derive(Deserialize)]
 struct Stamp {
     version: u32,

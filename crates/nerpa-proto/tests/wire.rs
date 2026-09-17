@@ -616,3 +616,106 @@ fn what_a_sealed_observation_found_survives_the_trip() {
         nerpa_proto::digest(&Seen::Nothing)
     );
 }
+
+/// The body of a frame, without the four bytes that say how long it is.
+fn body_of(request: &Request) -> Vec<u8> {
+    let mut wire = Vec::new();
+    nerpa_proto::write(&mut wire, request).unwrap();
+    wire.split_off(4)
+}
+
+/// One frame, announced as exactly this many bytes.
+fn framed(body: &[u8]) -> Vec<u8> {
+    let mut wire = u32::try_from(body.len()).unwrap().to_be_bytes().to_vec();
+    wire.extend_from_slice(body);
+    wire
+}
+
+/// A frame is read to its end, not until it has enough.
+///
+/// Trailing bytes inside a frame were ignored: the decoder stopped at the end of
+/// the shape it wanted and never looked at the rest. What arrives after a
+/// complete shape is not a shape this end agreed to read, and a peer that can put
+/// bytes there unseen is a peer with somewhere to put them.
+#[test]
+fn a_frame_with_more_after_its_shape_is_refused() {
+    let mut body = body_of(&Request::new(Ask::Fingerprint));
+    body.push(0xf6);
+
+    let refusal = nerpa_proto::read_request(&mut Cursor::new(framed(&body))).unwrap_err();
+    assert!(matches!(refusal, WireError::Malformed(_)), "{refusal:?}");
+}
+
+/// A key this version never defined is refused rather than skipped.
+///
+/// Skipping one means two ends disagreeing about what they agreed, quietly: the
+/// version stamp exists to make that disagreement loud, and a tolerated key walks
+/// around it.
+#[test]
+fn a_frame_with_a_key_nobody_defined_is_refused() {
+    #[derive(serde::Serialize)]
+    struct WithSomethingExtra {
+        version: u32,
+        body: Ask,
+        extra: u32,
+    }
+
+    let mut wire = Vec::new();
+    nerpa_proto::write(
+        &mut wire,
+        &WithSomethingExtra {
+            version: PROTOCOL_VERSION,
+            body: Ask::Fingerprint,
+            extra: 7,
+        },
+    )
+    .unwrap();
+
+    let refusal = nerpa_proto::read_request(&mut Cursor::new(wire)).unwrap_err();
+    assert!(matches!(refusal, WireError::Malformed(_)), "{refusal:?}");
+}
+
+/// And inside the shapes a frame carries, which is where a later version would
+/// put one.
+#[test]
+fn a_key_nobody_defined_inside_a_frame_is_refused() {
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "snake_case")]
+    enum LooseObservation {
+        Path { path: String, extra: bool },
+    }
+
+    #[derive(serde::Serialize)]
+    #[serde(rename_all = "snake_case")]
+    enum LooseAsk {
+        Look {
+            observations: Vec<LooseObservation>,
+            seal: Option<Seal>,
+        },
+    }
+
+    #[derive(serde::Serialize)]
+    struct Loose {
+        version: u32,
+        body: LooseAsk,
+    }
+
+    let mut wire = Vec::new();
+    nerpa_proto::write(
+        &mut wire,
+        &Loose {
+            version: PROTOCOL_VERSION,
+            body: LooseAsk::Look {
+                observations: vec![LooseObservation::Path {
+                    path: "/etc/motd".to_owned(),
+                    extra: true,
+                }],
+                seal: None,
+            },
+        },
+    )
+    .unwrap();
+
+    let refusal = nerpa_proto::read_request(&mut Cursor::new(wire)).unwrap_err();
+    assert!(matches!(refusal, WireError::Malformed(_)), "{refusal:?}");
+}

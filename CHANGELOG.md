@@ -687,6 +687,15 @@ without ceremony until the first stage is complete.
   reinstall on every machine that has an executor — 0040 already refuses a machine
   carrying a build this nerpa did not ship.
 
+- A frame is read to its end, and a key nobody defined is refused. Trailing bytes
+  inside a frame were ignored — the decoder stopped where its shape was satisfied
+  and never looked at the rest, so the length prefix promised more than anything
+  checked — and an unknown key was skipped, which is two ends disagreeing about
+  what they agreed while the version stamp says they agree. Both are refused now,
+  at the top level and inside the shapes a frame carries. The version stamp is the
+  deliberate exception: it reads one field out of a frame whose body this end has
+  not decided to believe yet.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the
