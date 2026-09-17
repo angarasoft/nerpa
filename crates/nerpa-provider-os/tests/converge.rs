@@ -1286,35 +1286,34 @@ fn a_file_declared_where_a_replacement_moves_one_away_is_made_after_it() {
     }
 }
 
-/// A mode written as a number, as Starlark's `0o600` evaluates to, is the mode the
-/// file gets, and converges. It was neither refused nor applied: the provider fell
-/// back to its default, and every run changed it again. Found by the review of RFC
-/// 0001's fifth revision.
+/// A mode written as a number is refused, and says to quote it. It was read as
+/// itself where text is read as octal, so `400` meant `0620`, group writable, where
+/// `"400"` means `0400`, and Starlark evaluates `0o600` to 384 before nerpa sees
+/// either. Found by the narrow review of RFC 0001's sixth revision.
 #[test]
-fn a_mode_written_as_a_number_is_the_mode_the_file_gets() {
+fn a_mode_written_as_a_number_is_refused_and_says_to_quote_it() {
     let scratch = Scratch::new("mode-number");
-    let path = scratch.join("f");
     let graph = graph_of(vec![
         Resource::new(address("os:file.number@localhost"))
-            .with("path", path.clone())
+            .with("path", scratch.join("f"))
             .with("content", "m\n")
             .with("mode", 0o600_i64),
     ]);
-    let mut state = State::new();
-    run_once(&graph, &mut state).expect("the first run applies");
+    let providers = providers();
+    let state = State::new();
+    let observed = observe(&graph, &providers, &machines(), &state).expect("readable");
 
-    let on_disk = std::os::unix::fs::PermissionsExt::mode(
-        &fs::metadata(&path).expect("written").permissions(),
-    );
-    assert_eq!(
-        on_disk & 0o7777,
-        0o600,
-        "the declared mode is the one on disk"
-    );
-    let again = next_plan(&graph, &state);
+    let refused = plan(&graph, &observed, &state, &providers.schema(), secrets()).unwrap_err();
     assert!(
-        again.is_empty(),
-        "and the next run has nothing to do: {again:?}"
+        matches!(
+            &refused,
+            nerpa_core::planner::PlanError::NotAMode { attribute, .. } if attribute == "mode"
+        ),
+        "{refused}"
+    );
+    assert!(
+        refused.to_string().contains("quoted"),
+        "and says what to do about it: {refused}"
     );
 }
 

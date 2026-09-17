@@ -102,7 +102,7 @@ pub enum PlanError {
     },
     /// A file mode written as something no file can have.
     #[error(
-        "{address}: {attribute} is {value:?}, and a mode is written in octal within the permission bits, such as \"0644\""
+        "{address}: {attribute} is {value:?}, and a mode is written as text, in octal within the permission bits, such as \"0644\"; a mode written as a number cannot be told from a decimal once the configuration is evaluated, so it is quoted"
     )]
     NotAMode {
         /// The resource declaring it.
@@ -1223,8 +1223,8 @@ fn change_for(
             });
         }
         // ENFORCES: INV-PLAN-012
-        // A mode is the number it spells, written as text or, as Starlark's `0o600`
-        // is, as a number. Compared as written, "644" never matched
+        // A mode is the number the text it is written in spells. Compared as
+        // written, "644" never matched
         // the "0644" a reading reports, and every run changed it again; one beyond
         // the permission bits never matched at all, because a machine keeps only
         // those. So it is compared as a number, and what spells no mode a file can

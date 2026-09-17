@@ -244,15 +244,16 @@ pub fn mode_of(written: &str) -> Option<u32> {
         .filter(|mode| *mode <= 0o7777)
 }
 
-/// The mode a declared value spells: text, as [`mode_of`] reads it, or a number,
-/// as Starlark's `0o600` evaluates to.
+/// The mode a declared value spells, which is text and nothing else.
 ///
-/// `None` for anything else, and for a number beyond the permission bits.
+/// A number is refused rather than read. Starlark evaluates `0o600` to 384 before
+/// any of this sees it, so a mode written as a number cannot be told from one
+/// meant as a decimal: reading text as octal and a number as itself made `400` the
+/// mode `0620`, group writable, where `"400"` is `0400`.
 #[must_use]
 pub fn mode_of_value(value: &Value) -> Option<u32> {
     match value {
         Value::Text(written) => mode_of(written),
-        Value::Integer(number) => u32::try_from(*number).ok().filter(|mode| *mode <= 0o7777),
         _ => None,
     }
 }

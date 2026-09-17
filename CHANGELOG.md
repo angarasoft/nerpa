@@ -276,6 +276,12 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A mode written as a number is refused rather than read as a decimal, which
+  narrows what the change before it accepted. Text was read as octal and a number as
+  itself: `mode = 400` landed as `0620`, group writable, where `"400"` is `0400`,
+  and Starlark evaluates `0o600` to 384 before nerpa sees either, so the two cannot
+  be told apart. Found by the narrow review of RFC 0001's sixth revision.
+
 - Delivery sweeps what an attempt that was killed left beside the executor's name.
   A far side that is killed never reaches the removal at the end of the copy, and
   delivery is retried, so each attempt left another part of a binary behind for
