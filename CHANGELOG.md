@@ -276,6 +276,11 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A held removal is said to wait for its root. It named the first thing recorded
+  after it that could not be planned, which could be a resource waiting only for
+  that removal, so the plan said each waited for the other. Found by the review of
+  RFC 0001's fifth revision.
+
 - A mode written as a number, as Starlark's `0o600` is, is the mode the file gets.
   It was neither refused nor applied: the planner checked only text, and the os
   provider read only text and fell back to its default, so every run changed it

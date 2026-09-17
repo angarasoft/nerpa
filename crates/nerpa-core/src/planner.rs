@@ -822,19 +822,36 @@ impl Planning<'_> {
     /// What a removal waits for, if anything: a removal state recorded after it
     /// that is held, or a declared resource that can move out of it and cannot be
     /// planned.
+    ///
+    /// Named by its root. One that waits only for this removal is passed over for
+    /// another, or the plan said each waited for the other and never named the
+    /// machine that did not answer.
     fn removal_waits_for(
         &self,
         walk: &Walk,
         removals: &Removals,
         address: &Address,
     ) -> Option<Address> {
-        self.later(address)
+        let candidates: Vec<&Address> = self
+            .later(address)
             .iter()
             .copied()
-            .find(|other| {
+            .filter(|other| {
                 removals.held.contains(*other)
                     || (walk.unplannable.contains(*other) && self.may_move_out(other, address))
             })
+            .collect();
+        let waits_for_this = |other: &Address| {
+            walk.waiting
+                .iter()
+                .chain(&removals.waiting)
+                .any(|entry| entry.address() == other && entry.on() == address)
+        };
+        candidates
+            .iter()
+            .copied()
+            .find(|other| !waits_for_this(other))
+            .or_else(|| candidates.first().copied())
             .cloned()
     }
 

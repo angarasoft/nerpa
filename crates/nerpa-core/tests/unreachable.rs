@@ -453,6 +453,136 @@ fn a_replacement_waits_while_what_was_recorded_inside_it_cannot_be_planned() {
     );
 }
 
+/// A held removal is said to wait for its root. It named the first thing recorded
+/// after it that could not be planned, which could be a resource waiting only for
+/// this removal: each was said to wait for the other, and the machine that did not
+/// answer was named for neither. Found by the review of RFC 0001's fifth revision.
+#[test]
+fn a_held_removal_is_said_to_wait_for_its_root() {
+    let os = || nerpa_core::Provider::new("os").unwrap();
+    let schema = Schema::new()
+        .immutable(os(), Kind::new("file").unwrap(), "path")
+        .identity(os(), Kind::new("file").unwrap(), "path", "path")
+        .identity(os(), Kind::new("directory").unwrap(), "path", "path");
+    let path = |value: &str| {
+        Recorded::all(
+            [("path".to_owned(), Value::Text(value.to_owned()))]
+                .into_iter()
+                .collect::<Attributes>(),
+        )
+    };
+    let app = address("os:directory.app@web-01");
+    let mut state = State::new();
+    state.record(app.clone(), Record::new(path("/srv/app"), BTreeSet::new()));
+    state.record(
+        address("os:file.cfg@web-01"),
+        Record::new(path("/srv/app/cfg"), [app.clone()].into_iter().collect()),
+    );
+    state.record(
+        address("os:file.z@web-01"),
+        Record::new(path("/srv/app/z"), [app.clone()].into_iter().collect()),
+    );
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.cfg@web-01")).with("path", "/srv/app"),
+        Resource::new(address("os:file.data@web-02")).with("path", "/data"),
+        Resource::new(address("os:file.z@web-01"))
+            .with("path", "/z")
+            .after(address("os:file.data@web-02")),
+    ]);
+    let mut observed = Observed::new();
+    observed.unreachable(node("web-02"));
+    observed.record(
+        address("os:file.cfg@web-01"),
+        [("path".to_owned(), Value::Text("/srv/app/cfg".to_owned()))]
+            .into_iter()
+            .collect(),
+    );
+
+    let plan = plan_at(
+        &graph,
+        &observed,
+        &state,
+        &schema,
+        secrets(),
+        nothing_known(),
+    )
+    .unwrap();
+
+    let said: std::collections::BTreeMap<String, String> = waiting(&plan).into_iter().collect();
+    assert_eq!(
+        said.get("os:directory.app@web-01").map(String::as_str),
+        Some("os:file.z@web-01"),
+        "the directory waits for what waits for the machine, not for what waits for it: {said:?}"
+    );
+}
+
+/// And a removal held behind a machine that did not answer is said to wait for what
+/// holds it there, not for the declared resource that names what it takes away and
+/// waits for it in turn. Found by the review of RFC 0001's fifth revision.
+#[test]
+fn a_removal_held_behind_a_machine_is_said_to_wait_for_it_not_for_its_successor() {
+    let schema = Schema::new().identity(
+        nerpa_core::Provider::new("os").unwrap(),
+        Kind::new("file").unwrap(),
+        "path",
+        "path",
+    );
+    let path = |value: &str| {
+        Recorded::all(
+            [("path".to_owned(), Value::Text(value.to_owned()))]
+                .into_iter()
+                .collect::<Attributes>(),
+        )
+    };
+    let source = address("os:file.source@web-02");
+    let mut state = State::new();
+    state.record(source.clone(), Record::new(path("/srv/a"), BTreeSet::new()));
+    state.record(
+        address("os:file.reader@web-01"),
+        Record::new(
+            Recorded::all(Attributes::new()),
+            [source.clone()].into_iter().collect(),
+        ),
+    );
+    state.record(
+        address("os:file.a-successor@web-02"),
+        Record::new(path("/srv/b"), [source.clone()].into_iter().collect()),
+    );
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.a-successor@web-02")).with("path", "/srv/a"),
+    ]);
+    let mut observed = Observed::new();
+    observed.unreachable(node("web-01"));
+    observed.record(
+        address("os:file.a-successor@web-02"),
+        [("path".to_owned(), Value::Text("/srv/b".to_owned()))]
+            .into_iter()
+            .collect(),
+    );
+
+    let plan = plan_at(
+        &graph,
+        &observed,
+        &state,
+        &schema,
+        secrets(),
+        nothing_known(),
+    )
+    .unwrap();
+
+    let said: std::collections::BTreeMap<String, String> = waiting(&plan).into_iter().collect();
+    assert_eq!(
+        said.get("os:file.source@web-02").map(String::as_str),
+        Some("os:file.reader@web-01"),
+        "{said:?}"
+    );
+    assert_eq!(
+        said.get("os:file.a-successor@web-02").map(String::as_str),
+        Some("os:file.source@web-02"),
+        "{said:?}"
+    );
+}
+
 #[test]
 fn nothing_at_all_is_said_about_what_could_not_be_read() {
     let graph = graph_of(vec![
