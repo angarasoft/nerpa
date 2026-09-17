@@ -276,6 +276,11 @@ without ceremony until the first stage is complete.
   The gate checks that a named file contains the anchor and cannot check that it
   is in the right place, which is the caveat `RULES.md` already states.
 
+- A held removal names the root of the wait however many steps away it is. Only a
+  resource waiting for it directly was passed over, so a plan could name a chain
+  that led back to the removal and never name the machine that did not answer.
+  Found by the narrow review of RFC 0001's sixth revision.
+
 - An executor cut short in delivery is never taken for a whole one. The copy was
   `cat`, which takes an input ending early for the end of the file, so an `ssh`
   killed part way left a short executor under its final name; the file test that

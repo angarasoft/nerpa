@@ -583,6 +583,80 @@ fn a_removal_held_behind_a_machine_is_said_to_wait_for_it_not_for_its_successor(
     );
 }
 
+/// And the root is named however many steps away it is: a resource that waits for
+/// one that waits for this removal is passed over too. Only what waited for it
+/// directly was, so a plan could name a chain that led back to the removal and
+/// never name the machine that did not answer. Found by the narrow review of RFC
+/// 0001's sixth revision.
+#[test]
+fn a_held_removal_names_the_root_of_a_longer_wait() {
+    let os = || nerpa_core::Provider::new("os").unwrap();
+    let schema = Schema::new()
+        .immutable(os(), Kind::new("file").unwrap(), "path")
+        .identity(os(), Kind::new("file").unwrap(), "path", "path")
+        .identity(os(), Kind::new("directory").unwrap(), "path", "path");
+    let path = |value: &str| {
+        Recorded::all(
+            [("path".to_owned(), Value::Text(value.to_owned()))]
+                .into_iter()
+                .collect::<Attributes>(),
+        )
+    };
+    let app = address("os:directory.app@web-01");
+    let mut state = State::new();
+    state.record(app.clone(), Record::new(path("/srv/app"), BTreeSet::new()));
+    // Recorded after the directory, and sorted before the removal that holds it.
+    state.record(
+        address("os:file.a-reader@web-01"),
+        Record::new(path("/srv/app/reader"), [app.clone()].into_iter().collect()),
+    );
+    state.record(
+        address("os:file.b-taker@web-01"),
+        Record::new(path("/srv/app/taker"), [app.clone()].into_iter().collect()),
+    );
+    state.record(
+        address("os:file.zz-holder@web-02"),
+        Record::new(path("/srv/held"), [app.clone()].into_iter().collect()),
+    );
+    let graph = graph_of(vec![
+        // Waits for the one that takes the directory's own name.
+        Resource::new(address("os:file.a-reader@web-01"))
+            .with("path", "/reader")
+            .after(address("os:file.b-taker@web-01")),
+        Resource::new(address("os:file.b-taker@web-01")).with("path", "/srv/app"),
+    ]);
+    let mut observed = Observed::new();
+    observed.unreachable(node("web-02"));
+    for (declared, at) in [
+        ("os:file.a-reader@web-01", "/srv/app/reader"),
+        ("os:file.b-taker@web-01", "/srv/app/taker"),
+    ] {
+        observed.record(
+            address(declared),
+            [("path".to_owned(), Value::Text(at.to_owned()))]
+                .into_iter()
+                .collect(),
+        );
+    }
+
+    let plan = plan_at(
+        &graph,
+        &observed,
+        &state,
+        &schema,
+        secrets(),
+        nothing_known(),
+    )
+    .unwrap();
+
+    let said: std::collections::BTreeMap<String, String> = waiting(&plan).into_iter().collect();
+    assert_eq!(
+        said.get("os:directory.app@web-01").map(String::as_str),
+        Some("os:file.zz-holder@web-02"),
+        "the directory names what holds it, not a chain that leads back to it: {said:?}"
+    );
+}
+
 #[test]
 fn nothing_at_all_is_said_about_what_could_not_be_read() {
     let graph = graph_of(vec![

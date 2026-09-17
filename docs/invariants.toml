@@ -561,6 +561,7 @@ tests = [
   "a_held_cause_on_no_machine_is_named_all_the_same",
   "a_held_removal_is_said_to_wait_for_its_root",
   "a_removal_held_behind_a_machine_is_said_to_wait_for_it_not_for_its_successor",
+  "a_held_removal_names_the_root_of_a_longer_wait",
   "a_change_waiting_on_one_that_cannot_be_planned_says_what_for",
 ]
 adversarial = ["a_cause_waits_while_what_it_rouses_cannot_be_planned_and_has_no_record"]

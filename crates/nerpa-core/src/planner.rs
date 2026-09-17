@@ -823,15 +823,33 @@ impl Planning<'_> {
     /// that is held, or a declared resource that can move out of it and cannot be
     /// planned.
     ///
-    /// Named by its root. One that waits only for this removal is passed over for
-    /// another, or the plan said each waited for the other and never named the
-    /// machine that did not answer.
+    /// Named by the root of the wait, not by the first that comes to hand. One
+    /// whose own wait leads back here is passed over, however many steps it takes
+    /// to lead back, or the plan would say each waits for the other and never name
+    /// the machine that did not answer.
     fn removal_waits_for(
         &self,
         walk: &Walk,
         removals: &Removals,
         address: &Address,
     ) -> Option<Address> {
+        let waits: BTreeMap<&Address, &Address> = walk
+            .waiting
+            .iter()
+            .chain(&removals.waiting)
+            .map(|entry| (entry.address(), entry.on()))
+            .collect();
+        let leads_back = |from: &Address| {
+            let mut at = from;
+            for _ in 0..=waits.len() {
+                match waits.get(at) {
+                    Some(next) if *next == address => return true,
+                    Some(next) => at = next,
+                    None => return false,
+                }
+            }
+            true
+        };
         let candidates: Vec<&Address> = self
             .later(address)
             .iter()
@@ -841,16 +859,12 @@ impl Planning<'_> {
                     || (walk.unplannable.contains(*other) && self.may_move_out(other, address))
             })
             .collect();
-        let waits_for_this = |other: &Address| {
-            walk.waiting
-                .iter()
-                .chain(&removals.waiting)
-                .any(|entry| entry.address() == other && entry.on() == address)
-        };
         candidates
             .iter()
             .copied()
-            .find(|other| !waits_for_this(other))
+            .find(|other| !leads_back(other))
+            // Everything it waits for waits for it in turn, which takes a record of
+            // an order no run made. Naming one of them says more than naming none.
             .or_else(|| candidates.first().copied())
             .cloned()
     }
