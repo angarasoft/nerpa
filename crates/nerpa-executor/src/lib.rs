@@ -85,6 +85,25 @@ fn build() -> Answer {
 }
 
 fn look(observations: &[Observation], seal: Option<&Seal>) -> Answer {
+    // ENFORCES: INV-PREMISE-002
+    // Refused for what the request is, before any of it is carried out: a sealed
+    // observation answers with a seal, and there is nothing to seal it with.
+    // Reported against the observation that wanted one, it read as that path
+    // being unreadable, which is a different thing and points at the machine
+    // rather than at the asking.
+    if seal.is_none()
+        && observations
+            .iter()
+            .any(|observation| matches!(observation, Observation::Sealed { .. }))
+    {
+        return Answer::Failed {
+            at: At::Before,
+            problem: "a sealed observation arrived without a seal, and its answer cannot \
+                      be sealed"
+                .to_owned(),
+        };
+    }
+
     let mut seen = Vec::with_capacity(observations.len());
     for (at, observation) in observations.iter().enumerate() {
         match observe(observation, seal) {

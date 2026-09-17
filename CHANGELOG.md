@@ -748,6 +748,11 @@ without ceremony until the first stage is complete.
   ended, and a broken exchange was flattened into a string, so "it never
   connected" could not be told from "it answered and then stopped".
 
+- A `Look` carrying a sealed observation without its seal is refused before
+  anything is looked at, rather than against the observation that wanted one. The
+  request was what was wrong, not the path it named, and an index pointed at the
+  machine instead of at the asking.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

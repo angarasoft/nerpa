@@ -669,3 +669,34 @@ fn a_private_process_that_fails_does_not_quote_what_it_said() {
         "and it still says which program ended how: {problem}"
     );
 }
+
+/// A sealed observation that arrives without a seal is refused before anything
+/// is looked at, rather than at the observation that wanted one.
+///
+/// Nothing was looked at: the batch is refused for what it is, the way a bare
+/// premise and a secret write are. Reported against the observation's index it
+/// read as "the second thing you asked about could not be read", which is a
+/// different kind of answer and points at the wrong thing — the request was
+/// wrong, not the path. RFC 0001 §5.3.
+#[test]
+fn a_sealed_look_without_a_seal_is_refused_before_anything_is_looked_at() {
+    let scratch = scratch();
+    let watched = scratch.path().join("conf");
+    fs::write(&watched, "as planned\n").unwrap();
+
+    let refused = answer(&Ask::Look {
+        observations: vec![
+            at(&watched),
+            Observation::Sealed {
+                of: Box::new(at(&watched)),
+            },
+        ],
+        seal: None,
+    });
+
+    let Answer::Failed { at: place, problem } = refused else {
+        panic!("a sealed observation with no seal is refused, and was answered {refused:?}")
+    };
+    assert_eq!(place, At::Before);
+    assert!(problem.contains("seal"), "{problem}");
+}
