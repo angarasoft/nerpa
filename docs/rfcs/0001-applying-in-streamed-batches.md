@@ -1,6 +1,6 @@
 # RFC 0001. Applying machines in parallel, with state in shards
 
-- Status: in review; revision 6, after the sixth review (§9); a narrow round of P and S pending
+- Status: in review; revision 6; its narrow round logged (§9)
 - Date: 2026-09-11
 - Revised: 2026-09-17, after each of six reviews
 - Scope: what was step 1. Replacing an installed executor is
@@ -1998,4 +1998,75 @@ What changed after the sixth review, finding by finding.
 | S6-14 | §5.6 | A mark records its `afterwards` |
 | S6-15 | §5.8 | `Waiting` is what is built; `Unhashable` names holds |
 
-A narrow round of P and S is pending.
+The narrow round follows.
+
+## Narrow round, 2026-09-17
+
+P and S, both by Opus, on revision 6 (`6aa163b`), over §5.5 to §5.8 and §5.13, and
+the code built since the fifth review. Every finding was checked before it was
+logged. The reviewer for P ran experiments against the executor and against the
+delivery script; the reviewer for S ran the planner and the provider on a copy.
+
+**Revision 6, as the sixth review's findings stand.**
+
+- **P:** P6-6, P6-8, P6-10, P6-11, P6-12, P6-14, S6-5, S6-6, S6-9, S6-12, S6-13,
+  S6-14 resolved; P6-1, P6-2, P6-3, P6-4, P6-5, P6-7, P6-9, P6-13, P6-15, S6-4,
+  S6-7, S6-8, S6-11, S6-15 partly.
+- **S:** S6-1, S6-2, S6-3, S6-11, S6-14, S6-15, P6-15 resolved; the rest partly.
+
+### Defects in the code, found by this round
+
+| From | How verified | Defect | Fixed |
+| --- | --- | --- | --- |
+| P7-7 | E, R | Delivery wrote the whole executor to `ssh` and only then read what came back, so a far side that filled a pipe with what it said stopped reading and both waited for ever, holding a worker of the pool with nothing to kill. | `8e2dc73` |
+| S7-3 | E, R | A mode was read from text as octal and from a number as itself: `400` landed as `0620`, group writable, where `"400"` is `0400`. Starlark evaluates `0o600` to 384, so the two cannot be told apart. | `f4f993d`, `INV-PLAN-012` |
+| P7-9, S7-10 | R | A held removal passed over only what waited for it directly, so a chain of two led back to the removal and the machine that did not answer was named nowhere. | `b5cb1af`, `INV-REACH-004` |
+| P7-11 | E | Delivery left a part of a binary beside the executor's name whenever a far side was killed, and retried without sweeping it. | `95e3c4b`, `INV-DELIVERY-001` |
+| P7-10, S6-15 | R | A plan incomplete only because something waits was refused a digest with "could not look at 0 of its machines". | `5833303` |
+
+### Blockers
+
+| Id | How verified | Finding | Resolution |
+| --- | --- | --- | --- |
+| P7-1 | R, D | A slot of the pool is given back only "with the write that records its outcome", and six outcome rows write nothing: a contract violation, a lost conversation, a kill, the wait ending, a failed shard write, a failure to prepare. Under `continue` the run goes on, so those slots are gone for good, and sixteen lost conversations stop the fleet with no deadline. | A slot is held by one change in flight on one machine and given back by its outcome, whatever the outcome is and whether or not it is written (revision 7) |
+
+### P: protocol and failures
+
+| Id | Severity | How verified | Finding | Goes to |
+| --- | --- | --- | --- | --- |
+| P7-1 | blocker | R, D | The slot is freed only by a write. | Blocker, above |
+| P7-2, S7-2 | major | R | The failure-to-prepare row names no outcome and says "none written", against §5.6's "the mark is put back". | §5.5 |
+| P7-3 | major | R, D, E | `Truncated` and `Connection` match no row; two rows overlap after the wait; nothing says the engine reaps and classes by exit. | §5.5 |
+| P7-4, S7-7 | major | R, D | The completion rule cannot tell a finished migration from one that stopped, and re-runs a `link` that fails. | §5.13 |
+| P7-5 | major | R, D | What the downgrade writes is never said, and its guard lets it discard every record since the migration. | §5.13 |
+| P7-6, S7-9 | major | R, D | The version 4 lock is still a create-lockfile removed on `Drop`, so a killed migration leaves one and the recovery needs it. | §5.13 |
+| P7-7 | major | E, R | Delivery writes then reads. | Built; see the defects above |
+| P7-8 | major | R, D | A slot per ready change lets one machine hold many, against §5.9's and §5.10's memory. | §5.4 |
+| P7-9 | major | R, D | The wait was followed one step. | Built; see the defects above |
+| P7-10 | minor | R, D | `Unhashable` counts only unreachable machines. | Built; see the defects above |
+| P7-11 | minor | E, R | Partial copies accumulate. | Built; see the defects above |
+| P7-12 | minor | R, D | "A report is always written" is contradicted by the third signal and by ending under a provider call. | §5.8 |
+| P7-13 | minor | R, D | Whether the handler's count applies the HUP and TERM coalescing, and what "third" counts, are unsaid. | §5.8 |
+| P7-14 | minor | R, D | A provider call that never returns has no row, no limit and no end. | §5.5, §5.10 |
+| P7-15, S7-1 | minor | R | The entry table's "for removal only, still declared" row yields a record, which sends nothing, against the rule above it. | §5.6 |
+| P7-16 | minor | R, D | `release control` is ambiguous where a machine is named `control`, and `--entry` cannot reach an entry a mark carries. | §5.8 |
+| P7-17 | nit | R | §5.1 and §5.4 word what a change waits for differently. | §5.1 |
+
+### S: state and invariants
+
+| Id | Severity | How verified | Finding | Goes to |
+| --- | --- | --- | --- | --- |
+| S7-1 | major | R | `INV-STATE-005`'s clearing clause is false for an entry for removal only. | §5.6 |
+| S7-2 | major | R | A failure to prepare has no outcome and no write. | §5.5, with P7-2 |
+| S7-3 | major | E, R | Two rules for a mode. | Built; see the defects above |
+| S7-7 | major | D, R | A version 4 run between the link and the rename leaves a stale `.v4` that still matches the digest. | §5.13 |
+| S7-8 | major | D, R | `link` fails for ever once `<state>.v4` exists. | §5.13 |
+| S7-12 | major | R | `INV-APPLY-001` asks for a record from a removal, which never has one. | §5.5 |
+| S7-4 | minor | R | "Whichever says more" orders nothing, so `release` is not deterministic. | §5.8 |
+| S7-5 | minor | D, R | The record's locator always wins, so what a failed change made at an entry's locator can stay unnamed. | §5.6 |
+| S7-6 | minor | R | §5.5's edge families are out of step with the planner: the move family is missing, and removal-after-removal holds across levels only. | §5.5 |
+| S7-9 | minor | R, D | The version 4 lock and the order of the two locks. | §5.13, with P7-6 |
+| S7-10 | minor | E, R | The ring case of the wait. | Built; see the defects above |
+| S7-11 | minor | R | `Held { node, .. }` cannot carry a mark in `control`. | §5.8 |
+| S7-13 | minor | R | The interrupted-run property has no case for a completed removal. | §5.6 |
+| S7-14 | nit | R | §7 says a hold changes the plan's number; §5.8 says it removes it. | §7 |
