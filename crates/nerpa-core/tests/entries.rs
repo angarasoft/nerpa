@@ -273,3 +273,50 @@ fn an_entry_kept_for_removal_only_is_not_sent_again() {
     );
     assert!(!change.is_resent());
 }
+
+/// Where there is no record, a resource is looked for where its entry says.
+///
+/// A change that failed after its operations ran may have made something, and
+/// the entry is the only thing that knows where. Looked for where the
+/// declaration now points instead, what that change made is never seen again:
+/// the plan makes a second one somewhere else, and the first is left on the
+/// machine with nothing naming it. RFC 0001 §5.6.
+#[test]
+fn what_has_no_record_is_looked_for_where_its_entry_says() {
+    // Declared somewhere other than where the entry remembers it.
+    let mut graph = Graph::new();
+    graph.preexisting(Target::new("web-01").unwrap());
+    graph
+        .insert(
+            Resource::new(address("os:file.motd@web-01"))
+                .with("path", Value::Text("/etc/issue".to_owned()))
+                .with("content", Value::Text("hello\n".to_owned())),
+        )
+        .unwrap();
+
+    let plan = planned(&graph, &entry(ChangeKind::Create), "hello\n");
+    let change = only(&plan);
+
+    assert!(
+        !change.is_resent(),
+        "the reading does not match the declaration: it is at the old path"
+    );
+    let moved: Vec<(&str, String)> = change
+        .deltas()
+        .iter()
+        .map(|delta| {
+            (
+                delta.name(),
+                delta
+                    .before()
+                    .map_or_else(|| "—".to_owned(), ToString::to_string),
+            )
+        })
+        .collect();
+    assert_eq!(
+        moved,
+        // Quoted the way a plan shows text it read off a machine.
+        vec![("path", "\"/etc/motd\"".to_owned())],
+        "it was found where the entry said, and moving it is the work"
+    );
+}

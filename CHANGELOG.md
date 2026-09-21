@@ -862,6 +862,14 @@ without ceremony until the first stage is complete.
   machine is the only one who can say. A change still in flight is refused and
   left alone, naming the smaller step that turns it into an entry first.
 
+- Where state has no record but an entry, a resource is looked for where the
+  entry says it is. What a failed change may have made is at the locator that
+  change used, which is not where the declaration points once somebody has moved
+  it — looked for there instead, what the change made was never seen again, and
+  the plan made a second one somewhere else. The rule that a resource is found
+  where it was left, not where it is now asked for, now covers the one case
+  where state remembers a place without remembering a thing.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

@@ -50,15 +50,25 @@ pub fn observe(
     let mut batches: BTreeMap<(ProviderName, Option<Target>), Vec<Reading>> = BTreeMap::new();
 
     for address in declared_and_remembered(graph, state)? {
-        let locator = match (graph.get(&address), state.get(&address)) {
+        let locator = match (
+            state.get(&address),
+            state.marked(&address),
+            graph.get(&address),
+        ) {
             // Where it is, not where the declaration now says it should be. A
             // resource whose location changed has to be found where it was left,
             // or the change reads as making a second one and abandoning the
             // first.
             // ENFORCES: INV-STATE-003
-            (_, Some(record)) => record.locator(),
-            (Some(resource), None) => settled_declaration(resource),
-            (None, None) => continue,
+            (Some(record), _, _) => record.locator(),
+            // No record, and a run that stopped left an entry: what that change
+            // may have made is where the entry says, which is not where the
+            // declaration points once somebody has moved it. The same rule as
+            // above — found where it was left — for the one case where state
+            // remembers a place without remembering a thing.
+            (None, Some(entry), _) => entry.locator().clone(),
+            (None, None, Some(resource)) => settled_declaration(resource),
+            (None, None, None) => continue,
         };
 
         let key = (address.provider().clone(), address.target().cloned());
@@ -183,6 +193,10 @@ fn declared_and_remembered(graph: &Graph, state: &State) -> Result<BTreeSet<Addr
         .flat_map(|stage| stage.addresses().to_vec())
         .collect::<BTreeSet<_>>();
 
+    // Records, and not the entries beside them. An entry whose declaration is
+    // gone is removed from what state remembers rather than from a reading, and
+    // one still declared is read because it is declared — so looking for the
+    // rest would be a journey whose answer nothing asks for.
     Ok(declared
         .into_iter()
         .chain(state.addresses().cloned())
