@@ -244,6 +244,32 @@ fn releasing_one_machine_leaves_the_others_as_they_were() {
     );
 }
 
+/// And an entry whose declaration is still there is not removed.
+///
+/// A removal is worked out from what state remembers and what the configuration
+/// still asks for, and an entry is remembered — so the set it is compared
+/// against has to be the same set. Compared against records alone, an address
+/// remembered only by an entry looked undeclared while its declaration was
+/// right there, and the plan both removed it and made it again. RFC 0001 §5.6.
+#[test]
+fn an_entry_whose_declaration_is_still_there_is_not_removed() {
+    let mut state = in_flight();
+    state.release(Some(&Target::new("web-01").unwrap()));
+
+    let graph = graph_of(false);
+    let plan = planned(&graph, &state);
+
+    let removals: Vec<String> = plan
+        .changes()
+        .filter(|change| change.kind() == ChangeKind::Delete)
+        .map(|change| change.address().to_string())
+        .collect();
+    assert!(
+        removals.is_empty(),
+        "nothing declared is taken away: {removals:?}"
+    );
+}
+
 /// An entry whose declaration is gone is removed, at the locator it remembers.
 ///
 /// A change that failed after its operations ran may have made the thing. State

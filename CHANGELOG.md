@@ -1023,3 +1023,10 @@ without ceremony until the first stage is complete.
 - Planning was quadratic — every resource asked the graph for its dependencies
   and every one of those rebuilt every edge. Eight thousand resources took six
   seconds before anybody opened a connection, and now take 0.12.
+
+- A declared resource was removed for being remembered by an entry. Removals are
+  decided by comparing what state remembers against what the configuration still
+  asks for; entries had just joined the first set and not the second, so an
+  address whose only trace was an entry read as undeclared with its declaration
+  right there, and one plan both removed it and made it again. Both sides ask
+  `State::remembered` now, so the two cannot drift apart again.

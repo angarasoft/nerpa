@@ -473,6 +473,22 @@ impl State {
         self.resources.keys()
     }
 
+    /// Every address something is remembered about: a record of what a run
+    /// made, or an entry a run left where it could not write one.
+    ///
+    /// The set `abandoned` decides over. Anyone asking which of them the
+    /// configuration still declares has to ask about this same set: an address
+    /// remembered only by an entry is remembered, and compared against records
+    /// alone it looks undeclared while its declaration is right there.
+    pub fn remembered(&self) -> impl Iterator<Item = &Address> {
+        self.resources.keys().chain(
+            self.marks
+                .iter()
+                .filter(|(_, mark)| !mark.in_flight())
+                .map(|(address, _)| address),
+        )
+    }
+
     /// How many resources are remembered.
     #[must_use]
     pub fn len(&self) -> usize {
@@ -503,14 +519,7 @@ impl State {
         // never became anything — so the entry is the only thing that knows
         // something may be out there under this address.
         let doomed: BTreeSet<&Address> = self
-            .resources
-            .keys()
-            .chain(
-                self.marks
-                    .iter()
-                    .filter(|(_, mark)| !mark.in_flight())
-                    .map(|(address, _)| address),
-            )
+            .remembered()
             .filter(|address| !declared.contains(*address))
             .collect();
 

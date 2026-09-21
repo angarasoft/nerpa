@@ -241,8 +241,12 @@ pub fn plan_at(
     one_thing_once(graph, schema)?;
     reactions_allowed(graph, schema)?;
 
+    // Everything state remembers that the configuration still asks for —
+    // records and entries alike, because that is what `abandoned` decides over.
+    // Records alone, and an address remembered only by an entry was removed and
+    // made again in the same plan.
     let declared: BTreeSet<&Address> = state
-        .addresses()
+        .remembered()
         .filter(|address| graph.get(address).is_some())
         .collect();
     let doomed = state.abandoned(&declared);
