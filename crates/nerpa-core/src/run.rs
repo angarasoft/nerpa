@@ -13,7 +13,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::address::{Address, Provider as ProviderName, Target};
 use crate::attribute::Attribute;
 use crate::graph::{Graph, GraphError};
-use crate::observed::Observed;
+use crate::observed::{Facts, Observed};
 use crate::plan::{Change, ChangeKind, Confidence, Plan};
 use crate::provider::{
     Answered, Attributes, Concluded, Concluding, Machines, Planned, Prepared, Provider,
@@ -21,7 +21,7 @@ use crate::provider::{
 };
 use crate::resource::Resource;
 use crate::secret::{FetchError, Recorded, Secrets};
-use crate::state::{Record, Recording, State};
+use crate::state::{Mark, Record, Recording, State};
 use crate::{ensures, requires};
 
 /// One journey's worth: who is asked, where they have to go, and about what.
@@ -355,19 +355,18 @@ pub fn apply(
             let roused = !(change.roused_by().is_empty() && change.owed().is_empty());
 
             let secret = secret_names(change);
-            let planned = provider.prepare(&Prepared {
-                address,
+            let shown = told(kind, &desired, recorded.as_ref(), &secret);
+            let changing = Changing {
                 kind,
                 roused,
-                // Nothing marks a change as sent again until state carries marks.
-                resent: false,
                 desired: &desired,
                 recorded: recorded.as_ref(),
                 facts,
                 secret: &secret,
-            })?;
+                shown: &shown,
+            };
 
-            let shown = told(kind, &desired, recorded, &secret);
+            let planned = marked_and_prepared(provider, change, &changing, state, record)?;
             let (became, confirmed) = carried_out(
                 planned,
                 &secret,
@@ -377,19 +376,12 @@ pub fn apply(
                 state,
                 record,
             )?;
-            let concluding = Concluding {
-                address,
-                kind,
-                roused,
-                facts,
-                plain: &shown,
-                secret: &secret,
-            };
-            let Some(result) = concluded(provider, &concluding, &became)? else {
+            let Some(result) = concluded(provider, change, &changing, &became)? else {
                 // Forgotten on every `Gone`, whatever the change was: a removal
                 // that only settles — a service stopped, its unit left where it
                 // was — says it is gone the same way.
                 state.forget(address);
+                state.settle(address);
                 record(state).map_err(RunError::Record)?;
                 changed += 1;
                 continue;
@@ -561,6 +553,9 @@ fn wrote(
         address.clone(),
         Record::new(recording(&recorded, change, secrets), dependencies(change)),
     );
+    // Settled in the same write as the record it settles: a mark that outlived
+    // its answer would hold this machine for a change whose outcome is known.
+    state.settle(address);
     observed.record(address.clone(), recorded.clone());
     record(state).map_err(RunError::Record)?;
 
@@ -683,10 +678,19 @@ fn carried_out(
 /// Returns [`RunError::Provider`] if the answers say the change did not take.
 fn concluded(
     provider: &dyn Provider,
-    concluding: &Concluding<'_>,
+    change: &Change,
+    changing: &Changing<'_>,
     answers: &[Answered],
 ) -> Result<Option<Attributes>, RunError> {
-    match provider.conclude(concluding, answers)? {
+    let concluding = Concluding {
+        address: change.address(),
+        kind: changing.kind,
+        roused: changing.roused,
+        facts: changing.facts,
+        plain: changing.shown,
+        secret: changing.secret,
+    };
+    match provider.conclude(&concluding, answers)? {
         Concluded::Gone => Ok(None),
         Concluded::Became(result) => Ok(Some(result)),
     }
@@ -830,6 +834,97 @@ fn uncarried(planned: &Planned, secret: &BTreeSet<String>) -> Option<String> {
         .cloned()
 }
 
+/// The mark for a change about to be sent.
+///
+/// It carries where the change believes the resource is, what it settled that
+/// was not a secret, what it comes after, and what its provider says the next
+/// run could do about it — asked now rather than later, because the provider
+/// that answered may be gone by the time anybody reads this.
+fn marking(change: &Change, changing: &Changing<'_>, provider: &dyn Provider) -> Mark {
+    Mark::new(
+        change.kind(),
+        // Where state says it is; and for a change with no record yet, where the
+        // declaration says it will be. Either way the next run has somewhere to
+        // look for what this change may have made.
+        changing
+            .recorded
+            .cloned()
+            .unwrap_or_else(|| changing.shown.clone()),
+        changing.shown.clone(),
+    )
+    .after(dependencies(change))
+    .afterwards(provider.afterwards(change.address(), changing.kind))
+}
+
+/// What the engine has settled about one change before it is sent.
+///
+/// Seven things that travel together from the moment a change is settled until
+/// its answer is written down, and that a provider is handed in two different
+/// shapes along the way. Carried as one so that the loop says what happens
+/// rather than repeating what is already known.
+struct Changing<'a> {
+    /// What is happening to the resource.
+    kind: Sending,
+    /// Whether something it reacts to changed.
+    roused: bool,
+    /// Every settled value, secrets included.
+    desired: &'a Attributes,
+    /// What state recorded, where it recorded anything.
+    recorded: Option<&'a Attributes>,
+    /// What the machine said about itself.
+    facts: Facts<'a>,
+    /// Which of the settled values are secrets, by name.
+    secret: &'a BTreeSet<String>,
+    /// The settled values that are not secrets.
+    shown: &'a Attributes,
+}
+
+/// Writes the mark, then asks the provider what to send.
+///
+/// ENFORCES: INV-STATE-005
+/// In this order, and durably, because a request sent without a mark is a change
+/// nothing records: the run that stops in between leaves a machine that was
+/// acted on and a state file saying nothing happened. A provider that then
+/// refuses to prepare has sent nothing, so the mark goes again — a mark stands
+/// for a request that may have gone out, and this one certainly did not.
+///
+/// # Errors
+///
+/// Returns [`RunError::Record`] if the mark could not be written down, and
+/// [`RunError::Provider`] if the change could not be prepared.
+fn marked_and_prepared(
+    provider: &dyn Provider,
+    change: &Change,
+    changing: &Changing<'_>,
+    state: &mut State,
+    record: &mut dyn FnMut(&State) -> Result<(), String>,
+) -> Result<Planned, RunError> {
+    let address = change.address();
+    state.mark(address.clone(), marking(change, changing, provider));
+    record(state).map_err(RunError::Record)?;
+
+    let prepared = Prepared {
+        address,
+        kind: changing.kind,
+        roused: changing.roused,
+        // Nothing marks a change as sent again until an entry can say so
+        // (RFC 0001 §5.6).
+        resent: false,
+        desired: changing.desired,
+        recorded: changing.recorded,
+        facts: changing.facts,
+        secret: changing.secret,
+    };
+    match provider.prepare(&prepared) {
+        Ok(planned) => Ok(planned),
+        Err(refusal) => {
+            state.settle(address);
+            record(state).map_err(RunError::Record)?;
+            Err(refusal.into())
+        }
+    }
+}
+
 /// What a provider is told when its change is over, and which of its attributes
 /// were secrets.
 ///
@@ -839,11 +934,11 @@ fn uncarried(planned: &Planned, secret: &BTreeSet<String>) -> Option<String> {
 fn told(
     kind: Sending,
     desired: &Attributes,
-    recorded: Option<Attributes>,
+    recorded: Option<&Attributes>,
     secret: &BTreeSet<String>,
 ) -> Attributes {
     if kind == Sending::Delete {
-        return recorded.unwrap_or_default();
+        return recorded.cloned().unwrap_or_default();
     }
     desired
         .iter()

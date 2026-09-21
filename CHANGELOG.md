@@ -797,6 +797,13 @@ without ceremony until the first stage is complete.
   the mark is what says that machine was being acted on. Nothing writes one yet:
   the engine comes next.
 
+- A change is written down as being sent before it is sent, and the write that
+  records what it became takes that mark away. A request sent without a mark is a
+  change nothing records: the run that stops in between leaves a machine that was
+  acted on and a state file saying nothing happened. The mark is written before
+  the change is even prepared, so a provider that refuses to prepare has sent
+  nothing and the mark goes again.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

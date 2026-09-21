@@ -239,7 +239,11 @@ fn attempt(
 
     let watching = ledger.clone();
     let mut record = move |state: &State| {
-        watching.note(if state.get(&address(MOTD)).is_some() {
+        // A mark first, because a write that carries one is a write made before
+        // the request it belongs to went out.
+        watching.note(if state.marked(&address(MOTD)).is_some() {
+            "state: marked".to_owned()
+        } else if state.get(&address(MOTD)).is_some() {
             "state: recorded".to_owned()
         } else {
             "state: nothing".to_owned()
@@ -298,12 +302,15 @@ fn a_replacement_is_forgotten_between_the_half_that_removes_and_the_half_that_ma
     assert_eq!(
         ledger.read(),
         vec![
+            // Written before anything is sent: from here on, a run that stops
+            // leaves something saying this machine was being acted on.
+            "state: marked".to_owned(),
             "sent remove /etc/motd.old".to_owned(),
-            "state: nothing".to_owned(),
+            "state: marked".to_owned(),
             "sent write /etc/motd".to_owned(),
             "state: recorded".to_owned(),
         ],
-        "the old one goes, the record goes with it, and only then is the new one made"
+        "the mark comes first, then the old one goes, then the new one is made"
     );
     assert!(state.get(&address(MOTD)).is_some());
 }
@@ -427,5 +434,51 @@ fn a_write_answered_with_the_wrong_digest_is_not_recorded_as_written() {
     assert!(
         state.get(&address(MOTD)).is_none(),
         "and nothing about it is recorded"
+    );
+}
+
+/// A change is written down as being sent before it is sent.
+///
+/// The write that carries the mark is the one that happens first: a run that
+/// stops between it and the answer leaves a machine that was acted on and a
+/// state file saying so, rather than one that says nothing happened. RFC 0001
+/// §5.6.
+#[test]
+fn a_change_is_marked_before_it_is_sent() {
+    let (ledger, _) = run(&graph_of("/etc/motd"), &Observed::new(), State::new());
+
+    let happened = ledger.read();
+    assert_eq!(
+        happened.first().map(String::as_str),
+        Some("state: marked"),
+        "the mark is written before anything else happens: {happened:?}"
+    );
+    let marked = happened.iter().position(|line| line == "state: marked");
+    let sent = happened.iter().position(|line| line.starts_with("sent "));
+    assert!(
+        marked < sent,
+        "and before the request goes out: {happened:?}"
+    );
+}
+
+/// And the write that records what it became takes the mark away.
+///
+/// A mark left behind would hold its machine for ever: what holds one is a
+/// change whose outcome nobody knows, and this one is known.
+#[test]
+fn a_change_that_was_recorded_leaves_no_mark() {
+    let (ledger, state) = run(&graph_of("/etc/motd"), &Observed::new(), State::new());
+
+    assert!(
+        state.marked(&address(MOTD)).is_none(),
+        "the answer settled it: {:?}",
+        ledger.read()
+    );
+    assert!(state.get(&address(MOTD)).is_some(), "and it was recorded");
+    assert_eq!(
+        ledger.read().last().map(String::as_str),
+        Some("state: recorded"),
+        "the last write says so: {:?}",
+        ledger.read()
     );
 }

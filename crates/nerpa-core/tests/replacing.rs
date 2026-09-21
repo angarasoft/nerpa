@@ -184,8 +184,9 @@ fn a_replacement_that_could_not_create_does_not_leave_state_saying_the_old_one_i
     );
     assert_eq!(
         written,
-        vec![0],
-        "and the deletion was written down before the run stopped"
+        vec![1, 0],
+        "the mark was written first, while the old one was still recorded, and the \
+         deletion after it — both before the run stopped"
     );
 }
 
