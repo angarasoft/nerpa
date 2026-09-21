@@ -870,6 +870,15 @@ without ceremony until the first stage is complete.
   where it was left, not where it is now asked for, now covers the one case
   where state remembers a place without remembering a thing.
 
+- A package and a service converge, in a test rather than in a claim. Until now
+  the commands this provider builds for them were checked as far as being built:
+  files had a real filesystem to converge against, and nothing ever ran a
+  `dnf`, an `emerge`, a `systemctl` or an `rc-service`. There is now a machine
+  in memory that keeps a package database and a service table, understands what
+  this provider asks and carries out what it sends — for both families, since
+  the two spell every command differently — and a command it does not recognise
+  exits 127, so the tests cannot pass by agreeing with a provider that changed.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

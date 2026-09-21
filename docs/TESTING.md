@@ -45,9 +45,14 @@ saying so in the changelog is not.
 
 ### Every apply runs twice
 
-The harness runs every apply test a second time and asserts the plan is empty.
-This is not per-test discipline, it is the harness, because convergence is the
-one property this tool exists to have and the one nobody remembers to assert.
+Convergence is the one property this tool exists to have, so a test that applies
+anything plans again afterwards and asserts the plan is empty.
+
+This is per-test discipline, and saying otherwise here is what it cost: this
+document claimed a harness did it, no harness ever did, and packages and
+services went without a second run for as long as nobody checked. A test that
+applies and does not plan again is incomplete, and review is the only thing that
+catches it.
 
 A test that cannot pass twice is describing a resource that is not idempotent,
 and that is a bug in the resource, not in the test.
