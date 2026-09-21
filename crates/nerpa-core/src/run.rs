@@ -445,6 +445,11 @@ fn adopt(state: &mut State, observed: &Observed, change: &Change, secrets: Secre
         address.clone(),
         Record::new(recording(found, change, secrets), dependencies(change)),
     );
+    // An entry kept only so that what a failed change made could be removed is
+    // answered by this: its provider said reading could settle the change, and
+    // this is that reading, written down. Left standing, it would outlive the
+    // question it was asked and nothing would ever clear it. RFC 0001 §5.6.
+    state.settle(address);
     true
 }
 

@@ -598,3 +598,47 @@ fn what_an_entry_remembers_is_removed_at_its_locator() {
         "and the entry went with the removal"
     );
 }
+
+/// And an entry kept only for removal goes when the reading is written down.
+///
+/// Its provider said reading could settle this change, and the reading says the
+/// declaration is satisfied — so the record written from what was read is the
+/// answer the entry was waiting for. Left behind, it would outlive the question
+/// it was asked, and the machine would carry an entry nothing can ever clear.
+/// RFC 0001 §5.6.
+#[test]
+fn a_record_written_from_the_reading_clears_an_entry_kept_for_removal() {
+    let mut locator = Attributes::new();
+    locator.insert("path".to_owned(), Value::Text("/etc/motd".to_owned()));
+    let mut state = State::new();
+    state.mark(
+        address(MOTD),
+        Mark::new(ChangeKind::Create, locator, Attributes::new())
+            .standing(Standing::ForRemovalOnly),
+    );
+
+    // The machine has it, exactly as declared: nothing is sent.
+    let mut observed = Observed::new();
+    observed.record(
+        address(MOTD),
+        [("path".to_owned(), Value::Text("/etc/motd".to_owned()))]
+            .into_iter()
+            .collect(),
+    );
+    let (ledger, state) = run(&graph_of("/etc/motd"), &observed, state);
+
+    assert!(
+        !ledger.read().iter().any(|line| line.starts_with("sent ")),
+        "nothing was sent: {:?}",
+        ledger.read()
+    );
+    assert!(
+        state.get(&address(MOTD)).is_some(),
+        "what was read is written down"
+    );
+    assert!(
+        state.marked(&address(MOTD)).is_none(),
+        "and the entry it was standing on is cleared: {:?}",
+        state.marked(&address(MOTD))
+    );
+}

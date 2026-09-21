@@ -849,6 +849,12 @@ without ceremony until the first stage is complete.
   refused by name, because installing one a second time is a command this
   provider does not have.
 
+- An entry kept only so that what a failed change made could be removed is
+  cleared by the record written from the reading. Its provider said reading
+  could settle that change and the reading settled it, so the entry has its
+  answer; nothing else would ever have cleared it, and it would have outlived
+  the question it was asked.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the
