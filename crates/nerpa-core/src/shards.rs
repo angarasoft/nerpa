@@ -52,6 +52,15 @@ struct Shard {
 #[derive(Serialize, Deserialize)]
 struct Format {
     version: u32,
+    /// The digest of the version 4 file this directory was built from, where it
+    /// was built from one.
+    ///
+    /// It is what lets a migration that stopped after writing this be finished
+    /// rather than refused: a version 4 file still at `<state>` is either the one
+    /// this came from, and the rest of the migration can be done, or it is
+    /// another file, and nothing here knows what to do with it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    from: Option<String>,
 }
 
 /// The name of the shard a resource on this machine belongs to.
@@ -69,6 +78,205 @@ pub fn name_of(target: Option<&Target>) -> String {
             .to_hex()
             .to_string(),
     }
+}
+
+/// Where the directory for this state file lives.
+///
+/// Beside it and never in its place: a directory cannot be renamed onto a file,
+/// and renaming the other way round leaves a moment with no state at all, which
+/// loads as a first run with a fresh key and nothing recorded.
+#[must_use]
+pub fn beside(state: &Path) -> PathBuf {
+    let mut name = state.as_os_str().to_owned();
+    name.push(".d");
+    PathBuf::from(name)
+}
+
+/// Where the version 4 file is kept once the directory holds what it held.
+fn kept(state: &Path) -> PathBuf {
+    let mut name = state.as_os_str().to_owned();
+    name.push(".v4");
+    PathBuf::from(name)
+}
+
+/// What is left at the old path: something a version 4 binary refuses by its
+/// version rather than reads as a first run.
+#[derive(Serialize)]
+struct Moved {
+    version: u32,
+    moved_to: String,
+}
+
+/// Moves a version 4 state file into a version 5 directory beside it.
+///
+/// Does nothing where there is no version 4 file, and finishes a migration that
+/// stopped part way rather than starting a second one. Both locks are taken, the
+/// version 4 file's first and the directory's second, so that two orders cannot
+/// deadlock against each other and neither is left behind by a run that was
+/// killed. See RFC 0001 §5.13.
+///
+/// # Errors
+///
+/// Returns [`StoreError::Locked`] if a run holds either lock, [`StoreError::File`]
+/// if anything could not be read or written, and [`StoreError::Format`] if the
+/// version 4 file is not the one an existing directory was built from — that is
+/// a file nothing here knows what to do with, and guessing would lose whichever
+/// of the two is the real state.
+pub fn migrate(state: &Path) -> Result<(), StoreError> {
+    let directory = beside(state);
+    let refuse = |path: &Path, problem: String| StoreError::Format {
+        path: path.display().to_string(),
+        problem,
+    };
+
+    let Some(bytes) = read_if_there(state)? else {
+        // Nothing to migrate: either this is a first run, or the directory is
+        // already all there is.
+        return Ok(());
+    };
+    // A version 4 file is the only thing worth migrating. What this run itself
+    // left at that path says it has moved, and is not state.
+    let stamp: Format =
+        serde_json::from_slice(&bytes).map_err(|error| refuse(state, error.to_string()))?;
+    if stamp.version != crate::store::FORMAT_VERSION {
+        return Ok(());
+    }
+
+    let digest = blake3::hash(&bytes).to_hex().to_string();
+
+    // Taken in this order and never the other, so that two of these cannot each
+    // hold what the other is waiting for.
+    let _version4 = crate::store::Lock::take(state)?;
+    fs::create_dir_all(&directory).map_err(|error| StoreError::File {
+        path: directory.display().to_string(),
+        problem: error.to_string(),
+    })?;
+    let _directory = crate::store::Lock::at(&directory.join("lock"))?;
+
+    match built_from(&directory)? {
+        // Finished already, from this very file: what is left is the tail of it.
+        Built::FromFile(from) if from == digest => {}
+        // Finished, from something else. Which of the two is the state nobody
+        // here can say.
+        Built::FromFile(from) => {
+            return Err(refuse(
+                state,
+                format!(
+                    "this directory was built from a version 4 file of digest {from}, and \
+                     this one is {digest}"
+                ),
+            ));
+        }
+        // Finished, and not by a migration at all: a directory this run made for
+        // itself, which a version 4 file beside it does not belong to.
+        Built::OfItsOwn => {
+            return Err(refuse(
+                state,
+                "there is a version 4 file beside a directory that was not built from one"
+                    .to_owned(),
+            ));
+        }
+        // A migration that did not get as far as saying it had finished. What it
+        // wrote is not to be trusted: it is built again from the file, which is
+        // still the state.
+        Built::Unfinished => {
+            let (held, key) = crate::store::load(state)?;
+            remove(&directory)?;
+            write_all(&directory, &held, &key, Some(&digest))?;
+        }
+    }
+
+    finish(state, &directory, &bytes, &digest)
+}
+
+/// The tail of a migration: the old file kept, and the old path made into
+/// something version 4 refuses.
+///
+/// Written in this order because `<state>` must never be missing: a version 4
+/// binary that found nothing there would start empty and make everything again.
+fn finish(state: &Path, directory: &Path, bytes: &[u8], digest: &str) -> Result<(), StoreError> {
+    let trouble = |path: &Path, problem: String| StoreError::File {
+        path: path.display().to_string(),
+        problem,
+    };
+
+    let keeping = kept(state);
+    let already = read_if_there(&keeping)?
+        .is_some_and(|held| blake3::hash(&held).to_hex().to_string() == digest);
+    if !already {
+        fs::write(&keeping, bytes).map_err(|error| trouble(&keeping, error.to_string()))?;
+    }
+
+    let moved = serde_json::to_string_pretty(&Moved {
+        version: VERSION,
+        moved_to: directory.display().to_string(),
+    })
+    .map_err(|error| trouble(state, error.to_string()))?;
+    let mut temporary = state.as_os_str().to_owned();
+    temporary.push(".moved");
+    crate::store::durably(PathBuf::from(temporary).as_path(), state, moved.as_bytes())
+        .map_err(|error| trouble(state, error.to_string()))
+}
+
+/// What is at the directory's path already.
+#[derive(Debug)]
+enum Built {
+    /// Nothing that says it finished: either no directory at all, or one a
+    /// migration left before it could say it was done.
+    Unfinished,
+    /// A finished directory, built from the version 4 file of this digest.
+    FromFile(String),
+    /// A finished directory that was never built from a version 4 file — one a
+    /// run made for itself.
+    OfItsOwn,
+}
+
+fn built_from(directory: &Path) -> Result<Built, StoreError> {
+    let Some(bytes) = read_if_there(&directory.join("format"))? else {
+        return Ok(Built::Unfinished);
+    };
+    let format: Format = serde_json::from_slice(&bytes).map_err(|error| StoreError::Format {
+        path: directory.join("format").display().to_string(),
+        problem: error.to_string(),
+    })?;
+    Ok(match format.from {
+        Some(from) => Built::FromFile(from),
+        None => Built::OfItsOwn,
+    })
+}
+
+/// The bytes of a file, or nothing where there is no file.
+fn read_if_there(path: &Path) -> Result<Option<Vec<u8>>, StoreError> {
+    match fs::read(path) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(StoreError::File {
+            path: path.display().to_string(),
+            problem: error.to_string(),
+        }),
+    }
+}
+
+/// Takes away a directory that a migration did not finish.
+fn remove(directory: &Path) -> Result<(), StoreError> {
+    for entry in fs::read_dir(directory).map_err(|error| StoreError::File {
+        path: directory.display().to_string(),
+        problem: error.to_string(),
+    })? {
+        let entry = entry.map_err(|error| StoreError::File {
+            path: directory.display().to_string(),
+            problem: error.to_string(),
+        })?;
+        // Everything but the lock this run is holding.
+        if entry.file_name() == "lock" {
+            continue;
+        }
+        fs::remove_file(entry.path()).map_err(|error| StoreError::File {
+            path: entry.path().display().to_string(),
+            problem: error.to_string(),
+        })?;
+    }
+    Ok(())
 }
 
 /// Reads a state directory, or an empty state and a fresh key where there is
@@ -114,6 +322,7 @@ pub fn load(directory: &Path) -> Result<(State, Key), StoreError> {
         let path = entry.path();
         let name = entry.file_name().to_string_lossy().into_owned();
         match name.as_str() {
+            "lock" => {}
             "format" => {
                 let held = read(&path)?;
                 let format: Format = serde_json::from_str(&held)
@@ -240,6 +449,16 @@ fn read(path: &Path) -> Result<String, StoreError> {
 /// written.
 // ENFORCES: INV-STATE-004
 pub fn save(directory: &Path, state: &State, key: &Key) -> Result<(), StoreError> {
+    write_all(directory, state, key, None)
+}
+
+/// The same, saying what the directory was built from.
+fn write_all(
+    directory: &Path,
+    state: &State,
+    key: &Key,
+    from: Option<&str>,
+) -> Result<(), StoreError> {
     let trouble = |path: &Path, error: &std::io::Error| StoreError::File {
         path: path.display().to_string(),
         problem: error.to_string(),
@@ -272,11 +491,13 @@ pub fn save(directory: &Path, state: &State, key: &Key) -> Result<(), StoreError
         write(directory, &name, text.as_bytes())?;
     }
 
-    let format = serde_json::to_string_pretty(&Format { version: VERSION }).map_err(|error| {
-        StoreError::File {
-            path: directory.join("format").display().to_string(),
-            problem: error.to_string(),
-        }
+    let format = serde_json::to_string_pretty(&Format {
+        version: VERSION,
+        from: from.map(ToOwned::to_owned),
+    })
+    .map_err(|error| StoreError::File {
+        path: directory.join("format").display().to_string(),
+        problem: error.to_string(),
     })?;
     write(directory, "format", format.as_bytes())?;
 

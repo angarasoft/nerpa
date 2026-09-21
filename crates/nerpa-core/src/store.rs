@@ -81,7 +81,7 @@ pub enum StoreError {
         problem: String,
     },
     /// Another run holds the lock.
-    #[error("{path} is held by {holder}; check that run before removing the file")]
+    #[error("{path} is held by {holder}; that run has it until it ends")]
     Locked {
         /// The lock file that is in the way.
         path: String,
@@ -226,7 +226,22 @@ impl Lock {
     /// descriptor closes — so a run that was killed leaves the file behind and
     /// no lock, where before it left a file that refused every later run.
     fn held(state: &Path, how: rustix::fs::FlockOperation) -> Result<Self, StoreError> {
-        let path = lock_path(state);
+        Self::exactly(&lock_path(state), how)
+    }
+
+    /// Takes the lock that *is* this path, rather than one beside it.
+    ///
+    /// The state directory keeps its lock inside itself, where a name beside it
+    /// would be a name the directory does not define.
+    ///
+    /// # Errors
+    ///
+    /// The same as [`Lock::take`].
+    pub fn at(path: &Path) -> Result<Self, StoreError> {
+        Self::exactly(path, rustix::fs::FlockOperation::NonBlockingLockExclusive)
+    }
+
+    fn exactly(path: &Path, how: rustix::fs::FlockOperation) -> Result<Self, StoreError> {
         let trouble = |problem: String| StoreError::File {
             path: path.display().to_string(),
             problem,
@@ -236,7 +251,7 @@ impl Lock {
             .write(true)
             .create(true)
             .truncate(false)
-            .open(&path)
+            .open(path)
             .map_err(|error| trouble(error.to_string()))?;
 
         match rustix::fs::flock(&file, how) {
@@ -245,7 +260,7 @@ impl Lock {
                 // Who holds it, so the refusal can say. A lock that names nobody
                 // leaves a person one option — delete the file — which does
                 // nothing now and was the dangerous thing before.
-                let holder = fs::read_to_string(&path)
+                let holder = fs::read_to_string(path)
                     .ok()
                     .filter(|written| !written.trim().is_empty())
                     .unwrap_or_else(|| "a run that did not say which".to_owned());

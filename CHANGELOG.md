@@ -768,6 +768,17 @@ without ceremony until the first stage is complete.
   does, however it goes. A run that only reads can take it shared, which a file's
   existence cannot express.
 
+- A version 4 state file is moved into the directory beside it. The directory is
+  never put in the file's place: a directory cannot be renamed onto a file, and
+  the other order leaves a moment with no state at all, which loads as a first
+  run with a fresh key and nothing recorded. So `<state>.d/` is built, the old
+  file is kept as `<state>.v4` for a downgrade, and what is left at `<state>` is
+  something a version 4 binary refuses by its version rather than reads as empty.
+  `format` records which file the directory was built from, so a migration that
+  stopped part way is finished rather than begun again, and a different version 4
+  file beside a finished directory is refused by name rather than guessed at.
+  Both locks are taken, the file's first and the directory's second.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the
