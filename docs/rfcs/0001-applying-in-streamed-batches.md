@@ -2145,3 +2145,24 @@ of what was decided.
 | What it says | What was built | Why |
 | --- | --- | --- |
 | §5.6: a shard is named by the hexadecimal of a SHA-256 of the target | blake3 of the target, in hexadecimal | The property asked for is a name of fixed length whatever the target is called (S4-16), and either digest gives it. SHA-256 is not in this workspace; blake3 is, and takes every other digest here. A dependency added for a filename is a cost with nothing behind it |
+
+### Built so far
+
+Which of §5 exists, as of 2026-09-21. Kept here because the design is one
+document and the building is many commits: a reader who has just finished §5 is
+owed one place that says how much of it runs, and `CHANGELOG.md` answers "what
+changed" rather than "what is left".
+
+| Section | State |
+| --- | --- |
+| §5.2 the provider contract | Built. `prepare`, `conclude`, `afterwards`, and a replacement as its delete, forget and create |
+| §5.3 protocol 5 | Built. Digests for writes, sealed for a secret, `Failed { at }`, strict decoding |
+| §5.6 shards, marks, entries | Built, except the group commit per shard: one write a request, not a queue behind one in progress. The entry table is complete, including `nerpa release --entry` |
+| §5.13 the state directory | Built forwards: version 4 migrates in, with its digest in `format`. The downgrade command is not built |
+| §5.8 holding a machine | Built in part: `flock`, a mark that holds its machine, and `nerpa release`. Stopping on a signal — the self-pipe, the supervisor that kills, flushes and reports — is not built |
+| §5.4 machines side by side | Not built. Applying is one machine at a time, as it was; reading already fans out |
+| §5.5 what a failure does | Not built. A failure stops the run at that change, which is §5.5's strictest policy and not a choice anybody can make yet |
+| §5.11 the measurement | Not taken. It wants §5.4 to measure |
+
+Two things found while building that this design does not cover, on the
+watchlist as `W-025` and `W-026`.
