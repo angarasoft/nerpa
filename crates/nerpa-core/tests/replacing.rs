@@ -184,9 +184,10 @@ fn a_replacement_that_could_not_create_does_not_leave_state_saying_the_old_one_i
     );
     assert_eq!(
         written,
-        vec![1, 0],
-        "the mark was written first, while the old one was still recorded, and the \
-         deletion after it — both before the run stopped"
+        vec![1, 0, 0],
+        "three writes before the run stopped: the mark, while the old one was \
+         still recorded; the deletion; and the mark turning into an entry, \
+         because the half that makes the new one had already run when it failed"
     );
 }
 

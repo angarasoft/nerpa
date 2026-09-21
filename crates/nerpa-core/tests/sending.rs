@@ -20,9 +20,9 @@ use nerpa_core::provider::{
 use nerpa_core::run::{RunError, apply};
 use nerpa_core::schema::Schema;
 use nerpa_core::secret::{Key, Recorded, Remembered, Secrets, Source};
-use nerpa_core::state::{Record, State};
+use nerpa_core::state::{Record, Standing, State};
 use nerpa_core::{Address, Graph, Observed, Resource, Value};
-use nerpa_proto::{Answer, Ask, Entry, Operation, Seen};
+use nerpa_proto::{Answer, Ask, At, Entry, Operation, Seen};
 
 static DIGEST_KEY: Key = Key::from_bytes([9; 32]);
 static NO_STORE: Remembered = Remembered::EMPTY;
@@ -56,6 +56,8 @@ impl Ledger {
 struct Telling {
     ledger: Ledger,
     truthfully: bool,
+    /// What it answers a batch with instead of doing it, if anything.
+    refusing: Option<Answer>,
 }
 
 impl Reach for Telling {
@@ -66,6 +68,9 @@ impl Reach for Telling {
             }),
             Ask::Perform { operations, .. } => {
                 self.ledger.note(format!("sent {}", said(operations)));
+                if let Some(refusal) = &self.refusing {
+                    return Ok(refusal.clone());
+                }
                 Ok(Answer::Done {
                     became: operations
                         .iter()
@@ -234,6 +239,7 @@ fn attempt(
     let machines = Machines::new().everywhere(Box::new(Telling {
         ledger: ledger.clone(),
         truthfully: true,
+        refusing: None,
     }));
     let intended = plan(graph, observed, &state, &providers.schema(), secrets).expect("plannable");
 
@@ -410,6 +416,7 @@ fn a_write_answered_with_the_wrong_digest_is_not_recorded_as_written() {
     let machines = Machines::new().everywhere(Box::new(Telling {
         ledger: ledger.clone(),
         truthfully: false,
+        refusing: None,
     }));
     let graph = graph_of("/etc/motd");
     let observed = Observed::new();
@@ -480,5 +487,77 @@ fn a_change_that_was_recorded_leaves_no_mark() {
         Some("state: recorded"),
         "the last write says so: {:?}",
         ledger.read()
+    );
+}
+
+/// A run against a machine that refuses the batch in the way the test asks for.
+fn refused(refusal: Answer) -> (State, Result<(), RunError>) {
+    let ledger = Ledger::default();
+    let providers = Providers::new().with(Box::new(Writes { carrying: false }));
+    let machines = Machines::new().everywhere(Box::new(Telling {
+        ledger,
+        truthfully: true,
+        refusing: Some(refusal),
+    }));
+    let graph = graph_of("/etc/motd");
+    let observed = Observed::new();
+    let mut state = State::new();
+    let intended =
+        plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+
+    let outcome = apply(
+        &intended,
+        &providers,
+        &machines,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |_: &State| Ok(()),
+    )
+    .map(|_| ());
+    (state, outcome)
+}
+
+/// A change that failed after its operations ran leaves an entry.
+///
+/// Something happened on that machine and nobody knows what: the operations ran
+/// and the answer says one of them stopped part way. The mark stops standing for
+/// a request in flight and becomes what the next run has to deal with. RFC 0001
+/// §5.6.
+#[test]
+fn a_change_that_failed_after_its_operations_leaves_an_entry() {
+    let (state, outcome) = refused(Answer::Failed {
+        at: At::Operation(0),
+        problem: "no room on the device".to_owned(),
+    });
+
+    assert!(outcome.is_err(), "the change did not take");
+    let mark = state
+        .marked(&address(MOTD))
+        .expect("something of it is left behind");
+    assert!(
+        !mark.in_flight(),
+        "nothing is in flight any more: the answer came back"
+    );
+    assert_eq!(
+        mark.stands(),
+        Standing::ForRemovalOnly,
+        "this provider says reading resolves it, so the entry is kept only to \
+         remove by"
+    );
+}
+
+/// And a change that failed before any of them ran leaves nothing.
+///
+/// The machine is not what the plan was computed from, so nothing was done to
+/// it. A mark left standing would say a request went out, and none did.
+#[test]
+fn a_change_that_failed_before_its_operations_leaves_nothing() {
+    let (state, outcome) = refused(Answer::Moved { at: 0 });
+
+    assert!(outcome.is_err(), "the plan is stale");
+    assert!(
+        state.marked(&address(MOTD)).is_none(),
+        "nothing ran, so nothing is left to deal with"
     );
 }

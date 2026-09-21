@@ -1366,10 +1366,11 @@ fn what_was_already_made_is_recorded_before_the_next_thing_is_touched() {
     assert!(outcome.is_err(), "the second file cannot be written");
     assert_eq!(
         seen,
-        vec![0, 1, 1],
-        "three writes, in this order: the first file marked as being sent while \
-         nothing is recorded yet, the record of what it became, and the second \
-         file marked — so the first was recorded before the second was attempted"
+        vec![0, 1, 1, 1],
+        "four writes, in this order: the first file marked as being sent while \
+         nothing is recorded yet; the record of what it became; the second file \
+         marked; and that mark becoming an entry when writing it failed — so the \
+         first was recorded before the second was attempted"
     );
     assert!(
         state.get(&address("os:file.first@localhost")).is_some(),

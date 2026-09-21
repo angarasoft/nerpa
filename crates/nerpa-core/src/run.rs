@@ -16,12 +16,12 @@ use crate::graph::{Graph, GraphError};
 use crate::observed::{Facts, Observed};
 use crate::plan::{Change, ChangeKind, Confidence, Plan};
 use crate::provider::{
-    Answered, Attributes, Concluded, Concluding, Machines, Planned, Prepared, Provider,
+    Afterwards, Answered, Attributes, Concluded, Concluding, Machines, Planned, Prepared, Provider,
     ProviderError, Providers, Reach, Reading, Sending,
 };
 use crate::resource::Resource;
 use crate::secret::{FetchError, Recorded, Secrets};
-use crate::state::{Mark, Record, Recording, State};
+use crate::state::{Mark, Record, Recording, Standing, State};
 use crate::{ensures, requires};
 
 /// One journey's worth: who is asked, where they have to go, and about what.
@@ -367,7 +367,7 @@ pub fn apply(
             };
 
             let planned = marked_and_prepared(provider, change, &changing, state, record)?;
-            let (became, confirmed) = carried_out(
+            let (became, confirmed) = match carried_out(
                 planned,
                 &secret,
                 reach,
@@ -375,8 +375,17 @@ pub fn apply(
                 seal.as_ref(),
                 state,
                 record,
-            )?;
-            let Some(result) = concluded(provider, change, &changing, &became)? else {
+            ) {
+                Ok(outcome) => outcome,
+                Err(stopped) => return Err(accounted_for(stopped, address, state, record)?),
+            };
+            // A provider saying the answers show the change did not take is a
+            // change whose operations ran all the same.
+            let concluded = concluded(provider, change, &changing, &became).map_err(Stopped::Begun);
+            let Some(result) = (match concluded {
+                Ok(result) => result,
+                Err(stopped) => return Err(accounted_for(stopped, address, state, record)?),
+            }) else {
                 // Forgotten on every `Gone`, whatever the change was: a removal
                 // that only settles — a service stopped, its unit left where it
                 // was — says it is gone the same way.
@@ -587,15 +596,10 @@ fn send(
     change: &Change,
     state: &mut State,
     record: &mut dyn FnMut(&State) -> Result<(), String>,
-) -> Result<Vec<nerpa_proto::Seen>, RunError> {
+) -> Result<Vec<nerpa_proto::Seen>, Stopped> {
     let address = change.address();
     let Some(forgetting) = planned.forget_after else {
-        return Ok(perform(
-            reach,
-            planned.operations,
-            change.premise(),
-            address,
-        )?);
+        return perform(reach, planned.operations, change.premise(), address);
     };
 
     requires!(
@@ -606,7 +610,9 @@ fn send(
     let (removing, making) = planned.operations.split_at(forgetting);
     let mut became = perform(reach, removing.to_vec(), change.premise(), address)?;
     state.forget(address);
-    record(state).map_err(RunError::Record)?;
+    // The half that removes has run by now, so a state that cannot be written
+    // is a machine something has already happened to.
+    record(state).map_err(|problem| Stopped::Begun(RunError::Record(problem)))?;
     // The premise describes the world before this change, and this change has
     // just altered it: what it names is what was removed a moment ago. Checking
     // it again would refuse the run for a difference this run made on purpose.
@@ -655,16 +661,20 @@ fn carried_out(
     seal: Option<&nerpa_proto::Seal>,
     state: &mut State,
     record: &mut dyn FnMut(&State) -> Result<(), String>,
-) -> Result<(Vec<Answered>, BTreeSet<String>), RunError> {
+) -> Result<(Vec<Answered>, BTreeSet<String>), Stopped> {
     let address = change.address();
-    withheld(&planned, secret, seal, address)?;
+    // Refused before anything is sent, so nothing of it ran.
+    withheld(&planned, secret, seal, address).map_err(Stopped::Untouched)?;
     let expecting = expected(&planned, seal);
     let confirmed = confirmed_by(&planned, &expecting);
+    // An answer that is not what was sent means the write ran and left something
+    // else, which is the one thing nobody may record as though it had not.
     let became = checked(
         send(planned, reach, change, state, record)?,
         &expecting,
         address,
-    )?;
+    )
+    .map_err(Stopped::Begun)?;
     Ok((became, confirmed))
 }
 
@@ -856,6 +866,68 @@ fn marking(change: &Change, changing: &Changing<'_>, provider: &dyn Provider) ->
     .afterwards(provider.afterwards(change.address(), changing.kind))
 }
 
+/// A run stopping, and whether anything on the machine had begun.
+///
+/// The difference is what a mark becomes. Nothing ran and the mark goes, because
+/// it stood for a request that did not happen; something ran and it stays, as an
+/// entry, because something is out there that nobody has accounted for.
+#[derive(Debug)]
+enum Stopped {
+    /// Nothing was sent, or nothing the far end was asked to do began.
+    Untouched(RunError),
+    /// Operations ran before it stopped.
+    Begun(RunError),
+}
+
+/// Settles the mark of a change that stopped, and says what stopped it.
+///
+/// ENFORCES: INV-STATE-005
+/// Written down before the failure is reported, because the report is what ends
+/// the run: a mark left saying "in flight" by a run that is over would hold its
+/// machine for ever, and an entry never written would lose what the far end may
+/// have made.
+///
+/// # Errors
+///
+/// Returns [`RunError::Record`] if the settling could not be written; otherwise
+/// the failure it was given.
+fn accounted_for(
+    stopped: Stopped,
+    address: &Address,
+    state: &mut State,
+    record: &mut dyn FnMut(&State) -> Result<(), String>,
+) -> Result<RunError, RunError> {
+    let (error, began) = match stopped {
+        Stopped::Untouched(error) => (error, false),
+        Stopped::Begun(error) => (error, true),
+    };
+
+    match (state.settle(address), began) {
+        // Something ran. What the mark stood for becomes what the next run has
+        // to deal with: sent again where reading cannot tell whether it took,
+        // and kept only to remove by where it can.
+        (Some(mark), true) => {
+            let standing = match mark.afterwards_said() {
+                Afterwards::SendAgain => Standing::Pending,
+                Afterwards::Read => Standing::ForRemovalOnly,
+            };
+            state.mark(address.clone(), mark.standing(standing));
+        }
+        // Nothing ran. What was there before this run's mark comes back, so an
+        // entry an earlier run left is not lost by a run that never sent
+        // anything.
+        (Some(mark), false) => {
+            if let Some(replaced) = mark.replaced() {
+                state.mark(address.clone(), replaced.clone());
+            }
+        }
+        (None, _) => {}
+    }
+
+    record(state).map_err(RunError::Record)?;
+    Ok(error)
+}
+
 /// What the engine has settled about one change before it is sent.
 ///
 /// Seven things that travel together from the moment a change is settled until
@@ -990,17 +1062,20 @@ fn perform(
     operations: Vec<nerpa_proto::Operation>,
     premise: &[nerpa_proto::Premise],
     address: &Address,
-) -> Result<Vec<nerpa_proto::Seen>, ProviderError> {
+) -> Result<Vec<nerpa_proto::Seen>, Stopped> {
     let asked = operations.len();
     if asked == 0 {
         return Ok(Vec::new());
     }
-    let answer = reach.ask(&nerpa_proto::Ask::Perform {
-        plan: None,
-        premise: premise.to_vec(),
-        operations,
-        seal: None,
-    })?;
+    // A machine that could not be reached at all was not asked to do anything.
+    let answer = reach
+        .ask(&nerpa_proto::Ask::Perform {
+            plan: None,
+            premise: premise.to_vec(),
+            operations,
+            seal: None,
+        })
+        .map_err(|error| Stopped::Untouched(error.into()))?;
     answers(answer, address, asked)
 }
 
@@ -1012,35 +1087,54 @@ fn answers(
     answer: nerpa_proto::Answer,
     address: &Address,
     asked: usize,
-) -> Result<Vec<nerpa_proto::Seen>, ProviderError> {
+) -> Result<Vec<nerpa_proto::Seen>, Stopped> {
+    let refused = |problem: String| ProviderError::World {
+        address: address.clone(),
+        problem,
+    };
     match answer {
         nerpa_proto::Answer::Found { seen } | nerpa_proto::Answer::Done { became: seen }
             if seen.len() == asked =>
         {
             Ok(seen)
         }
+        // An answer nobody can read by position is an answer that says nothing
+        // about what ran, which is not the same as saying nothing ran.
         nerpa_proto::Answer::Found { seen } | nerpa_proto::Answer::Done { became: seen } => {
-            Err(ProviderError::World {
-                address: address.clone(),
-                problem: format!(
+            Err(Stopped::Begun(
+                refused(format!(
                     "the far end answered {} things about {asked} it was asked, and they are \
                      read by position",
                     seen.len()
-                ),
-            })
+                ))
+                .into(),
+            ))
         }
-        nerpa_proto::Answer::Moved { at } => Err(ProviderError::World {
-            address: address.clone(),
-            problem: format!("the machine is not what the plan was computed from, at premise {at}"),
-        }),
-        nerpa_proto::Answer::Failed { at, problem } => Err(ProviderError::World {
-            address: address.clone(),
-            problem: format!("{at}: {problem}"),
-        }),
-        other => Err(ProviderError::World {
-            address: address.clone(),
-            problem: format!("the far end said something unexpected: {other:?}"),
-        }),
+        // The machine is not what the plan was computed from. Premises are
+        // checked before anything is done, so nothing was.
+        nerpa_proto::Answer::Moved { at } => Err(Stopped::Untouched(
+            refused(format!(
+                "the machine is not what the plan was computed from, at premise {at}"
+            ))
+            .into(),
+        )),
+        nerpa_proto::Answer::Failed { at, problem } => {
+            let stopped = match at {
+                // Refused for what the request was, or stopped while checking
+                // what it assumed: nothing of it ran.
+                nerpa_proto::At::Before
+                | nerpa_proto::At::Premise(_)
+                | nerpa_proto::At::Observation(_) => Stopped::Untouched,
+                // It got as far as carrying something out — and a place this
+                // build does not know is a place it cannot claim nothing
+                // happened at.
+                _ => Stopped::Begun,
+            };
+            Err(stopped(refused(format!("{at}: {problem}")).into()))
+        }
+        other => Err(Stopped::Begun(
+            refused(format!("the far end said something unexpected: {other:?}")).into(),
+        )),
     }
 }
 

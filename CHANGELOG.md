@@ -804,6 +804,15 @@ without ceremony until the first stage is complete.
   the change is even prepared, so a provider that refuses to prepare has sent
   nothing and the mark goes again.
 
+- A change that failed after its operations ran leaves an entry; one that failed
+  before them leaves nothing. The far end already said which — a failure names
+  where it stopped, and a stale premise means nothing was done — but every
+  refusal looked the same to the engine, which flattened them all into a
+  sentence. What the entry is kept for is read from what its provider said when
+  the mark was written: sent again where reading cannot tell whether the change
+  took, kept only to remove by where it can. An answer nobody can read by
+  position counts as having begun, because it says nothing about what ran.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the
