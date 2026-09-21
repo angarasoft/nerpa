@@ -129,3 +129,48 @@ fn a_version_four_file_of_another_digest_is_refused() {
         "the refusal names it: {refusal}"
     );
 }
+
+/// Opening state is one step: migrate what needs it, take the lock the task
+/// wants, and read what is there.
+///
+/// The decision belongs beside the format rather than in whatever parses
+/// arguments — a command line that forgets to migrate reads a first run and
+/// makes everything again, and one that forgets the lock lets two runs write
+/// what the other did not know about.
+#[test]
+fn opening_migrates_what_needs_it_and_holds_the_lock() {
+    let scratch = Scratch::new("opening");
+    let written = populated();
+    store::save(&scratch.file(), &written, &DIGEST_KEY).expect("a version 4 file");
+
+    let (read, key, _held) =
+        shards::opened(&scratch.file(), shards::Taking::Writing).expect("it opens");
+    assert_eq!(read, written, "what the version 4 file held came across");
+    assert_eq!(key.to_hex(), DIGEST_KEY.to_hex());
+    assert!(
+        scratch.directory().join("format").exists(),
+        "and it migrated"
+    );
+
+    // And it is held: a second writer is refused while the first has it.
+    let refused = shards::opened(&scratch.file(), shards::Taking::Writing);
+    assert!(
+        refused.is_err(),
+        "two runs cannot write at once: {refused:?}"
+    );
+}
+
+/// Planning reads, so two plans may open at once.
+#[test]
+fn two_plans_may_open_at_once() {
+    let scratch = Scratch::new("reading");
+    store::save(&scratch.file(), &populated(), &DIGEST_KEY).expect("a version 4 file");
+
+    let (_first, _key, _held) =
+        shards::opened(&scratch.file(), shards::Taking::Reading).expect("one plan");
+    let alongside = shards::opened(&scratch.file(), shards::Taking::Reading);
+    assert!(
+        alongside.is_ok(),
+        "another plan may read too: {alongside:?}"
+    );
+}

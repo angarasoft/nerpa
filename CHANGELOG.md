@@ -779,6 +779,14 @@ without ceremony until the first stage is complete.
   file beside a finished directory is refused by name rather than guessed at.
   Both locks are taken, the file's first and the directory's second.
 
+- Runs read and write the directory. Opening state is one step — migrate a
+  version 4 file if that is what is there, take the lock, read what is in it —
+  because forgetting any of the three is quiet: a run that does not migrate reads
+  a first run and makes everything a second time, and one that does not lock
+  writes over what another run did not know about. Planning takes the lock
+  shared, so two plans may read at once and neither reads a live run's work as
+  though that run had ended; applying takes it exclusive.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

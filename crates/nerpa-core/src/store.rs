@@ -241,6 +241,15 @@ impl Lock {
         Self::exactly(path, rustix::fs::FlockOperation::NonBlockingLockExclusive)
     }
 
+    /// The same, for a task that only reads.
+    ///
+    /// # Errors
+    ///
+    /// The same as [`Lock::take`].
+    pub fn shared_at(path: &Path) -> Result<Self, StoreError> {
+        Self::exactly(path, rustix::fs::FlockOperation::NonBlockingLockShared)
+    }
+
     fn exactly(path: &Path, how: rustix::fs::FlockOperation) -> Result<Self, StoreError> {
         let trouble = |problem: String| StoreError::File {
             path: path.display().to_string(),

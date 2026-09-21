@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 use crate::address::{Address, Target};
 use crate::secret::Key;
 use crate::state::State;
-use crate::store::{StoreError, StoredRecord};
+use crate::store::{Lock, StoreError, StoredRecord};
 
 /// The format this directory is written in.
 pub const VERSION: u32 = 5;
@@ -78,6 +78,49 @@ pub fn name_of(target: Option<&Target>) -> String {
             .to_hex()
             .to_string(),
     }
+}
+
+/// What a task means to do with state, which decides the lock it takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Taking {
+    /// Reading only, as planning does. Several may hold it at once, and none of
+    /// them may start while something is writing.
+    Reading,
+    /// Writing, as applying, releasing and the migration do.
+    Writing,
+}
+
+/// Opens state: migrates a version 4 file where there is one, takes the lock the
+/// task wants, and reads what is there.
+///
+/// One step rather than three, because the three belong together and forgetting
+/// any of them is quiet: a run that does not migrate reads a first run and makes
+/// everything a second time, and one that does not lock writes over what another
+/// run did not know about.
+///
+/// The lock the migration takes is released before this one is: they are the
+/// same process, one after the other, and nothing else is expected in between.
+///
+/// # Errors
+///
+/// Returns [`StoreError::Locked`] if another run holds it, and whatever
+/// [`migrate`] and [`load`] refuse.
+pub fn opened(state: &Path, taking: Taking) -> Result<(State, Key, Lock), StoreError> {
+    migrate(state)?;
+
+    let directory = beside(state);
+    fs::create_dir_all(&directory).map_err(|error| StoreError::File {
+        path: directory.display().to_string(),
+        problem: error.to_string(),
+    })?;
+    let lock = directory.join("lock");
+    let held = match taking {
+        Taking::Reading => Lock::shared_at(&lock),
+        Taking::Writing => Lock::at(&lock),
+    }?;
+
+    let (state, key) = load(&directory)?;
+    Ok((state, key, held))
 }
 
 /// Where the directory for this state file lives.
@@ -146,12 +189,12 @@ pub fn migrate(state: &Path) -> Result<(), StoreError> {
 
     // Taken in this order and never the other, so that two of these cannot each
     // hold what the other is waiting for.
-    let _version4 = crate::store::Lock::take(state)?;
+    let _version4 = Lock::take(state)?;
     fs::create_dir_all(&directory).map_err(|error| StoreError::File {
         path: directory.display().to_string(),
         problem: error.to_string(),
     })?;
-    let _directory = crate::store::Lock::at(&directory.join("lock"))?;
+    let _directory = Lock::at(&directory.join("lock"))?;
 
     match built_from(&directory)? {
         // Finished already, from this very file: what is left is the tail of it.
@@ -358,6 +401,15 @@ pub fn load(directory: &Path) -> Result<(State, Key), StoreError> {
     }
 
     let Some(key) = key else {
+        // A directory holding nothing but the lock a run has just taken is a
+        // first run: the lock had to exist before there was anything to lock.
+        if shards.is_empty() {
+            let key = Key::fresh().map_err(|problem| StoreError::Randomness {
+                path: directory.display().to_string(),
+                problem: problem.to_string(),
+            })?;
+            return Ok((State::new(), key));
+        }
         return Err(refuse(
             directory,
             "there is no key here, and a digest under another key matches nothing".to_owned(),

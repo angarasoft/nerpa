@@ -34,8 +34,8 @@ use nerpa_core::planner;
 use nerpa_core::provider::{Machines, Providers, Reach};
 use nerpa_core::run;
 use nerpa_core::secret::{Remembered, Secrets};
+use nerpa_core::shards;
 use nerpa_core::state::State;
-use nerpa_core::store::{self, Lock};
 use nerpa_provider_os::Os;
 
 #[derive(Parser)]
@@ -309,11 +309,17 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     )
     .map_err(|error| error.to_string())?;
 
-    // Taken before anything is read, and held until the run is over. Two runs
-    // against one state file would each write what the other did not know about.
-    let _lock = Lock::take(&arguments.state).map_err(|error| error.to_string())?;
-
-    let (mut state, key) = store::load(&arguments.state).map_err(|error| error.to_string())?;
+    // Migrated if it is still a version 4 file, locked, and read: one step,
+    // because forgetting any of the three is quiet. Planning takes the lock
+    // shared, so two plans may read at once and neither reads a live run's work
+    // as though that run had ended.
+    let taking = match arguments.task {
+        Task::Plan { .. } => shards::Taking::Reading,
+        Task::Apply => shards::Taking::Writing,
+    };
+    let (mut state, key, _lock) =
+        shards::opened(&arguments.state, taking).map_err(|error| error.to_string())?;
+    let directory = shards::beside(&arguments.state);
 
     // Nothing in it yet: a declaration cannot say an attribute is secret until
     // the Starlark side can name a store, and the stores themselves arrive with
@@ -355,9 +361,8 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     // half way — a machine that goes away, a contract violation panicking by
     // design, somebody's Ctrl-C — made real changes, and forgetting them would
     // leave them unowned for ever.
-    let mut written = |state: &State| {
-        store::save(&arguments.state, state, &key).map_err(|error| error.to_string())
-    };
+    let mut written =
+        |state: &State| shards::save(&directory, state, &key).map_err(|error| error.to_string());
     let applied = run::apply(
         &plan,
         &providers,
@@ -370,7 +375,7 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
 
     // And once more at the end, so that a run which changed nothing still leaves
     // a state file where the next one expects it.
-    store::save(&arguments.state, &state, &key).map_err(|error| error.to_string())?;
+    shards::save(&directory, &state, &key).map_err(|error| error.to_string())?;
 
     let applied = applied.map_err(|error| error.to_string())?;
     println!("\napplied {} changes", applied.changed());
