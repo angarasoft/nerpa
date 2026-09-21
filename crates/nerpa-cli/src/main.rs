@@ -29,13 +29,14 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use nerpa_config::fleet::{Fleet, Route};
-use nerpa_core::address::Target;
+use nerpa_core::address::{Address, Target};
+use nerpa_core::plan::ChangeKind;
 use nerpa_core::planner;
 use nerpa_core::provider::{Machines, Providers, Reach};
 use nerpa_core::run;
 use nerpa_core::secret::{Remembered, Secrets};
 use nerpa_core::shards;
-use nerpa_core::state::State;
+use nerpa_core::state::{Released, State};
 use nerpa_provider_os::Os;
 
 #[derive(Parser)]
@@ -82,6 +83,12 @@ enum Task {
         /// What lives on no machine, which has no name a machine could share.
         #[arg(long, conflicts_with = "machine")]
         control: bool,
+        /// One entry, by address: you looked, and there is nothing there.
+        ///
+        /// What the entry remembers will not be removed when its declaration
+        /// goes, because nothing remembers it any more.
+        #[arg(long, conflicts_with_all = ["machine", "control"], value_name = "ADDRESS")]
+        entry: Option<String>,
     },
 }
 
@@ -286,6 +293,53 @@ fn speaking(
 ///
 /// Takes the lock every command that writes the directory takes, so it refuses
 /// beside a live run rather than settling marks that run is about to answer for.
+/// Clears one entry, which is a person saying they have looked at the machine.
+///
+/// The one way out that is not a run's own doing, and the reason it exists:
+/// what an entry remembers is a change reading cannot settle, so somebody who
+/// can see the machine is the only one who can say there is nothing there.
+fn release_entry(arguments: &Arguments, entry: &str) -> Result<(), String> {
+    let address: Address = entry.parse().map_err(|error| format!("{entry}: {error}"))?;
+
+    let (mut state, key, _lock) = shards::opened(&arguments.state, shards::Taking::Writing)
+        .map_err(|error| error.to_string())?;
+    let said = match state.release_entry(&address) {
+        Released::Nothing => format!("{address} has no entry"),
+        // Said as the smaller step it asks for, not as a refusal to help: the
+        // machine is held, and releasing it is what turns what is in flight
+        // into the entry this would then clear.
+        Released::InFlight => {
+            return Err(format!(
+                "{address} is still in flight; release its machine first, which settles what \
+                 was in flight into an entry"
+            ));
+        }
+        Released::Cleared(mark) => format!(
+            "{address}: the entry is cleared; if that {} left anything on the machine, it is \
+             not Nerpa's to remove any more",
+            said_kind(mark.kind())
+        ),
+    };
+    shards::save(&shards::beside(&arguments.state), &state, &key)
+        .map_err(|error| error.to_string())?;
+    println!("{said}");
+    Ok(())
+}
+
+/// What a change of this kind is called, in a sentence.
+fn said_kind(kind: ChangeKind) -> &'static str {
+    match kind {
+        ChangeKind::Create => "creation",
+        ChangeKind::Update => "update",
+        ChangeKind::Replace => "replacement",
+        ChangeKind::Delete => "removal",
+        ChangeKind::React => "restart",
+        // Neither is ever marked — they send nothing — and a kind this build
+        // does not know is named no better than by what it is.
+        _ => "change",
+    }
+}
+
 fn release(arguments: &Arguments, machine: Option<&str>, control: bool) -> Result<(), String> {
     let domain = match (machine, control) {
         (Some(name), false) => Some(Target::new(name).map_err(|error| format!("{name}: {error}"))?),
@@ -322,8 +376,16 @@ fn release(arguments: &Arguments, machine: Option<&str>, control: bool) -> Resul
 fn run_task(arguments: &Arguments) -> Result<(), String> {
     // Before the configuration is read, because releasing a machine is about
     // what a run left behind rather than about what anybody declares.
-    if let Task::Release { machine, control } = &arguments.task {
-        return release(arguments, machine.as_deref(), *control);
+    if let Task::Release {
+        machine,
+        control,
+        entry,
+    } = &arguments.task
+    {
+        return match entry {
+            Some(entry) => release_entry(arguments, entry),
+            None => release(arguments, machine.as_deref(), *control),
+        };
     }
 
     let source = std::fs::read_to_string(&arguments.file)

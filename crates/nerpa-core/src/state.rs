@@ -171,6 +171,18 @@ impl Record {
     }
 }
 
+/// What asking for an entry to be cleared found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Released {
+    /// Cleared, and this is what it said.
+    Cleared(Box<Mark>),
+    /// Nothing is remembered under that address at all.
+    Nothing,
+    /// A change is in flight there. Its machine is held, and releasing the
+    /// machine is what turns it into an entry.
+    InFlight,
+}
+
 /// Where a mark stands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -435,6 +447,26 @@ impl State {
     /// Takes a mark away, which is what the write recording an answer does.
     pub fn settle(&mut self, address: &Address) -> Option<Mark> {
         self.marks.remove(address)
+    }
+
+    /// Clears the entry at `address`: a person saying they have looked, and
+    /// there is nothing out there for it to remember.
+    ///
+    /// One of the four things that clear an entry, and the only one that is not
+    /// a run's own doing. Refuses a mark still in flight: that one belongs to a
+    /// run nobody has accounted for, and dropping it would take the hold on its
+    /// machine with it — leaving a change whose outcome nobody knows and
+    /// nothing left saying so. Releasing the machine settles it into an entry
+    /// first, which is a person saying that much and no more. RFC 0001 §5.6.
+    pub fn release_entry(&mut self, address: &Address) -> Released {
+        match self.marks.get(address).map(Mark::in_flight) {
+            None => Released::Nothing,
+            Some(true) => Released::InFlight,
+            Some(false) => self
+                .marks
+                .remove(address)
+                .map_or(Released::Nothing, |mark| Released::Cleared(Box::new(mark))),
+        }
     }
 
     /// Settles every change left in flight on one machine, or on the control

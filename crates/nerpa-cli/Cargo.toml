@@ -24,5 +24,10 @@ nerpa-transport = { workspace = true }
 clap = { workspace = true }
 serde_json = { workspace = true }
 
+[dev-dependencies]
+# The command is exercised against a real state directory, which goes in a
+# scratch directory that removes itself.
+tempfile = { workspace = true }
+
 [lints]
 workspace = true

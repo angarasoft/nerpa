@@ -1023,6 +1023,7 @@ dependencies = [
  "nerpa-provider-os",
  "nerpa-transport",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

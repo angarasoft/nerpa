@@ -19,7 +19,7 @@ use nerpa_core::provider::{
 use nerpa_core::run::observe;
 use nerpa_core::schema::Schema;
 use nerpa_core::secret::{Key, Remembered, Secrets};
-use nerpa_core::state::{Mark, State, Written};
+use nerpa_core::state::{Mark, Released, State, Written};
 use nerpa_core::{Graph, Plan, Resource, Target, Value};
 
 /// A machine that answers and knows nothing about itself.
@@ -300,5 +300,61 @@ fn an_entry_whose_declaration_is_gone_is_removed() {
         plan.changes()
             .map(|change| change.address().to_string())
             .collect::<Vec<_>>()
+    );
+}
+
+/// A person can clear one entry, which is them saying they looked.
+///
+/// Nothing else can: reading cannot settle the change, or it would not be an
+/// entry. So the last way out is somebody who can see the machine saying there
+/// is nothing out there — and from then on Nerpa has nothing to remove and
+/// says so by not planning it. RFC 0001 §5.6.
+#[test]
+fn a_person_can_clear_one_entry() {
+    let mut state = in_flight();
+    state.release(Some(&Target::new("web-01").unwrap()));
+
+    let Released::Cleared(mark) = state.release_entry(&address("os:file.motd@web-01")) else {
+        panic!("there is an entry there to clear");
+    };
+    assert_eq!(mark.kind(), ChangeKind::Update, "and it says what it was");
+    assert_eq!(
+        state.release_entry(&address("os:file.motd@web-01")),
+        Released::Nothing,
+        "nothing is remembered there now"
+    );
+
+    // Nothing is declared any more, and nothing is removed either.
+    let mut graph = Graph::new();
+    graph.preexisting(Target::new("web-01").unwrap());
+    let plan = planned(&graph, &state);
+    assert!(
+        plan.changes().next().is_none(),
+        "what a person took responsibility for is not Nerpa's to remove: {:?}",
+        plan.changes()
+            .map(|change| change.address().to_string())
+            .collect::<Vec<_>>()
+    );
+}
+
+/// A change still in flight is not an entry, and is not cleared as one.
+///
+/// It belongs to a run nobody has accounted for: its machine is held, and that
+/// hold is the only thing saying a change is out there. Dropping the mark would
+/// take the hold with it and leave nothing saying anything.
+#[test]
+fn a_change_still_in_flight_is_not_cleared_as_an_entry() {
+    let mut state = in_flight();
+
+    assert_eq!(
+        state.release_entry(&address("os:file.motd@web-01")),
+        Released::InFlight,
+        "the machine is released first, which is a smaller thing to say"
+    );
+    assert!(
+        state
+            .marked(&address("os:file.motd@web-01"))
+            .is_some_and(Mark::in_flight),
+        "and it is left exactly as it was"
     );
 }

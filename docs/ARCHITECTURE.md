@@ -194,6 +194,30 @@ A plan containing one of these cannot be signed: it holds an age, an age moves
 every second, and a hash over it never settles. That is the intended answer —
 nobody can approve a change to infrastructure they could not look at.
 
+## A machine a run left mid-change — [RFC 0001](rfcs/0001-applying-in-streamed-batches.md) · partly built
+
+A change is written down before its request goes out, as a **mark**, and the
+write that records the answer settles it. A run that is killed in between leaves
+a mark in flight: the request may have arrived, and the answer is gone with the
+run. That machine is **held** — nothing is read from it and nothing is planned on
+it — and the plan says so where it would otherwise say a machine did not answer,
+because the two are different news for the person reading.
+
+A hold has to have a way out, and only a person is in a position to give it:
+
+```text
+nerpa release web-01           # you looked; the machine is yours again
+nerpa release --control        # the same, for what lives on no machine
+nerpa release --entry os:file.motd@web-01
+```
+
+Releasing a machine does not throw away what was in flight. Each mark becomes an
+**entry**, by what its provider said reading could resolve: one reading cannot
+settle is sent again, and one it can is kept only so that what the change may
+have made can be removed if its declaration goes. Releasing an *entry* is the
+stronger statement — you looked, and there is nothing there — so it is refused
+for a change still in flight, which has a smaller step to take first.
+
 ## Observed state — [0011](decisions/0011-observed-state-in-three-tiers.md) · partly built
 
 The interface is a batch: the engine groups by machine before asking, and a

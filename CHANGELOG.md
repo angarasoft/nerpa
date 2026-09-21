@@ -855,6 +855,13 @@ without ceremony until the first stage is complete.
   answer; nothing else would ever have cleared it, and it would have outlived
   the question it was asked.
 
+- `nerpa release --entry <address>` clears one entry: a person saying they have
+  looked at the machine and there is nothing there. It is the last of the four
+  ways an entry goes, and the only one that is not a run's own doing — what an
+  entry remembers is a change reading cannot settle, so somebody who can see the
+  machine is the only one who can say. A change still in flight is refused and
+  left alone, naming the smaller step that turns it into an entry first.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the
