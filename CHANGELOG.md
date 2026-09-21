@@ -838,6 +838,17 @@ without ceremony until the first stage is complete.
   on the machine with nothing recording it, which is the state decision 0026
   exists to make unreachable.
 
+- A change an earlier run marked and never recorded is sent again. Where this
+  run's reading matches the declaration, the declaration's own change would send
+  nothing — and adopting it would write down, as a thing this run knows the
+  state of, something whose provider says reading cannot settle it. So the
+  entry's own change goes instead, and the plan says it is being sent again.
+  Whether a change is a repeat is inside the plan's number, so approving one is
+  not approving the other; every plan's number moves once for this. Where the
+  reading does not match, the declaration's change goes as always. A package is
+  refused by name, because installing one a second time is a command this
+  provider does not have.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

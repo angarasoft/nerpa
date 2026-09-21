@@ -977,7 +977,7 @@ fn marked_and_prepared(
         roused: changing.roused,
         // Nothing marks a change as sent again until an entry can say so
         // (RFC 0001 §5.6).
-        resent: false,
+        resent: change.is_resent(),
         desired: changing.desired,
         recorded: changing.recorded,
         facts: changing.facts,

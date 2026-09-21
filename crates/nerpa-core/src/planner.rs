@@ -31,7 +31,7 @@ use crate::plan::{
 use crate::resource::Resource;
 use crate::schema::Schema;
 use crate::secret::{FetchError, Recorded, Secrets};
-use crate::state::{Record, State, Written};
+use crate::state::{Mark, Record, State, Written};
 use crate::value::Value;
 
 /// Why a plan could not be produced at all.
@@ -533,19 +533,23 @@ impl Planning<'_> {
                     self.schema,
                     self.secrets,
                     &mut walk.outdated,
-                    roused_by,
-                    owed,
-                    self.dependencies
-                        .get(address)
-                        .map(|of_this| {
-                            of_this
-                                .iter()
-                                .map(|dependency| (*dependency).clone())
-                                .collect()
-                        })
-                        .unwrap_or_default(),
-                    record.map(Record::depends_on),
-                    reads_what_is_taken,
+                    Bearings {
+                        roused_by,
+                        owed,
+                        depends_on: self
+                            .dependencies
+                            .get(address)
+                            .map(|of_this| {
+                                of_this
+                                    .iter()
+                                    .map(|dependency| (*dependency).clone())
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                        recorded: record.map(Record::depends_on),
+                        entry: self.state.marked(address),
+                        takes_over: reads_what_is_taken,
+                    },
                 )? {
                     // ENFORCES: INV-REACT-001
                     // Only what moves on the machine rouses anything. An adoption
@@ -1246,27 +1250,26 @@ fn known_for(state: &State, node: &Target, now: Written) -> Option<u64> {
     clippy::too_many_arguments,
     reason = "what a change is decided from, one argument each, so none can be left out"
 )]
-fn change_for(
+/// One delta for every attribute that has to change, and the settled value of
+/// every attribute the declaration names.
+type Differences = (Vec<AttributeDelta>, Vec<(String, Confidence)>);
+
+/// What the declaration asks for, and how each attribute differs from what is
+/// there: the settled values a provider will be given, and one delta for every
+/// name that has to change.
+///
+/// Every refusal that reads one attribute at a time lives here, so that a
+/// resource is turned down while it is being described rather than after a kind
+/// has been decided for it.
+fn differences(
     resource: &Resource,
+    existing: Option<&BTreeMap<String, Value>>,
     observed: &Observed,
     schema: &Schema,
     secrets: Secrets<'_>,
     outdated: &mut Vec<Outdated>,
-    roused_by: Vec<Address>,
-    owed: Vec<Address>,
-    depends_on: Vec<Address>,
-    recorded: Option<&BTreeSet<Address>>,
-    takes_over: bool,
-) -> Result<Option<Change>, PlanError> {
+) -> Result<Differences, PlanError> {
     let address = resource.address();
-    // Not read when it names what a removal in this plan takes away: see
-    // `taken_away`.
-    let existing = if takes_over {
-        None
-    } else {
-        observed.get(address)
-    };
-
     let mut deltas = Vec::new();
     let mut desired = Vec::new();
     for (name, declared) in resource.attributes() {
@@ -1350,35 +1353,96 @@ fn change_for(
             forces_replacement,
         ));
     }
+    Ok((deltas, desired))
+}
+
+/// What is known about one address besides its declaration and what was read
+/// there: what this plan is doing around it, and what state remembers of it.
+struct Bearings<'a> {
+    /// What this plan changes that it reacts to.
+    roused_by: Vec<Address>,
+    /// What roused it in an earlier run that did not finish paying.
+    owed: Vec<Address>,
+    /// Everything it comes after now, however that ordering arose.
+    depends_on: Vec<Address>,
+    /// What state recorded it as coming after, if it records it at all.
+    recorded: Option<&'a BTreeSet<Address>>,
+    /// The entry a run that stopped left under this address.
+    entry: Option<&'a Mark>,
+    /// Whether a removal in this plan takes away what it would be read at, in
+    /// which case nothing was read for it: see `taken_away`.
+    takes_over: bool,
+}
+
+fn change_for(
+    resource: &Resource,
+    observed: &Observed,
+    schema: &Schema,
+    secrets: Secrets<'_>,
+    outdated: &mut Vec<Outdated>,
+    around: Bearings<'_>,
+) -> Result<Option<Change>, PlanError> {
+    let Bearings {
+        roused_by,
+        owed,
+        depends_on,
+        recorded,
+        entry,
+        takes_over,
+    } = around;
+    let address = resource.address();
+    // Not read when it names what a removal in this plan takes away: see
+    // `taken_away`.
+    let existing = if takes_over {
+        None
+    } else {
+        observed.get(address)
+    };
+
+    let (deltas, desired) = differences(resource, existing, observed, schema, secrets, outdated)?;
+
+    // What an entry would send again. Worked out before the kind, and used only
+    // where the declaration's own change would send nothing: a declaration that
+    // still has work of its own is the better answer to what the machine is now.
+    let resending = entry.and_then(Mark::sends_again);
 
     // The kind first, in the order it is decided — whether anything differs, then
     // why a resource that matches might still be work — and then the one change.
-    let kind = match existing {
+    let (kind, resent) = match (existing, resending) {
         // Not there at all: it has to be made, whatever its attributes say.
-        None => ChangeKind::Create,
-        Some(_) if deltas.iter().any(AttributeDelta::forces_replacement) => ChangeKind::Replace,
-        Some(_) if !deltas.is_empty() => ChangeKind::Update,
+        (None, _) => (ChangeKind::Create, false),
+        (Some(_), _) if deltas.iter().any(AttributeDelta::forces_replacement) => {
+            (ChangeKind::Replace, false)
+        }
+        (Some(_), _) if !deltas.is_empty() => (ChangeKind::Update, false),
         // It matches its declaration, and either something it reacts to does not
         // or an earlier run left a reaction unpaid. The desired values go with it
         // because the provider still needs to be told which service this is.
-        Some(_) if !(roused_by.is_empty() && owed.is_empty()) => ChangeKind::React,
+        (Some(_), _) if !(roused_by.is_empty() && owed.is_empty()) => (ChangeKind::React, false),
+        // An earlier run marked this change and never recorded it, and what is
+        // there now is what the declaration asks for. That is not proof the
+        // change took: the reading would look the same if the run had stopped
+        // between the operation and its answer, and the provider says reading
+        // cannot tell the two apart. So it goes again rather than being adopted
+        // or passed over, and it says so. RFC 0001 §5.6.
+        (Some(_), Some(again)) => (again, true),
         // ENFORCES: INV-STATE-006
         // It matches its declaration and nothing records it: found on a machine
         // somebody configured before, or made by a run that stopped before it
         // could write that down. Nothing is done to it, and it is written down,
         // because from here on it is Nerpa's to remove. Planned as nothing, it
         // was never recorded, and taking its declaration away removed nothing.
-        Some(_) if recorded.is_none() => ChangeKind::Adopt,
+        (Some(_), None) if recorded.is_none() => (ChangeKind::Adopt, false),
         // ENFORCES: INV-STATE-002
         // It matches and is recorded, and what it comes after is not what state
         // remembers: an `after` written in, a reference added, a reaction. Nothing
         // is done to it, and it is recorded again, because those edges are what
         // its removal will be ordered by. Planned as nothing, a file given an
         // `after` once it matched was removed with its directory in any order.
-        Some(_) if recorded.is_some_and(|edges| !edges.iter().eq(&depends_on)) => {
-            ChangeKind::Reorder
+        (Some(_), None) if recorded.is_some_and(|edges| !edges.iter().eq(&depends_on)) => {
+            (ChangeKind::Reorder, false)
         }
-        Some(_) => return Ok(None),
+        (Some(_), None) => return Ok(None),
     };
 
     // What was read, sealed, for a change that sends something to a machine that
@@ -1395,7 +1459,7 @@ fn change_for(
         }
     };
 
-    Ok(Some(Change::new(
+    let change = Change::new(
         address.clone(),
         kind,
         deltas,
@@ -1404,7 +1468,12 @@ fn change_for(
         roused_by,
         owed,
         depends_on,
-    )))
+    );
+    Ok(Some(if resent {
+        change.again(entry.is_some_and(Mark::is_past_forgetting))
+    } else {
+        change
+    }))
 }
 
 // ENFORCES: INV-PREMISE-002

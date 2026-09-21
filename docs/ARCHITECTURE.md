@@ -136,6 +136,26 @@ shows the adoption:
 Adoptions are written to state once for the run. They send nothing, so a run
 that stops before the write loses nothing, and the next plan adopts them again.
 
+A change an earlier run marked and never recorded leaves an **entry**, and an
+entry is not adopted. Its operations ran and the answer went with the run, so a
+machine that now looks exactly as declared is as consistent with the change
+having taken as with its having been lost — and the provider said reading cannot
+tell the two apart. Where the declaration's own change would send nothing, what
+goes is the entry's change, again:
+
+```text
+  [update   ] os:file.motd@web-01
+               ↻ sent again: a run that stopped left this unrecorded, and what it did is not something reading can settle
+```
+
+Whether a change is being sent again is inside the plan's number, so approving a
+plan that repeats a change is not the same act as approving one that makes it
+afresh. Where the reading does *not* match, the declaration's change goes as it
+always would, worked out from what is there now. Where the declaration is gone,
+the entry becomes a removal at the locator it remembers. A provider with no way
+to send a change twice — `dnf` and `emerge` install nothing a second time — says
+so and stops there, by name.
+
 A recorded resource whose edges changed since — an `after` written in, a
 reference added — is reordered the same way,
 [0043](decisions/0043-what-a-resource-comes-after-is-recorded-when-that-changes.md):

@@ -317,6 +317,22 @@ fn one(change: &Change) -> String {
         );
     }
 
+    // An update with nothing under it otherwise reads as work for no reason. A
+    // run that stopped left this change's outcome unknown, and the reader is
+    // owed that before it goes again rather than after. RFC 0001 §5.6.
+    if change.is_resent() {
+        out.push_str(
+            "               ↻ sent again: a run that stopped left this unrecorded, and \
+             what it did is not something reading can settle\n",
+        );
+        if change.is_past_forgetting() {
+            out.push_str(
+                "               · what it was replacing is already gone, so what is left \
+                 is to make the new one\n",
+            );
+        }
+    }
+
     // The part that matters later. Nothing is done to it now, and from now on
     // taking its declaration away removes it, which is not what somebody who
     // wrote a file by hand years ago would assume. See 0042.

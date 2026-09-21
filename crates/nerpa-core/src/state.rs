@@ -327,6 +327,34 @@ impl Mark {
         self.standing
     }
 
+    /// What this entry sends again, where the declaration's own change would
+    /// send nothing.
+    ///
+    /// Only an entry a reading cannot settle: one kept for removal only is kept
+    /// for exactly that, and a declaration still standing is its own answer.
+    /// `None` for anything that is not sent again. RFC 0001 §5.6.
+    #[must_use]
+    pub fn sends_again(&self) -> Option<ChangeKind> {
+        if self.standing != Standing::Pending {
+            return None;
+        }
+        // Every kind is named, so a new one has to say what repeating it means.
+        Some(match self.kind {
+            // Its removal half is done and what was there is gone, along with
+            // the record of it. What is left to do is make the new one.
+            ChangeKind::Replace if self.past_forgetting => ChangeKind::Create,
+            // Declared again by somebody who saw it go. Removing it a second
+            // time would take away exactly what they asked for.
+            ChangeKind::Delete => ChangeKind::Create,
+            ChangeKind::Create | ChangeKind::Update | ChangeKind::Replace | ChangeKind::React => {
+                self.kind
+            }
+            // Never marked: they send nothing, so nothing was ever in flight
+            // for them to be unsure about.
+            ChangeKind::Adopt | ChangeKind::Reorder => return None,
+        })
+    }
+
     /// Whether it is still in flight, which is what holds a machine.
     #[must_use]
     pub fn in_flight(&self) -> bool {

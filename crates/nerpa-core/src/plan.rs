@@ -234,6 +234,17 @@ pub struct Change {
     /// was forgotten and its removal came in any order. See `INV-STATE-002`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     depends_on: Vec<Address>,
+    /// Sent again: an earlier run marked this change, never recorded it, and
+    /// this run's reading leaves the declaration's own change with nothing to
+    /// send. See `crate::state::Mark`.
+    ///
+    /// Encoded for every change, false or not. What the encoding covers must
+    /// not depend on what state happened to hold, or two plans that intend
+    /// different things could agree on a number.
+    resent: bool,
+    /// The change this repeats had passed its forget point: for a replacement,
+    /// the removal half is done and what is left is the create.
+    past_forgetting: bool,
 }
 
 impl Change {
@@ -261,7 +272,34 @@ impl Change {
             owed,
             owed_by: Vec::new(),
             depends_on,
+            resent: false,
+            past_forgetting: false,
         }
+    }
+
+    /// Marks this as a change an entry is sending again, and says whether what
+    /// it repeats had passed its forget point.
+    ///
+    /// Not an argument to `new`, because it is not a part of every change: it
+    /// is what state adds to one, as `leave_owed` is.
+    #[must_use]
+    pub(crate) fn again(mut self, past_forgetting: bool) -> Self {
+        self.resent = true;
+        self.past_forgetting = past_forgetting;
+        self
+    }
+
+    /// Whether an earlier run marked this change and never recorded it, so that
+    /// it is being sent a second time without anyone knowing what the first did.
+    #[must_use]
+    pub fn is_resent(&self) -> bool {
+        self.resent
+    }
+
+    /// Whether the change this repeats had passed its forget point.
+    #[must_use]
+    pub fn is_past_forgetting(&self) -> bool {
+        self.past_forgetting
     }
 
     /// Everything this resource comes after, in a stable order.
@@ -961,6 +999,13 @@ fn encode_stage(stage: &PlanStage, out: &mut Vec<u8>) {
             value::text(&dependency.to_string(), out);
         }
 
+        // Sent again, and how far the change it repeats had got. A plan that
+        // repeats a change nobody knows the outcome of is not the plan that
+        // would have made that change afresh, and a person approving the one is
+        // not approving the other.
+        out.push(u8::from(change.is_resent()));
+        out.push(u8::from(change.is_past_forgetting()));
+
         out.extend_from_slice(&value::length(change.desired().len()));
         for (name, wanted) in change.desired() {
             value::text(name, out);
@@ -1071,5 +1116,50 @@ impl serde::Serialize for Plan {
         // mean very different things.
         map.serialize_entry("digest", &self.digest().ok())?;
         map.end()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Change, ChangeKind, PlanStage, StageKind, encode_stage};
+    use crate::address::address;
+
+    /// Two changes alike in every other way: one being sent again, one not.
+    ///
+    /// No plan can hold that pair — a change sent again is one whose reading
+    /// matched, and one worked out afresh is one whose reading did not, so any
+    /// two the planner builds differ in their deltas as well. Which is exactly
+    /// why this is here: nothing comparing whole plans can say the bit is in
+    /// the number rather than the difference that came with it.
+    #[test]
+    fn whether_a_change_is_sent_again_is_in_the_number() {
+        let plain = || {
+            Change::new(
+                address("os:file.motd@web-01"),
+                ChangeKind::Update,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+            )
+        };
+        let encoded = |change: Change| {
+            let mut out = Vec::new();
+            encode_stage(&PlanStage::new(StageKind::Mixed, vec![change]), &mut out);
+            out
+        };
+
+        assert_ne!(
+            encoded(plain()),
+            encoded(plain().again(false)),
+            "a repeat of a change nobody knows the outcome of is not that change"
+        );
+        assert_ne!(
+            encoded(plain().again(false)),
+            encoded(plain().again(true)),
+            "nor is repeating half of a replacement the same as repeating all of it"
+        );
     }
 }

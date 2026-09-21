@@ -534,8 +534,10 @@ fn prepare_package(change: &Prepared<'_>) -> Result<Planned, ProviderError> {
     // Installing a version already there runs no post-install, so sending a
     // package again is a different command — `dnf reinstall`, `emerge
     // --oneshot` — and nothing here has one yet. Refused by name rather than
-    // sent on the chance that it works. Nothing sets this until state carries
-    // marks (RFC 0001 §5.6).
+    // sent on the chance that it works: a run that stopped between merging a
+    // package and recording it leaves an entry, and the next plan sends that
+    // change again (RFC 0001 §5.6). This is where it stops, with a sentence
+    // saying what happened, rather than in a command that does nothing.
     if change.resent {
         return Err(ProviderError::World {
             address: address.clone(),
