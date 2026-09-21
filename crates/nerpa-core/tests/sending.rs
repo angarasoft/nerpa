@@ -12,6 +12,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
 use nerpa_core::address::address;
+use nerpa_core::plan::ChangeKind;
 use nerpa_core::planner::plan;
 use nerpa_core::provider::{
     Afterwards, Answered, Attributes, Concluded, Concluding, Machines, Planned, Prepared, Provider,
@@ -20,7 +21,7 @@ use nerpa_core::provider::{
 use nerpa_core::run::{RunError, apply};
 use nerpa_core::schema::Schema;
 use nerpa_core::secret::{Key, Recorded, Remembered, Secrets, Source};
-use nerpa_core::state::{Record, Standing, State};
+use nerpa_core::state::{Mark, Record, Standing, State};
 use nerpa_core::{Address, Graph, Observed, Resource, Value};
 use nerpa_proto::{Answer, Ask, At, Entry, Operation, Seen};
 
@@ -559,5 +560,41 @@ fn a_change_that_failed_before_its_operations_leaves_nothing() {
     assert!(
         state.marked(&address(MOTD)).is_none(),
         "nothing ran, so nothing is left to deal with"
+    );
+}
+
+/// What an entry remembers is removed at the locator the entry carries.
+///
+/// A change that failed after its operations ran left no record — a record is
+/// written from what it became — so nothing else knows where to look. Without
+/// this the thing it may have made stays on the machine with nothing recording
+/// it. RFC 0001 §5.6.
+#[test]
+fn what_an_entry_remembers_is_removed_at_its_locator() {
+    let mut locator = Attributes::new();
+    locator.insert("path".to_owned(), Value::Text("/etc/motd".to_owned()));
+    let mut state = State::new();
+    state.mark(
+        address(MOTD),
+        Mark::new(ChangeKind::Create, locator, Attributes::new())
+            .standing(Standing::ForRemovalOnly),
+    );
+
+    // Nothing is declared any more.
+    let mut graph = Graph::new();
+    graph.preexisting(address(MOTD).target().unwrap().clone());
+    let (ledger, state) = run(&graph, &Observed::new(), state);
+
+    assert!(
+        ledger
+            .read()
+            .iter()
+            .any(|line| line == "sent remove /etc/motd"),
+        "it was removed where the entry said it would be: {:?}",
+        ledger.read()
+    );
+    assert!(
+        state.marked(&address(MOTD)).is_none(),
+        "and the entry went with the removal"
     );
 }

@@ -336,7 +336,7 @@ pub fn apply(
                 );
                 continue;
             };
-            let recorded = state.get(address).map(Record::locator);
+            let recorded = where_it_is(state, address);
 
             // A removal of something state does not remember has nothing to
             // remove: state is the only thing that knows where it was.
@@ -999,6 +999,18 @@ fn marked_and_prepared(
 /// No secret value among it: a secret went into the operation that carries it
 /// and stops there. A removal is told what state recorded, because the
 /// declaration that described it is gone.
+/// Where state says it is; and, where there is no record, where the entry of a
+/// change that never got one says it may be.
+///
+/// Something that failed after its operations ran is out there somewhere, and
+/// its entry is the only thing that knows where to look for it.
+fn where_it_is(state: &State, address: &Address) -> Option<Attributes> {
+    state
+        .get(address)
+        .map(Record::locator)
+        .or_else(|| state.marked(address).map(|mark| mark.locator().clone()))
+}
+
 fn told(
     kind: Sending,
     desired: &Attributes,

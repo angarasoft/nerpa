@@ -829,6 +829,15 @@ without ceremony until the first stage is complete.
   machine can. What was in flight is not thrown away; it becomes what the next
   plan has to deal with, by what its provider said reading could resolve.
 
+- What a failed change may have made is removed once its declaration goes. A
+  change that failed after its operations ran leaves an entry and no record — a
+  record is written from what the change became, and it never became anything —
+  so the entry is the only thing that knows something may be out there and where
+  to look for it. Removals are worked out from entries as well as records now,
+  and the removal goes to the locator the entry carries. Without this it stayed
+  on the machine with nothing recording it, which is the state decision 0026
+  exists to make unreachable.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

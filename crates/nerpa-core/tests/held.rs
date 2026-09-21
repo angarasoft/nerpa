@@ -243,3 +243,36 @@ fn releasing_one_machine_leaves_the_others_as_they_were() {
         "the machine that was left mid-change still is"
     );
 }
+
+/// An entry whose declaration is gone is removed, at the locator it remembers.
+///
+/// A change that failed after its operations ran may have made the thing. State
+/// has no record of it — the record is written from what the change became, and
+/// it never became anything — so the only thing that knows where to look is the
+/// entry. Without this, what a failed change made stays on the machine with
+/// nothing recording it, which is the state decision 0026 exists to make
+/// unreachable. RFC 0001 §5.6.
+#[test]
+fn an_entry_whose_declaration_is_gone_is_removed() {
+    let mut state = in_flight();
+    state.release(Some(&Target::new("web-01").unwrap()));
+
+    // Nothing is declared any more.
+    let mut graph = Graph::new();
+    graph.preexisting(Target::new("web-01").unwrap());
+    let plan = planned(&graph, &state);
+
+    let removals: Vec<String> = plan
+        .changes()
+        .filter(|change| change.kind() == ChangeKind::Delete)
+        .map(|change| change.address().to_string())
+        .collect();
+    assert_eq!(
+        removals,
+        vec!["os:file.motd@web-01".to_owned()],
+        "what the failed change may have made is taken away: {:?}",
+        plan.changes()
+            .map(|change| change.address().to_string())
+            .collect::<Vec<_>>()
+    );
+}

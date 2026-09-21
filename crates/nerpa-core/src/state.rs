@@ -448,6 +448,15 @@ impl State {
         }
     }
 
+    /// What this address came after, as a record says, or as the entry of a
+    /// change that never got a record does.
+    fn after(&self, address: &Address) -> Option<&BTreeSet<Address>> {
+        self.resources
+            .get(address)
+            .map(Record::depends_on)
+            .or_else(|| self.marks.get(address).map(Mark::depends_on))
+    }
+
     /// Forgets a resource, once it is gone from the world too.
     pub fn forget(&mut self, address: &Address) {
         self.resources.remove(address);
@@ -489,9 +498,19 @@ impl State {
     // ENFORCES: INV-STATE-002
     #[must_use]
     pub fn abandoned(&self, declared: &BTreeSet<&Address>) -> Vec<Vec<Address>> {
+        // Entries as well as records. A change that failed after its operations
+        // ran has no record — the record is written from what it became, and it
+        // never became anything — so the entry is the only thing that knows
+        // something may be out there under this address.
         let doomed: BTreeSet<&Address> = self
             .resources
             .keys()
+            .chain(
+                self.marks
+                    .iter()
+                    .filter(|(_, mark)| !mark.in_flight())
+                    .map(|(address, _)| address),
+            )
             .filter(|address| !declared.contains(*address))
             .collect();
 
@@ -499,14 +518,12 @@ impl State {
             .iter()
             .map(|address| {
                 let blockers = self
-                    .resources
-                    .get(*address)
-                    .map(|record| {
+                    .after(address)
+                    .map(|depends_on| {
                         // Only doomed dependencies hold up a removal. Anything
                         // still declared is staying, and waiting for it would
                         // wait for ever.
-                        record
-                            .depends_on
+                        depends_on
                             .iter()
                             .filter(|other| doomed.contains(other))
                             .collect()
