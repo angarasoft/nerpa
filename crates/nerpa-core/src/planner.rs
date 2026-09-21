@@ -258,6 +258,7 @@ pub fn plan_at(
         recorded_after: recorded_after(state),
         doomed,
         dependencies,
+        holds: holding(state),
     };
 
     // Holding goes both ways. A removal waits while something recorded after it
@@ -313,6 +314,30 @@ struct Held {
 
 /// What a plan is computed from, and what is worked out from that before the
 /// graph is walked.
+/// The domains a run left mid-change, and when the oldest change still in flight
+/// there was written.
+///
+/// A mark in flight is a request written down as going out and never answered:
+/// whether it arrived, and what it did, went with the run that stopped. So the
+/// domain is held, and this is what says since when. RFC 0001 §5.8.
+fn holding(state: &State) -> BTreeMap<Option<Target>, Written> {
+    let mut holds: BTreeMap<Option<Target>, Written> = BTreeMap::new();
+    for (address, mark) in state.marks() {
+        if !mark.in_flight() {
+            continue;
+        }
+        holds
+            .entry(address.target().cloned())
+            .and_modify(|since| {
+                if mark.written().seconds() < since.seconds() {
+                    *since = mark.written();
+                }
+            })
+            .or_insert_with(|| mark.written());
+    }
+    holds
+}
+
 struct Planning<'a> {
     graph: &'a Graph,
     observed: &'a Observed,
@@ -329,6 +354,9 @@ struct Planning<'a> {
     taken: BTreeMap<(Target, String, String), Vec<Address>>,
     /// What state recorded as coming after each address.
     recorded_after: BTreeMap<&'a Address, Vec<&'a Address>>,
+    /// The domains a run left mid-change, and when the oldest change still in
+    /// flight there was written. Nothing on one of these is planned.
+    holds: BTreeMap<Option<Target>, Written>,
 }
 
 /// What one walk of the graph decided, before the removals are put among it.
@@ -350,6 +378,8 @@ struct Walk {
     hold: BTreeMap<Address, Address>,
     /// What waits for something that cannot be planned, and what for.
     waiting: Vec<Waiting>,
+    /// How many of this walk's resources each held domain holds.
+    holding: BTreeMap<Option<Target>, usize>,
 }
 
 /// The removals one walk leaves: which this plan carries, and which it cannot.
@@ -366,6 +396,8 @@ struct Removals {
     held: BTreeSet<Address>,
     unreachable: Vec<Unreachable>,
     waiting: Vec<Waiting>,
+    /// How many removals each held domain holds.
+    holding: BTreeMap<Option<Target>, usize>,
 }
 
 impl Planning<'_> {
@@ -396,6 +428,10 @@ impl Planning<'_> {
                 let out_of_reach = node
                     .as_ref()
                     .is_some_and(|node| !self.observed.reached(node));
+                // A run ended while a change here was in flight. What that change
+                // did is not known and cannot be found out, so nothing is planned
+                // on this machine until a person says it is theirs again.
+                let is_held = self.holds.contains_key(&node);
                 let blocked = self.dependencies.get(address).is_some_and(|of_this| {
                     of_this
                         .iter()
@@ -442,9 +478,17 @@ impl Planning<'_> {
                 // was recorded after it, found by a walk before this one.
                 let waits = held.changes.get(address);
 
-                if out_of_reach || blocked || waits_for_removal || waits.is_some() {
+                if out_of_reach || is_held || blocked || waits_for_removal || waits.is_some() {
                     walk.unplannable.insert(address.clone());
                     self.owe_or_hold(&mut walk, resource, &changing);
+                    // ENFORCES: INV-REACH-002
+                    // A held machine answered; it is simply not this run's to
+                    // act on. Reported as one that did not answer, it would send
+                    // somebody looking at the network.
+                    if is_held {
+                        *walk.holding.entry(node).or_default() += 1;
+                        continue;
+                    }
                     let on = if out_of_reach {
                         None
                     } else {
@@ -596,8 +640,14 @@ impl Planning<'_> {
                 let out_of_reach = node
                     .as_ref()
                     .is_some_and(|node| !self.observed.reached(node));
+                let is_held = self.holds.contains_key(&node);
                 let waiting = self.removal_waits_for(walk, &removals, address);
-                if out_of_reach || waiting.is_some() {
+                if out_of_reach || is_held || waiting.is_some() {
+                    if is_held {
+                        *removals.holding.entry(node).or_default() += 1;
+                        removals.held.insert(address.clone());
+                        continue;
+                    }
                     // ENFORCES: INV-REACH-004
                     // Out of reach only when its own machine did not answer.
                     match (out_of_reach, waiting, node) {
@@ -734,9 +784,21 @@ impl Planning<'_> {
 
         let mut unreachable = removals.unreachable;
         unreachable.extend(walk.unreachable);
+        // Every domain a run left mid-change, whether or not this plan wanted
+        // to do anything there: the machine is held either way, and somebody has
+        // to be told before they can release it.
+        let held: Vec<crate::plan::Held> = self
+            .holds
+            .iter()
+            .map(|(domain, since)| {
+                let changes = walk.holding.get(domain).copied().unwrap_or_default()
+                    + removals.holding.get(domain).copied().unwrap_or_default();
+                crate::plan::Held::new(domain.clone(), *since, changes)
+            })
+            .collect();
         let mut waiting = removals.waiting;
         waiting.extend(walk.waiting);
-        Ok(Plan::new(stages, unreachable, waiting, walk.outdated))
+        Ok(Plan::new(stages, unreachable, waiting, held, walk.outdated))
     }
 
     /// Every edge between one plan's changes and removals, and why each is there.

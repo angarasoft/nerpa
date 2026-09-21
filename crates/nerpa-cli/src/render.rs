@@ -14,8 +14,9 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use nerpa_core::plan::{Outdated, Unreachable, Waiting};
+use nerpa_core::plan::{Held, Outdated, Unreachable, Waiting};
 use nerpa_core::secret::Recorded;
+use nerpa_core::state::Written;
 use nerpa_core::value::Value;
 use nerpa_core::{BlastRadius, Change, ChangeKind, Confidence, Plan, StageKind, Target};
 
@@ -33,6 +34,7 @@ pub(crate) fn plan(plan: &Plan) -> String {
     };
     out.push_str(&out_of_reach(plan.unreachable()));
     out.push_str(&waits(plan.waiting()));
+    out.push_str(&holds(plan.held()));
     out.push_str(&behind(plan.outdated()));
 
     for (number, stage) in plan.stages().iter().enumerate() {
@@ -145,6 +147,37 @@ fn waits(waiting: &[Waiting]) -> String {
     for entry in waiting {
         let _ = writeln!(out, "    {} waits for {}", entry.address(), entry.on());
     }
+    out
+}
+
+/// The machines a run left mid-change.
+///
+/// Apart from the two above, and for a different reason: this machine answered,
+/// and nothing here waits for anything. A run ended while a change on it was in
+/// flight, so whether that change happened is not known and cannot be found out
+/// — only somebody who can look at the machine can say it is theirs again.
+fn holds(held: &[Held]) -> String {
+    if held.is_empty() {
+        return String::new();
+    }
+    let now = Written::now().seconds();
+    let mut out = format!(
+        "\n  {} were left mid-change by a run that ended:\n",
+        held.len()
+    );
+    for entry in held {
+        let domain = entry
+            .domain()
+            .map_or_else(|| "the control domain".to_owned(), ToString::to_string);
+        let since = ago(now.saturating_sub(entry.since().seconds()));
+        let _ = writeln!(
+            out,
+            "    {domain} · a change has been in flight since {since} · \
+             {} of this plan's resources are not planned there",
+            entry.changes()
+        );
+    }
+    out.push_str("  nothing is planned on those until somebody says the machine is theirs again\n");
     out
 }
 

@@ -56,7 +56,10 @@ pub struct Record {
 /// machine that is not answering — and it must never take part in a comparison
 /// during planning, or resources would start to differ from one another because a
 /// minute passed. See decision 0020.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
+#[serde(transparent)]
 pub struct Written(u64);
 
 impl Written {

@@ -28,6 +28,7 @@ use crate::graph::StageKind;
 use std::fmt;
 
 use crate::secret::{Recorded, Sealed, Source};
+use crate::state::Written;
 use crate::value;
 use crate::value::Value;
 
@@ -375,6 +376,48 @@ impl Waiting {
     }
 }
 
+/// A machine, or the control domain, that a run left mid-change.
+///
+/// Its shard holds a mark in flight: a request was written down as going out and
+/// no answer was ever written. Whether it arrived, and what it did, went with
+/// the run that stopped — so nothing is planned there until a person says the
+/// machine is theirs again (`nerpa release`). RFC 0001 §5.8.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Held {
+    domain: Option<Target>,
+    since: Written,
+    changes: usize,
+}
+
+impl Held {
+    pub(crate) fn new(domain: Option<Target>, since: Written, changes: usize) -> Self {
+        Self {
+            domain,
+            since,
+            changes,
+        }
+    }
+
+    /// Which machine, or `None` for the control domain — which has no name a
+    /// machine could also have.
+    #[must_use]
+    pub fn domain(&self) -> Option<&Target> {
+        self.domain.as_ref()
+    }
+
+    /// When the change that holds it was written down.
+    #[must_use]
+    pub fn since(&self) -> Written {
+        self.since
+    }
+
+    /// How many of this plan's resources it holds.
+    #[must_use]
+    pub fn changes(&self) -> usize {
+        self.changes
+    }
+}
+
 /// A resource nothing can be said about, because its machine did not answer.
 ///
 /// Not a change, and deliberately not inside a stage: putting it there would let
@@ -515,6 +558,8 @@ pub struct BlastRadius {
     unreachable: usize,
     #[serde(default)]
     waiting: usize,
+    #[serde(default)]
+    held: usize,
     outdated: usize,
     nodes: BTreeSet<Target>,
 }
@@ -602,6 +647,12 @@ impl BlastRadius {
         self.waiting
     }
 
+    /// Resources on a machine a run left mid-change.
+    #[must_use]
+    pub fn held(&self) -> usize {
+        self.held
+    }
+
     /// Whether anything here cannot be undone.
     ///
     /// A replacement destroys the resource that is there now, and a deletion
@@ -633,6 +684,8 @@ pub struct Plan {
     unreachable: Vec<Unreachable>,
     #[serde(default)]
     waiting: Vec<Waiting>,
+    #[serde(default)]
+    held: Vec<Held>,
     outdated: Vec<Outdated>,
     blast_radius: BlastRadius,
 }
@@ -642,11 +695,13 @@ impl Plan {
         stages: Vec<PlanStage>,
         unreachable: Vec<Unreachable>,
         waiting: Vec<Waiting>,
+        held: Vec<Held>,
         outdated: Vec<Outdated>,
     ) -> Self {
         let mut blast_radius = BlastRadius {
             unreachable: unreachable.len(),
             waiting: waiting.len(),
+            held: held.iter().map(Held::changes).sum(),
             outdated: outdated.len(),
             ..Default::default()
         };
@@ -673,6 +728,7 @@ impl Plan {
             stages,
             unreachable,
             waiting,
+            held,
             outdated,
             blast_radius,
         }
@@ -701,6 +757,12 @@ impl Plan {
         &self.waiting
     }
 
+    /// The machines a run left mid-change, in a stable order.
+    #[must_use]
+    pub fn held(&self) -> &[Held] {
+        &self.held
+    }
+
     // ENFORCES: INV-REACH-003
     /// Whether everything the configuration declares could be looked at.
     ///
@@ -709,7 +771,7 @@ impl Plan {
     /// answer rather than an inconvenience — see decision 0020.
     #[must_use]
     pub fn is_complete(&self) -> bool {
-        self.unreachable.is_empty() && self.waiting.is_empty()
+        self.unreachable.is_empty() && self.waiting.is_empty() && self.held.is_empty()
     }
 
     /// The stages, in execution order. Stages with nothing to do are not here.
@@ -793,15 +855,18 @@ impl serde::Serialize for PlanDigest {
 /// one that only waits used to say it could not look at none of its machines.
 #[derive(Debug, Clone, thiserror::Error, PartialEq, Eq)]
 #[error(
-    "a plan has no digest while it could not look at {machines} of its resources \
-     and {waiting} of them wait for those: it carries how old that knowledge is, an \
-     age moves every second, and a number over it would never settle"
+    "a plan has no digest while it could not look at {machines} of its resources, \
+     {waiting} of them wait for those, and {held} are on a machine a run left \
+     mid-change: it carries how old that knowledge is, an age moves every second, \
+     and a number over it would never settle"
 )]
 pub struct Unhashable {
     /// How many resources their own machine could not be asked about.
     pub machines: usize,
     /// How many wait for something that cannot be planned.
     pub waiting: usize,
+    /// How many are on a machine a run left mid-change.
+    pub held: usize,
 }
 
 impl Plan {
@@ -818,6 +883,7 @@ impl Plan {
             return Err(Unhashable {
                 machines: self.unreachable.len(),
                 waiting: self.waiting.len(),
+                held: self.blast_radius.held,
             });
         }
 
@@ -993,10 +1059,11 @@ fn encode_source(source: &Source, out: &mut Vec<u8>) {
 impl serde::Serialize for Plan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap as _;
-        let mut map = serializer.serialize_map(Some(6))?;
+        let mut map = serializer.serialize_map(Some(7))?;
         map.serialize_entry("stages", &self.stages)?;
         map.serialize_entry("unreachable", &self.unreachable)?;
         map.serialize_entry("waiting", &self.waiting)?;
+        map.serialize_entry("held", &self.held)?;
         map.serialize_entry("outdated", &self.outdated)?;
         map.serialize_entry("blast_radius", &self.blast_radius)?;
         // `null` rather than absent when there is none: a reader that finds no

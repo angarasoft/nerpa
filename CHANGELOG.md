@@ -813,6 +813,14 @@ without ceremony until the first stage is complete.
   took, kept only to remove by where it can. An answer nobody can read by
   position counts as having begun, because it says nothing about what ran.
 
+- A machine a run left mid-change is held. Nothing is planned on it, and the plan
+  says which machine it is, since when a change there has been in flight, and how
+  many of its resources went unplanned — because the point of holding it is that
+  somebody has to be told. It answered, so it is not reported as a machine that
+  did not: that would send a person looking at the network for something that is
+  about a run. A plan with a hold is not complete and has no number, as one with
+  anything out of reach has none.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the
