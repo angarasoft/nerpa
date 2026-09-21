@@ -303,7 +303,8 @@ pub enum Concluded {
 }
 
 /// What the next run does with a change that a run marked and never recorded.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Afterwards {
     /// Reading sees every declared attribute the change sets, so the next run
     /// reads what is there and decides from it.

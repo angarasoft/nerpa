@@ -17,10 +17,12 @@ use std::path::PathBuf;
 
 use nerpa_core::Value;
 use nerpa_core::address::address;
+use nerpa_core::plan::ChangeKind;
+use nerpa_core::provider::Afterwards;
 use nerpa_core::provider::Attributes;
 use nerpa_core::secret::{Key, Recorded};
 use nerpa_core::shards;
-use nerpa_core::state::{Record, State};
+use nerpa_core::state::{Mark, Record, State};
 
 /// A fixed key, so that what one test writes another reads back.
 static DIGEST_KEY: Key = Key::from_bytes([7; 32]);
@@ -128,4 +130,86 @@ fn a_first_run_has_no_state_and_that_is_not_an_error() {
 
     assert!(state.is_empty());
     assert_eq!(key.to_hex().len(), 64, "and it has a key of its own");
+}
+
+/// A mark says a change was sent before it was sent, and survives the run that
+/// sent it.
+///
+/// It is what makes a machine's state recoverable: written before the request
+/// goes out, settled by the write that records the answer, and left behind by a
+/// run that stopped in between — which is what says that machine is held rather
+/// than idle. RFC 0001 §5.6.
+#[test]
+fn a_mark_in_flight_survives_a_trip_through_the_shard() {
+    let scratch = Scratch::new("marks");
+    let mut state = populated();
+
+    let mut locator = Attributes::new();
+    locator.insert("path".to_owned(), Value::Text("/etc/motd".to_owned()));
+    let mut shown = Attributes::new();
+    shown.insert("mode".to_owned(), Value::Text("0644".to_owned()));
+    state.mark(
+        address("os:file.motd@web-01"),
+        Mark::new(ChangeKind::Update, locator.clone(), shown.clone())
+            .after(BTreeSet::new())
+            .afterwards(Afterwards::Read),
+    );
+
+    shards::save(&scratch.directory(), &state, &DIGEST_KEY).expect("it writes");
+    let (read, _) = shards::load(&scratch.directory()).expect("it reads");
+
+    let mark = read
+        .marked(&address("os:file.motd@web-01"))
+        .expect("the mark came back");
+    assert_eq!(mark.kind(), ChangeKind::Update);
+    assert_eq!(mark.locator(), &locator);
+    assert_eq!(mark.shown(), &shown);
+    assert!(
+        mark.in_flight(),
+        "nothing settled it, so it is still in flight"
+    );
+    assert_eq!(read.marks().count(), 1);
+}
+
+/// A mark belongs to the machine its address names, like everything else in a
+/// shard.
+///
+/// Written by hand, because a shard this program wrote could only be wrong by
+/// being in the wrong file — and that is a different check, which fires first.
+/// What is tested here is a shard whose name and whose machine agree, holding a
+/// mark about somebody else.
+#[test]
+fn a_mark_for_another_machine_is_refused() {
+    let scratch = Scratch::new("misfiled");
+    let mut state = State::new();
+    state.mark(
+        address("os:file.motd@web-01"),
+        Mark::new(ChangeKind::Create, Attributes::new(), Attributes::new()),
+    );
+    shards::save(&scratch.directory(), &state, &DIGEST_KEY).expect("it writes");
+
+    let mine = shards::name_of(Some(&nerpa_core::Target::new("web-01").unwrap()));
+    fs::write(
+        scratch.directory().join(&mine),
+        r#"{
+          "target": "web-01",
+          "resources": {},
+          "marks": {
+            "os:file.motd@web-02": {
+              "kind": "create",
+              "locator": {},
+              "written": 1700000000,
+              "afterwards": "read",
+              "standing": "in_flight"
+            }
+          }
+        }"#,
+    )
+    .unwrap();
+
+    let refusal = shards::load(&scratch.directory()).expect_err("that mark is not this machine's");
+    assert!(
+        refusal.to_string().contains("web-02"),
+        "the refusal says which: {refusal}"
+    );
 }

@@ -25,6 +25,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::address::Address;
+use crate::plan::ChangeKind;
+use crate::provider::Afterwards;
 use crate::provider::Attributes;
 use crate::secret::Recorded;
 
@@ -166,10 +168,182 @@ impl Record {
     }
 }
 
+/// Where a mark stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Standing {
+    /// Written before the request went out and not yet answered. Only a mark in
+    /// flight holds its machine: a run that ended while one stood here left a
+    /// change whose outcome nobody knows.
+    InFlight,
+    /// A change that failed after its operations ran, and whose provider says
+    /// reading cannot tell whether it took. It is sent again.
+    Pending,
+    /// The same, for a change reading *can* resolve. Kept only so that what the
+    /// failed change may have made can be removed if its declaration goes.
+    ForRemovalOnly,
+}
+
+/// What a change leaves behind from the moment it is sent until its answer is
+/// written down.
+///
+/// Written before the request, because a request sent without one is a change
+/// nothing records: the run that stops in between leaves a machine that was
+/// acted on and a state file that says it was not. Settled by the write that
+/// records the answer.
+///
+/// It carries no secret value. What it keeps of the change is its locator and
+/// the settled values that were not secrets, which is what the next run needs to
+/// decide what to do about it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Mark {
+    kind: ChangeKind,
+    locator: Attributes,
+    shown: Attributes,
+    depends_on: BTreeSet<Address>,
+    written: Written,
+    past_forgetting: bool,
+    afterwards: Afterwards,
+    standing: Standing,
+    replaced: Option<Box<Mark>>,
+}
+
+impl Mark {
+    /// A mark for a change about to be sent.
+    #[must_use]
+    pub fn new(kind: ChangeKind, locator: Attributes, shown: Attributes) -> Self {
+        Self {
+            kind,
+            locator,
+            shown,
+            depends_on: BTreeSet::new(),
+            written: Written::now(),
+            past_forgetting: false,
+            afterwards: Afterwards::Read,
+            standing: Standing::InFlight,
+            replaced: None,
+        }
+    }
+
+    /// What the change comes after, so that a removal built from this mark can
+    /// be ordered as the record would have been.
+    #[must_use]
+    pub fn after(mut self, depends_on: BTreeSet<Address>) -> Self {
+        self.depends_on = depends_on;
+        self
+    }
+
+    /// What its provider said the next run could do about it, asked when the
+    /// mark was written rather than when it is read: the provider may be gone by
+    /// then, and the answer belongs to the change that was sent.
+    #[must_use]
+    pub fn afterwards(mut self, afterwards: Afterwards) -> Self {
+        self.afterwards = afterwards;
+        self
+    }
+
+    /// A replacement whose removal half is done: what was there is gone, and the
+    /// record with it.
+    #[must_use]
+    pub fn past_forgetting(mut self) -> Self {
+        self.past_forgetting = true;
+        self
+    }
+
+    /// Where it stands, for a mark being written as an entry rather than in
+    /// flight.
+    #[must_use]
+    pub fn standing(mut self, standing: Standing) -> Self {
+        self.standing = standing;
+        self
+    }
+
+    /// The entry this mark was written over, if it was written over one.
+    ///
+    /// Kept because releasing a machine may have to put it back: a mark that
+    /// says less than the entry it replaced would otherwise lose what the entry
+    /// knew.
+    #[must_use]
+    pub fn replacing(mut self, replaced: Mark) -> Self {
+        self.replaced = Some(Box::new(replaced));
+        self
+    }
+
+    /// The same, from what was written down.
+    #[must_use]
+    pub fn written_at(mut self, written: Written) -> Self {
+        self.written = written;
+        self
+    }
+
+    /// What kind of change it was.
+    #[must_use]
+    pub fn kind(&self) -> ChangeKind {
+        self.kind
+    }
+
+    /// Where the resource is, as far as this change knew.
+    #[must_use]
+    pub fn locator(&self) -> &Attributes {
+        &self.locator
+    }
+
+    /// The settled values that were not secrets.
+    #[must_use]
+    pub fn shown(&self) -> &Attributes {
+        &self.shown
+    }
+
+    /// What it came after.
+    #[must_use]
+    pub fn depends_on(&self) -> &BTreeSet<Address> {
+        &self.depends_on
+    }
+
+    /// When it was written.
+    #[must_use]
+    pub fn written(&self) -> Written {
+        self.written
+    }
+
+    /// Whether the removal half of a replacement is already done.
+    #[must_use]
+    pub fn is_past_forgetting(&self) -> bool {
+        self.past_forgetting
+    }
+
+    /// What its provider said the next run could do.
+    #[must_use]
+    pub fn afterwards_said(&self) -> Afterwards {
+        self.afterwards
+    }
+
+    /// Where it stands.
+    #[must_use]
+    pub fn stands(&self) -> Standing {
+        self.standing
+    }
+
+    /// Whether it is still in flight, which is what holds a machine.
+    #[must_use]
+    pub fn in_flight(&self) -> bool {
+        self.standing == Standing::InFlight
+    }
+
+    /// The entry it was written over.
+    #[must_use]
+    pub fn replaced(&self) -> Option<&Mark> {
+        self.replaced.as_deref()
+    }
+}
+
 /// Everything Nerpa has made and not yet removed.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct State {
     resources: BTreeMap<Address, Record>,
+    /// At most one for each address: a change in flight, or an entry a failed
+    /// one left. The next mark for an address replaces what is there.
+    marks: BTreeMap<Address, Mark>,
 }
 
 impl State {
@@ -182,6 +356,31 @@ impl State {
     /// Records what a resource became.
     pub fn record(&mut self, address: Address, record: Record) {
         self.resources.insert(address, record);
+    }
+
+    /// Writes down that a change is about to be sent, or the entry a failed one
+    /// left.
+    ///
+    /// At most one for each address: the next one replaces what is there, which
+    /// is why a mark carries the entry it replaced.
+    pub fn mark(&mut self, address: Address, mark: Mark) {
+        self.marks.insert(address, mark);
+    }
+
+    /// The mark for this address, if it has one.
+    #[must_use]
+    pub fn marked(&self, address: &Address) -> Option<&Mark> {
+        self.marks.get(address)
+    }
+
+    /// Every mark, by address.
+    pub fn marks(&self) -> impl Iterator<Item = (&Address, &Mark)> {
+        self.marks.iter()
+    }
+
+    /// Takes a mark away, which is what the write recording an answer does.
+    pub fn settle(&mut self, address: &Address) -> Option<Mark> {
+        self.marks.remove(address)
     }
 
     /// Writes down that a resource owes a reaction, before its cause is sent.

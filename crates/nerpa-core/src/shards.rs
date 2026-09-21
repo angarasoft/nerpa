@@ -32,20 +32,94 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::address::{Address, Target};
+use crate::plan::ChangeKind;
+use crate::provider::{Afterwards, Attributes};
 use crate::secret::Key;
-use crate::state::State;
+use crate::state::{Mark, Standing, State, Written};
 use crate::store::{Lock, StoreError, StoredRecord};
 
 /// The format this directory is written in.
 pub const VERSION: u32 = 5;
 
-/// What a shard holds: the machine it is about, and its records.
+/// What a shard holds: the machine it is about, its records, and the marks of
+/// changes that were sent for it.
 #[derive(Serialize, Deserialize)]
 struct Shard {
     /// The machine, as it is written in an address, or absent for `control`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     target: Option<String>,
     resources: BTreeMap<String, StoredRecord>,
+    /// Absent when there are none, so an ordinary shard carries no sign of a
+    /// mechanism that did not fire.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    marks: BTreeMap<String, StoredMark>,
+}
+
+/// What one mark looks like on disk.
+#[derive(Serialize, Deserialize)]
+struct StoredMark {
+    kind: ChangeKind,
+    locator: Attributes,
+    /// The settled values that were not secrets. A mark never holds a secret.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    shown: Attributes,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    depends_on: Vec<String>,
+    written: u64,
+    /// True only for a replacement whose removal half is done.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    past_forgetting: bool,
+    afterwards: Afterwards,
+    standing: Standing,
+    /// The entry this mark was written over, where it was written over one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    replaced: Option<Box<StoredMark>>,
+}
+
+/// What a mark looks like on its way to disk.
+fn stored_mark(mark: &Mark) -> StoredMark {
+    StoredMark {
+        kind: mark.kind(),
+        locator: mark.locator().clone(),
+        shown: mark.shown().clone(),
+        depends_on: mark.depends_on().iter().map(ToString::to_string).collect(),
+        written: mark.written().seconds(),
+        past_forgetting: mark.is_past_forgetting(),
+        afterwards: mark.afterwards_said(),
+        standing: mark.stands(),
+        replaced: mark
+            .replaced()
+            .map(|replaced| Box::new(stored_mark(replaced))),
+    }
+}
+
+/// And what it is when it comes back.
+fn marked(path: &Path, stored: StoredMark) -> Result<Mark, StoreError> {
+    let refuse = |problem: String| StoreError::Format {
+        path: path.display().to_string(),
+        problem,
+    };
+    let depends_on = stored
+        .depends_on
+        .iter()
+        .map(|text| {
+            text.parse::<Address>()
+                .map_err(|error| refuse(format!("{text:?}: {error}")))
+        })
+        .collect::<Result<_, _>>()?;
+
+    let mut mark = Mark::new(stored.kind, stored.locator, stored.shown)
+        .after(depends_on)
+        .afterwards(stored.afterwards)
+        .standing(stored.standing)
+        .written_at(Written::at(stored.written));
+    if stored.past_forgetting {
+        mark = mark.past_forgetting();
+    }
+    if let Some(replaced) = stored.replaced {
+        mark = mark.replacing(marked(path, *replaced)?);
+    }
+    Ok(mark)
 }
 
 /// What `format` holds.
@@ -468,17 +542,31 @@ fn held_by(path: &Path, state: &mut State) -> Result<(), StoreError> {
     }
 
     for (written, stored) in shard.resources {
-        let address: Address = written
-            .parse()
-            .map_err(|error| refuse(format!("{written:?}: {error}")))?;
-        if address.target() != target.as_ref() {
-            return Err(refuse(format!(
-                "{written} does not live on the machine this shard is about"
-            )));
-        }
+        let address = belonging(&written, target.as_ref(), path)?;
         state.record(address, crate::store::recorded(path, stored)?);
     }
+    for (written, stored) in shard.marks {
+        let address = belonging(&written, target.as_ref(), path)?;
+        state.mark(address, marked(path, stored)?);
+    }
     Ok(())
+}
+
+/// An address from a shard, checked against the machine that shard is about.
+fn belonging(written: &str, target: Option<&Target>, path: &Path) -> Result<Address, StoreError> {
+    let refuse = |problem: String| StoreError::Format {
+        path: path.display().to_string(),
+        problem,
+    };
+    let address: Address = written
+        .parse()
+        .map_err(|error| refuse(format!("{written:?}: {error}")))?;
+    if address.target() != target {
+        return Err(refuse(format!(
+            "{written} does not live on the machine this shard is about"
+        )));
+    }
+    Ok(address)
 }
 
 /// Reads one file of the directory.
@@ -520,19 +608,33 @@ fn write_all(
     write(directory, "key", key.to_hex().as_bytes())?;
 
     let mut held: BTreeMap<String, Shard> = BTreeMap::new();
+    let shard_for = |held: &mut BTreeMap<String, Shard>, address: &Address| {
+        held.entry(name_of(address.target()))
+            .or_insert_with(|| Shard {
+                target: address.target().map(ToString::to_string),
+                resources: BTreeMap::new(),
+                marks: BTreeMap::new(),
+            });
+        name_of(address.target())
+    };
     for address in state.addresses() {
         let Some(record) = state.get(address) else {
             continue;
         };
-        let shard = held
-            .entry(name_of(address.target()))
-            .or_insert_with(|| Shard {
-                target: address.target().map(ToString::to_string),
-                resources: BTreeMap::new(),
-            });
-        shard
-            .resources
-            .insert(address.to_string(), crate::store::stored(record));
+        let name = shard_for(&mut held, address);
+        if let Some(shard) = held.get_mut(&name) {
+            shard
+                .resources
+                .insert(address.to_string(), crate::store::stored(record));
+        }
+    }
+    // A machine with a change in flight and nothing recorded still has a shard:
+    // the mark is what says that machine was being acted on.
+    for (address, mark) in state.marks() {
+        let name = shard_for(&mut held, address);
+        if let Some(shard) = held.get_mut(&name) {
+            shard.marks.insert(address.to_string(), stored_mark(mark));
+        }
     }
 
     for (name, shard) in held {

@@ -787,6 +787,16 @@ without ceremony until the first stage is complete.
   shared, so two plans may read at once and neither reads a live run's work as
   though that run had ended; applying takes it exclusive.
 
+- A shard holds the marks of changes that were sent for its machine, beside the
+  records of what they became. A mark is written before the request goes out and
+  carries what the next run needs to decide what to do about it — the kind, the
+  locator, the settled values that were not secrets, the edges, when it was
+  written, whether a replacement's removal half is already done, what its
+  provider said reading could resolve, and the entry it was written over. A
+  machine with a change in flight and nothing recorded still has a shard, because
+  the mark is what says that machine was being acted on. Nothing writes one yet:
+  the engine comes next.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the
