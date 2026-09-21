@@ -249,3 +249,48 @@ fn a_record_from_the_future_is_reported_as_no_age_at_all() {
     let written = Written::at(2_000_000_000);
     assert_eq!(written.age(Written::at(1_000_000_000)).as_secs(), 0);
 }
+
+/// A lock file left behind by a run that was killed is not a lock.
+///
+/// It was: the file's existence was the lock, so a run that died — a Ctrl-C at
+/// the wrong moment, a machine rebooted mid-run — left a file that refused every
+/// later run until somebody deleted it by hand. Deleting it by hand is the one
+/// thing a lock exists to stop people doing carelessly. Held by the kernel
+/// instead, it is released when the process ends, however it ends. RFC 0001
+/// §5.8.
+#[test]
+fn a_lock_file_left_behind_by_a_dead_run_is_not_a_lock() {
+    let scratch = Scratch::new("stale");
+    let mut left = scratch.file().into_os_string();
+    left.push(".lock");
+    fs::write(&left, "pid 1234 since 1700000000").unwrap();
+
+    let taken = Lock::take(&scratch.file());
+    assert!(
+        taken.is_ok(),
+        "nobody holds it, whatever the file says: {taken:?}"
+    );
+}
+
+/// Planning reads and writes nothing, so several plans may hold the lock at
+/// once; a run that writes may not start while any of them is reading.
+///
+/// A lock file's existence cannot say this: it is held or it is not. RFC 0001
+/// §5.8, where `plan` takes it shared so that it never reads a live run's marks
+/// as though that run had ended.
+#[test]
+fn two_plans_may_read_at_once_and_a_run_that_writes_may_not() {
+    let scratch = Scratch::new("shared");
+    let reading = Lock::shared(&scratch.file()).expect("nobody holds it");
+    let alongside = Lock::shared(&scratch.file()).expect("one reader does not keep another out");
+
+    let refused = Lock::take(&scratch.file());
+    assert!(
+        matches!(refused, Err(StoreError::Locked { .. })),
+        "a run that writes waits for the readers: {refused:?}"
+    );
+
+    drop(reading);
+    drop(alongside);
+    Lock::take(&scratch.file()).expect("and once they are done it may write");
+}

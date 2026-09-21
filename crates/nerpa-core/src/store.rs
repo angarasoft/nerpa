@@ -182,61 +182,92 @@ pub(crate) fn recorded(where_from: &Path, stored: StoredRecord) -> Result<Record
 }
 
 /// Holds the lock for as long as it exists.
+///
+/// The file is the lock's name; the `flock` on this open file is the lock. It is
+/// dropped by closing, which the kernel does whatever ends the process.
 #[derive(Debug)]
 pub struct Lock {
-    path: PathBuf,
+    /// Never read: what it is for is being open. The `flock` lives as long as
+    /// this descriptor does, and closing it is what releases the lock — so the
+    /// value is the lock, and reading it would say nothing.
+    #[allow(dead_code, reason = "held open for as long as the lock is")]
+    held: fs::File,
 }
 
 impl Lock {
-    /// Takes the lock beside `state`, or reports who has it.
+    /// Takes the lock beside `state` for a run that writes, or reports who has
+    /// it.
     ///
     /// # Errors
     ///
     /// Returns [`StoreError::Locked`] if another run holds it, and
-    /// [`StoreError::File`] if it could not be created at all.
+    /// [`StoreError::File`] if the file could not be opened at all.
     pub fn take(state: &Path) -> Result<Self, StoreError> {
+        Self::held(state, rustix::fs::FlockOperation::NonBlockingLockExclusive)
+    }
+
+    /// Takes it for a run that only reads, which several may hold at once.
+    ///
+    /// Planning takes it this way: it must not read a live run's marks as
+    /// though the run had ended, and it has nothing to write. Two plans can run
+    /// side by side; an apply cannot start while either is reading.
+    ///
+    /// # Errors
+    ///
+    /// The same as [`Lock::take`].
+    pub fn shared(state: &Path) -> Result<Self, StoreError> {
+        Self::held(state, rustix::fs::FlockOperation::NonBlockingLockShared)
+    }
+
+    /// The lock file, opened and held.
+    ///
+    /// Created if it is not there and never removed. What makes it a lock is the
+    /// `flock` on the open file, which the kernel releases when the last
+    /// descriptor closes — so a run that was killed leaves the file behind and
+    /// no lock, where before it left a file that refused every later run.
+    fn held(state: &Path, how: rustix::fs::FlockOperation) -> Result<Self, StoreError> {
         let path = lock_path(state);
-        match fs::OpenOptions::new()
+        let trouble = |problem: String| StoreError::File {
+            path: path.display().to_string(),
+            problem,
+        };
+        let file = fs::OpenOptions::new()
+            .read(true)
             .write(true)
-            .create_new(true)
+            .create(true)
+            .truncate(false)
             .open(&path)
-        {
-            Ok(mut file) => {
-                // Who holds it, so the refusal can say. A lock file that names
-                // nobody leaves a person one option — delete it — which is the
-                // one thing the lock exists to stop them doing carelessly.
-                use std::io::Write as _;
-                let _ = write!(
-                    file,
-                    "pid {} since {}",
-                    std::process::id(),
-                    Written::now().seconds()
-                );
-                Ok(Self { path })
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+            .map_err(|error| trouble(error.to_string()))?;
+
+        match rustix::fs::flock(&file, how) {
+            Ok(()) => {}
+            Err(rustix::io::Errno::WOULDBLOCK) => {
+                // Who holds it, so the refusal can say. A lock that names nobody
+                // leaves a person one option — delete the file — which does
+                // nothing now and was the dangerous thing before.
                 let holder = fs::read_to_string(&path)
                     .ok()
                     .filter(|written| !written.trim().is_empty())
                     .unwrap_or_else(|| "a run that did not say which".to_owned());
-                Err(StoreError::Locked {
+                return Err(StoreError::Locked {
                     path: path.display().to_string(),
                     holder: holder.trim().to_owned(),
-                })
+                });
             }
-            Err(error) => Err(StoreError::File {
-                path: path.display().to_string(),
-                problem: error.to_string(),
-            }),
+            Err(error) => return Err(trouble(error.to_string())),
         }
-    }
-}
 
-impl Drop for Lock {
-    fn drop(&mut self) {
-        // Best effort on the way out. A lock left behind is an inconvenience; a
-        // panic while unwinding would be worse.
-        let _ = fs::remove_file(&self.path);
+        if how == rustix::fs::FlockOperation::NonBlockingLockExclusive {
+            use std::io::Write as _;
+            let _ = file.set_len(0);
+            let _ = write!(
+                &file,
+                "pid {} since {}",
+                std::process::id(),
+                Written::now().seconds()
+            );
+        }
+        Ok(Self { held: file })
     }
 }
 

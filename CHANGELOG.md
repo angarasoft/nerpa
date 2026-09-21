@@ -760,6 +760,14 @@ without ceremony until the first stage is complete.
   rather than reading past it. Nothing uses it yet: the marks, the entries, the
   lock and the migration from format 4 come after it.
 
+- The state lock is held by the kernel rather than by a file existing. A run that
+  was killed left its lock file behind, and every later run was refused by a run
+  that no longer existed until somebody deleted the file by hand — which is the
+  one thing a lock exists to stop them doing carelessly. It is `flock` now: the
+  file is created once and never removed, and the lock goes when the process
+  does, however it goes. A run that only reads can take it shared, which a file's
+  existence cannot express.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

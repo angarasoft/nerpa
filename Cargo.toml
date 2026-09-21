@@ -88,6 +88,13 @@ getrandom = "0.4"
 # Bytes in a human-readable state file. JSON has no way to say "these are
 # bytes", and an array of numbers cannot be told apart from a list of integers.
 base64 = "0.23"
+# `flock`, and nothing else from it. A lock held by the kernel is released when
+# the process ends however it ends, which a lock file's existence cannot do: a
+# run that was killed left a file that refused every later run until somebody
+# deleted it by hand — the one thing a lock exists to stop them doing carelessly.
+# Already in this tree under `starlark`, so nothing new is compiled for it, and
+# it keeps the `unsafe` a raw call would need out of a workspace that denies it.
+rustix = { version = "1.1", features = ["fs"] }
 
 # Lint levels live here, at the workspace, and they are set now rather than
 # later on purpose. Turning a strict lint on across a thousand lines is an
