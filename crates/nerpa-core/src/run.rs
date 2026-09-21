@@ -16,12 +16,12 @@ use crate::graph::{Graph, GraphError};
 use crate::observed::{Facts, Observed};
 use crate::plan::{Change, ChangeKind, Confidence, Plan};
 use crate::provider::{
-    Afterwards, Answered, Attributes, Concluded, Concluding, Machines, Planned, Prepared, Provider,
+    Answered, Attributes, Concluded, Concluding, Machines, Planned, Prepared, Provider,
     ProviderError, Providers, Reach, Reading, Sending,
 };
 use crate::resource::Resource;
 use crate::secret::{FetchError, Recorded, Secrets};
-use crate::state::{Mark, Record, Recording, Standing, State};
+use crate::state::{Mark, Record, Recording, State};
 use crate::{ensures, requires};
 
 /// One journey's worth: who is asked, where they have to go, and about what.
@@ -907,11 +907,7 @@ fn accounted_for(
         // to deal with: sent again where reading cannot tell whether it took,
         // and kept only to remove by where it can.
         (Some(mark), true) => {
-            let standing = match mark.afterwards_said() {
-                Afterwards::SendAgain => Standing::Pending,
-                Afterwards::Read => Standing::ForRemovalOnly,
-            };
-            state.mark(address.clone(), mark.standing(standing));
+            state.mark(address.clone(), mark.settled());
         }
         // Nothing ran. What was there before this run's mark comes back, so an
         // entry an earlier run left is not lost by a run that never sent

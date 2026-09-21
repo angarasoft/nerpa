@@ -821,6 +821,14 @@ without ceremony until the first stage is complete.
   about a run. A plan with a hold is not complete and has no number, as one with
   anything out of reach has none.
 
+- `nerpa release <machine>` says a machine is yours again after a run was killed
+  while changing it, and `--control` does the same for what lives on no machine.
+  A hold has to have a way out, or a killed run takes the machine with it for
+  good — the trap the old lock file was. Only a person can give it: nothing here
+  can tell whether those changes arrived, and somebody who can look at the
+  machine can. What was in flight is not thrown away; it becomes what the next
+  plan has to deal with, by what its provider said reading could resolve.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

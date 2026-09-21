@@ -197,3 +197,49 @@ fn a_held_machine_is_not_reported_as_one_that_did_not_answer() {
         plan.unreachable()
     );
 }
+
+/// Releasing a machine settles the changes that were in flight on it.
+///
+/// A hold has to have a way out, or a run that was killed takes the machine with
+/// it for good. Only a person can give it: nothing here can tell whether the
+/// change arrived, so somebody who can look at the machine says it is theirs
+/// again. What was in flight does not vanish — it becomes what the next plan has
+/// to deal with. RFC 0001 §5.8.
+#[test]
+fn releasing_a_machine_settles_what_was_in_flight_on_it() {
+    let mut state = in_flight();
+    let released = state.release(Some(&Target::new("web-01").unwrap()));
+
+    assert_eq!(released, 1, "one change was in flight there");
+    let mark = state
+        .marked(&address("os:file.motd@web-01"))
+        .expect("what it was doing is not thrown away");
+    assert!(
+        !mark.in_flight(),
+        "nothing is in flight there any more: {:?}",
+        mark.stands()
+    );
+
+    let graph = graph_of(false);
+    let plan = planned(&graph, &state);
+    assert!(
+        plan.held().is_empty(),
+        "and the machine is not held: {:?}",
+        plan.held()
+    );
+}
+
+/// And releasing one machine says nothing about another.
+#[test]
+fn releasing_one_machine_leaves_the_others_as_they_were() {
+    let mut state = in_flight();
+    let released = state.release(Some(&Target::new("web-02").unwrap()));
+
+    assert_eq!(released, 0, "nothing was in flight there");
+    assert!(
+        state
+            .marked(&address("os:file.motd@web-01"))
+            .is_some_and(Mark::in_flight),
+        "the machine that was left mid-change still is"
+    );
+}

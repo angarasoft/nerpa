@@ -71,6 +71,18 @@ enum Task {
     },
     /// Make it happen.
     Apply,
+    /// Say a machine is yours again after a run was killed while changing it.
+    ///
+    /// Nothing here can tell whether those changes arrived; somebody who can
+    /// look at the machine can. What was in flight becomes what the next plan
+    /// has to deal with rather than being thrown away.
+    Release {
+        /// Which machine.
+        machine: Option<String>,
+        /// What lives on no machine, which has no name a machine could share.
+        #[arg(long, conflicts_with = "machine")]
+        control: bool,
+    },
 }
 
 fn main() -> ExitCode {
@@ -270,7 +282,50 @@ fn speaking(
     Ok(Box::new(reach))
 }
 
+/// Settles what a killed run left in flight on one machine.
+///
+/// Takes the lock every command that writes the directory takes, so it refuses
+/// beside a live run rather than settling marks that run is about to answer for.
+fn release(arguments: &Arguments, machine: Option<&str>, control: bool) -> Result<(), String> {
+    let domain = match (machine, control) {
+        (Some(name), false) => Some(Target::new(name).map_err(|error| format!("{name}: {error}"))?),
+        (None, true) => None,
+        (None, false) => {
+            return Err("name a machine, or --control for what lives on no machine".to_owned());
+        }
+        (Some(_), true) => {
+            return Err("name a machine or say --control, not both".to_owned());
+        }
+    };
+
+    let (mut state, key, _lock) = shards::opened(&arguments.state, shards::Taking::Writing)
+        .map_err(|error| error.to_string())?;
+    let settled = state.release(domain.as_ref());
+    shards::save(&shards::beside(&arguments.state), &state, &key)
+        .map_err(|error| error.to_string())?;
+
+    let named = domain.map_or_else(
+        || "the control domain".to_owned(),
+        |domain| domain.to_string(),
+    );
+    let said = match settled {
+        0 => format!("nothing was in flight on {named}"),
+        1 => format!("{named} is yours again; one change that was in flight is now an entry"),
+        many => {
+            format!("{named} is yours again; {many} changes that were in flight are now entries")
+        }
+    };
+    println!("{said}");
+    Ok(())
+}
+
 fn run_task(arguments: &Arguments) -> Result<(), String> {
+    // Before the configuration is read, because releasing a machine is about
+    // what a run left behind rather than about what anybody declares.
+    if let Task::Release { machine, control } = &arguments.task {
+        return release(arguments, machine.as_deref(), *control);
+    }
+
     let source = std::fs::read_to_string(&arguments.file)
         .map_err(|error| format!("{}: {error}", arguments.file.display()))?;
 
@@ -315,7 +370,8 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     // as though that run had ended.
     let taking = match arguments.task {
         Task::Plan { .. } => shards::Taking::Reading,
-        Task::Apply => shards::Taking::Writing,
+        // Releasing returned above; it never gets this far.
+        Task::Apply | Task::Release { .. } => shards::Taking::Writing,
     };
     let (mut state, key, _lock) =
         shards::opened(&arguments.state, taking).map_err(|error| error.to_string())?;

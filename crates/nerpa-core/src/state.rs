@@ -24,7 +24,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::address::Address;
+use crate::address::{Address, Target};
 use crate::plan::ChangeKind;
 use crate::provider::Afterwards;
 use crate::provider::Attributes;
@@ -338,6 +338,29 @@ impl Mark {
     pub fn replaced(&self) -> Option<&Mark> {
         self.replaced.as_deref()
     }
+
+    /// What this mark becomes once nobody will ever learn whether its request
+    /// arrived: an entry, by what its provider said reading could resolve.
+    ///
+    /// A change reading cannot resolve is sent again; one it can is kept only so
+    /// that what the change may have made can be removed if its declaration
+    /// goes. An entry this mark was written over comes back where it says more
+    /// than that — a resend that must still happen outlives a record of
+    /// something to remove by.
+    #[must_use]
+    pub fn settled(self) -> Self {
+        let standing = match self.afterwards {
+            Afterwards::SendAgain => Standing::Pending,
+            Afterwards::Read => Standing::ForRemovalOnly,
+        };
+        if let Some(replaced) = &self.replaced
+            && replaced.standing == Standing::Pending
+            && standing == Standing::ForRemovalOnly
+        {
+            return (**replaced).clone();
+        }
+        self.standing(standing)
+    }
 }
 
 /// Everything Nerpa has made and not yet removed.
@@ -384,6 +407,31 @@ impl State {
     /// Takes a mark away, which is what the write recording an answer does.
     pub fn settle(&mut self, address: &Address) -> Option<Mark> {
         self.marks.remove(address)
+    }
+
+    /// Settles every change left in flight on one machine, or on the control
+    /// domain, and says how many there were.
+    ///
+    /// What a person does when a run was killed: nothing here can tell whether
+    /// the changes arrived, so somebody who can look at the machine says it is
+    /// theirs again. What was in flight is not thrown away — it becomes what the
+    /// next plan has to deal with, because something may be out there that only
+    /// the entry remembers. RFC 0001 §5.8.
+    pub fn release(&mut self, domain: Option<&Target>) -> usize {
+        let held: Vec<Address> = self
+            .marks
+            .iter()
+            .filter(|(address, mark)| mark.in_flight() && address.target() == domain)
+            .map(|(address, _)| (*address).clone())
+            .collect();
+
+        let settled = held.len();
+        for address in held {
+            if let Some(mark) = self.marks.remove(&address) {
+                self.marks.insert(address, mark.settled());
+            }
+        }
+        settled
     }
 
     /// Writes down that a resource owes a reaction, before its cause is sent.
