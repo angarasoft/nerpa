@@ -213,3 +213,28 @@ fn a_mark_for_another_machine_is_refused() {
         "the refusal says which: {refusal}"
     );
 }
+
+/// A machine whose last record is gone keeps nothing.
+///
+/// A write rewrites the shards of the machines state has something for, and a
+/// machine that has nothing has no shard to write — so the file left from when
+/// it did stayed exactly as it was. What that says is that a resource removed
+/// on the last machine it lived on is still there, which the next plan believes
+/// and acts on for ever. RFC 0001 §5.6.
+#[test]
+fn a_machine_whose_last_thing_is_gone_remembers_nothing() {
+    let scratch = Scratch::new("emptied");
+    shards::save(&scratch.directory(), &populated(), &DIGEST_KEY).expect("it writes");
+
+    // Everything on web-01 is taken away, and everything else stays.
+    let mut left = populated();
+    left.forget(&address("os:file.motd@web-01"));
+    shards::save(&scratch.directory(), &left, &DIGEST_KEY).expect("it writes again");
+
+    let (read, _key) = shards::load(&scratch.directory()).expect("it reads");
+    assert_eq!(read, left, "what was taken away is not remembered");
+    assert!(
+        read.get(&address("os:file.motd@web-02")).is_some(),
+        "and the machine that kept its own is untouched"
+    );
+}

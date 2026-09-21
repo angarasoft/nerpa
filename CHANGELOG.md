@@ -1047,3 +1047,10 @@ without ceremony until the first stage is complete.
   address whose only trace was an entry read as undeclared with its declaration
   right there, and one plan both removed it and made it again. Both sides ask
   `State::remembered` now, so the two cannot drift apart again.
+
+- A machine whose last record went away kept the shard it had before. A write
+  rewrites the shards of machines state has something for, and a machine that
+  has nothing has no shard to write — so the file stayed exactly as it was, and
+  a resource removed on the last machine it lived on came back on the next read,
+  for every run after. The last thing on a machine going away now takes that
+  machine's shard with it.

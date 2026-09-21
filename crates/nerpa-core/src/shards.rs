@@ -25,7 +25,7 @@
 //! Marks, entries, the lock and the migration from format 4, which the same
 //! section describes and which come after this.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -40,6 +40,9 @@ use crate::store::{Lock, StoreError, StoredRecord};
 
 /// The format this directory is written in.
 pub const VERSION: u32 = 5;
+
+/// The shard for what lives on no machine, which has no target to name it by.
+const CONTROL: &str = "control";
 
 /// What a shard holds: the machine it is about, its records, and the marks of
 /// changes that were sent for it.
@@ -147,7 +150,7 @@ struct Format {
 #[must_use]
 pub fn name_of(target: Option<&Target>) -> String {
     match target {
-        None => "control".to_owned(),
+        None => CONTROL.to_owned(),
         Some(target) => blake3::hash(target.as_str().as_bytes())
             .to_hex()
             .to_string(),
@@ -460,7 +463,7 @@ pub fn load(directory: &Path) -> Result<(State, Key), StoreError> {
                     refuse(&path, "not thirty-two bytes of hexadecimal".to_owned())
                 })?);
             }
-            "control" => shards.push(path),
+            CONTROL => shards.push(path),
             name if is_a_machine(name) => shards.push(path),
             // Ignored by name, because a write leaves one behind and a report is
             // not state.
@@ -495,6 +498,30 @@ pub fn load(directory: &Path) -> Result<(State, Key), StoreError> {
         held_by(&path, &mut state)?;
     }
     Ok((state, key))
+}
+
+/// The shards already in the directory: one machine's digest, or `control`.
+///
+/// Nothing else is named here. `key`, `format` and `lock` belong to the
+/// directory rather than to a machine, and a leftover `.new` is somebody's
+/// unfinished write.
+fn beside_them(directory: &Path) -> Result<Vec<String>, StoreError> {
+    let trouble = |error: &std::io::Error| StoreError::File {
+        path: directory.display().to_string(),
+        problem: error.to_string(),
+    };
+    let mut names = Vec::new();
+    for entry in fs::read_dir(directory).map_err(|error| trouble(&error))? {
+        let name = entry
+            .map_err(|error| trouble(&error))?
+            .file_name()
+            .to_string_lossy()
+            .into_owned();
+        if name == CONTROL || is_a_machine(&name) {
+            names.push(name);
+        }
+    }
+    Ok(names)
 }
 
 /// What a write leaves beside the file it is replacing, until the rename.
@@ -637,12 +664,28 @@ fn write_all(
         }
     }
 
+    let written: BTreeSet<String> = held.keys().cloned().collect();
     for (name, shard) in held {
         let text = serde_json::to_string_pretty(&shard).map_err(|error| StoreError::File {
             path: directory.join(&name).display().to_string(),
             problem: error.to_string(),
         })?;
         write(directory, &name, text.as_bytes())?;
+    }
+
+    // A machine state has nothing for has no shard to write — and the file from
+    // when it had something would sit there saying otherwise. So the last thing
+    // on a machine going away has to take that machine's shard with it, or a
+    // resource removed on the last machine it lived on is remembered for ever
+    // and every later plan acts on it. Taken away after the shards that do have
+    // something are written, and made durable by the directory's own sync
+    // below, so a crash in the middle leaves a state that was true earlier
+    // rather than one that was never true.
+    for name in beside_them(directory)? {
+        if !written.contains(&name) {
+            let path = directory.join(&name);
+            fs::remove_file(&path).map_err(|error| trouble(&path, &error))?;
+        }
     }
 
     let format = serde_json::to_string_pretty(&Format {
