@@ -101,7 +101,12 @@ pub(crate) fn check() -> Result<(), String> {
         return Err(complaints.join("\n"));
     }
 
-    let count = |wanted: &str| records.iter().filter(|(_, status)| status == wanted).count();
+    let count = |wanted: &str| {
+        records
+            .iter()
+            .filter(|(_, status)| status == wanted)
+            .count()
+    };
     eprintln!(
         "  invariants: {} registered, {} enforced, {} claimed, {} planned",
         records.len(),
