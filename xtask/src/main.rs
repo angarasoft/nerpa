@@ -78,7 +78,13 @@ fn main() -> ExitCode {
         Some("test") => test(),
         Some("invariants") => invariants::check(),
         Some("docs") => docs::check(),
-        Some("convert") => convert::check(),
+        Some("convert") => {
+            if std::env::args().nth(2).as_deref() == Some("--write") {
+                convert::write()
+            } else {
+                convert::check()
+            }
+        }
         Some("deny") => deny(),
         Some("book") => book::check(),
         Some("budget") => budget::check(),

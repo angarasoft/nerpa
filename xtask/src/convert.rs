@@ -194,9 +194,9 @@ fn status_to_rs(status: &Status) -> String {
 
 fn date_to_rs(date: &str) -> String {
     let mut parts = date.split('-');
-    let year = parts.next().unwrap_or("0");
-    let month = parts.next().unwrap_or("0");
-    let day = parts.next().unwrap_or("0");
+    let year: u32 = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
+    let month: u32 = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
+    let day: u32 = parts.next().and_then(|part| part.parse().ok()).unwrap_or(0);
     format!("slipway_core::date!({year}, {month}, {day})")
 }
 
@@ -438,6 +438,23 @@ pub(crate) fn check() -> Result<(), String> {
             failures.join("\n\n")
         ))
     }
+}
+
+/// Write every decision record into the registry — the wave-1 conversion. A
+/// record that does not survive the round trip is not written; the round trip is
+/// the safety net, run before anything moves rather than after.
+pub(crate) fn write() -> Result<(), String> {
+    let mut written = 0;
+    for number in numbers()? {
+        let markdown = read(number)?;
+        round_trip(&markdown, number)?;
+        let record = render_rs(&parse_markdown(&markdown));
+        let path = shell::root().join(format!("doc/adr/adr-2026-{number:04}.rs"));
+        fs::write(&path, record).map_err(|error| format!("{}: {error}", path.display()))?;
+        written += 1;
+    }
+    eprintln!("  convert: wrote {written} records to doc/adr/");
+    Ok(())
 }
 
 #[cfg(test)]
