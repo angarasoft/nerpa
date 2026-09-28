@@ -10,6 +10,8 @@
 //! `slice/` — slices, `work/` — work items, `journal/` — events, `taxonomy.rs` —
 //! the subsystem and team axes.
 
+pub mod invariant;
+pub mod proposal;
 pub mod review;
 pub mod taxonomy;
 
