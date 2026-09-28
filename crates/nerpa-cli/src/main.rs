@@ -524,7 +524,9 @@ mod tests {
     }
 
     #[test]
-    #[dacc_derive::doc_anchor(id = "a-connection-that-fails-before-anything-is-read-does-not-end-the-run")]
+    #[dacc_derive::doc_anchor(
+        id = "a-connection-that-fails-before-anything-is-read-does-not-end-the-run"
+    )]
     fn a_connection_that_fails_before_anything_is_read_does_not_end_the_run() {
         let nodes = [node("up"), node("down"), node("also-up")];
         let (machines, _) = registry(&nodes, &opens);

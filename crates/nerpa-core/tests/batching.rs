@@ -275,7 +275,9 @@ fn something_only_state_remembers_travels_with_the_rest() {
 /// remembered, which is the shape of silent wrongness this project exists to
 /// avoid: the run continues, and it continues about the wrong thing.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-graph-that-cannot-be-ordered-stops-the-run-rather-than-reading-as-empty")]
+#[dacc_derive::doc_anchor(
+    id = "a-graph-that-cannot-be-ordered-stops-the-run-rather-than-reading-as-empty"
+)]
 fn a_graph_that_cannot_be_ordered_stops_the_run_rather_than_reading_as_empty() {
     let mut graph = Graph::new();
     for (name, after) in [("a", "os:file.b@web-01"), ("b", "os:file.a@web-01")] {

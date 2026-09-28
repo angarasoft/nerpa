@@ -257,7 +257,9 @@ fn a_secret_that_cannot_be_fetched_stops_the_plan() {
 /// and the rotation still goes through the sealed premise it carries now. See
 /// decision 0041.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-rotated-secret-leaves-no-unkeyed-digest-of-the-old-one-in-the-plan")]
+#[dacc_derive::doc_anchor(
+    id = "a-rotated-secret-leaves-no-unkeyed-digest-of-the-old-one-in-the-plan"
+)]
 fn a_rotated_secret_leaves_no_unkeyed_digest_of_the_old_one_in_the_plan() {
     use std::os::unix::fs::PermissionsExt as _;
 

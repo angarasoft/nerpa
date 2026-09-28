@@ -308,7 +308,9 @@ fn moving_a_file_replaces_it_and_takes_the_old_one_with_it() {
 /// A resource that leaves the configuration leaves the world. Nothing in the
 /// world says so — only state remembers that Nerpa made it.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-resource-removed-from-the-configuration-is-removed-from-the-machine")]
+#[dacc_derive::doc_anchor(
+    id = "a-resource-removed-from-the-configuration-is-removed-from-the-machine"
+)]
 fn a_resource_removed_from_the_configuration_is_removed_from_the_machine() {
     let scratch = Scratch::new("delete");
     let providers = providers();
@@ -548,7 +550,9 @@ fn an_edge_added_to_a_resource_that_already_matches_is_remembered() {
 /// thing it points at existed. State kept no edge for it, since only a value
 /// still unknown was taken to mean a dependency. Review found it.
 #[test]
-#[dacc_derive::doc_anchor(id = "what-read-from-a-thing-that-already-existed-is-removed-before-the-thing")]
+#[dacc_derive::doc_anchor(
+    id = "what-read-from-a-thing-that-already-existed-is-removed-before-the-thing"
+)]
 fn what_read_from_a_thing_that_already_existed_is_removed_before_the_thing() {
     let scratch = Scratch::new("order-resolved");
     let providers = providers();
@@ -1170,7 +1174,9 @@ fn a_replaced_directory_waits_for_the_file_moving_out_of_it() {
 /// path stayed on the machine with nothing recording it, and the next run had
 /// nothing to do. Found by the review of RFC 0001's fourth revision.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-file-moved-onto-a-path-a-removal-frees-leaves-nothing-at-the-old-path")]
+#[dacc_derive::doc_anchor(
+    id = "a-file-moved-onto-a-path-a-removal-frees-leaves-nothing-at-the-old-path"
+)]
 fn a_file_moved_onto_a_path_a_removal_frees_leaves_nothing_at_the_old_path() {
     let scratch = Scratch::new("moved-onto-freed");
     let (old, freed) = (scratch.join("x"), scratch.join("y"));
@@ -1266,7 +1272,9 @@ fn a_mode_beyond_the_permission_bits_is_refused_while_planning() {
 /// premise moved; either took more runs to come back. Found by the review of RFC
 /// 0001's fifth revision.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-file-declared-where-a-replacement-moves-one-away-is-made-after-it")]
+#[dacc_derive::doc_anchor(
+    id = "a-file-declared-where-a-replacement-moves-one-away-is-made-after-it"
+)]
 fn a_file_declared_where_a_replacement_moves_one_away_is_made_after_it() {
     for (name, content) in [("same", "x\n"), ("other", "t\n")] {
         let scratch = Scratch::new(&format!("freed-by-move-{name}"));
@@ -1349,7 +1357,9 @@ fn a_mode_written_as_a_number_is_refused_and_says_to_quote_it() {
 /// or somebody's Ctrl-C leaves every resource already made with nothing saying
 /// it exists — not rolled back, forgotten.
 #[test]
-#[dacc_derive::doc_anchor(id = "what-was-already-made-is-recorded-before-the-next-thing-is-touched")]
+#[dacc_derive::doc_anchor(
+    id = "what-was-already-made-is-recorded-before-the-next-thing-is-touched"
+)]
 fn what_was_already_made_is_recorded_before_the_next_thing_is_touched() {
     let scratch = Scratch::new("checkpoint");
     let first = scratch.join("first");

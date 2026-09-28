@@ -387,7 +387,9 @@ fn replanned_after_stopping_between(mut state: State) -> nerpa_core::Plan {
 /// the restart forgotten: the next plan found the file matching, nothing changing,
 /// and nothing owed. Found by the review of RFC 0001.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-run-that-stops-between-a-cause-and-its-reaction-leaves-the-reaction-owed")]
+#[dacc_derive::doc_anchor(
+    id = "a-run-that-stops-between-a-cause-and-its-reaction-leaves-the-reaction-owed"
+)]
 fn a_run_that_stops_between_a_cause_and_its_reaction_leaves_the_reaction_owed() {
     let (_, _, state) = world("as it was\n");
     let next = replanned_after_stopping_between(state);
@@ -533,7 +535,9 @@ fn a_reaction_on_a_machine_that_did_not_answer_is_owed_on_its_record() {
 /// And a service with no record, which has nowhere to owe it, holds the file back
 /// until its machine answers, and the plan says what waits.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-cause-waits-while-what-it-rouses-cannot-be-planned-and-has-no-record")]
+#[dacc_derive::doc_anchor(
+    id = "a-cause-waits-while-what-it-rouses-cannot-be-planned-and-has-no-record"
+)]
 fn a_cause_waits_while_what_it_rouses_cannot_be_planned_and_has_no_record() {
     let (graph, observed, state) = far_world();
 
@@ -613,7 +617,9 @@ fn a_held_cause_on_no_machine_is_named_all_the_same() {
 /// is updated. A replacement was held instead, as though the far service were
 /// inside the file. Found by the review of RFC 0001's fifth revision.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-replaced-cause-owes-its-reaction-on-a-machine-that-did-not-answer")]
+#[dacc_derive::doc_anchor(
+    id = "a-replaced-cause-owes-its-reaction-on-a-machine-that-did-not-answer"
+)]
 fn a_replaced_cause_owes_its_reaction_on_a_machine_that_did_not_answer() {
     let os = || nerpa_core::Provider::new("os").unwrap();
     let schema = Schema::new()

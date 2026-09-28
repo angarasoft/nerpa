@@ -179,7 +179,9 @@ fn an_executor_from_another_build_is_refused_naming_both() {
 
 /// A far end that cannot say which build it is is not assumed to be the right one.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-far-end-that-cannot-say-which-build-it-is-is-not-taken-for-the-right-one")]
+#[dacc_derive::doc_anchor(
+    id = "a-far-end-that-cannot-say-which-build-it-is-is-not-taken-for-the-right-one"
+)]
 fn a_far_end_that_cannot_say_which_build_it_is_is_not_taken_for_the_right_one() {
     #[derive(Debug)]
     struct Older;

@@ -42,7 +42,9 @@ fn graph_of(source: &str) -> nerpa_core::Graph {
 
 /// The whole point: one declaration, every machine in the group.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-group-is-iterated-and-a-hundred-machines-are-not-a-hundred-declarations")]
+#[dacc_derive::doc_anchor(
+    id = "a-group-is-iterated-and-a-hundred-machines-are-not-a-hundred-declarations"
+)]
 fn a_group_is_iterated_and_a_hundred_machines_are_not_a_hundred_declarations() {
     let graph = graph_of(
         r#"
@@ -103,7 +105,9 @@ groups = ["web", "production"]
 }
 
 #[test]
-#[dacc_derive::doc_anchor(id = "a-value-the-fleet-does-not-give-is-a-refusal-rather-than-a-default")]
+#[dacc_derive::doc_anchor(
+    id = "a-value-the-fleet-does-not-give-is-a-refusal-rather-than-a-default"
+)]
 fn a_value_the_fleet_does_not_give_is_a_refusal_rather_than_a_default() {
     let refusal = evaluate(
         "main.star",

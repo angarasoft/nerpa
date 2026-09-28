@@ -62,7 +62,9 @@ resource("yandex:instance.web", {"upstream": db.ip})
 /// silently false and the branch silently does not happen. Nothing at the value
 /// level can intervene; this is caught before evaluation begins.
 #[test]
-#[dacc_derive::doc_anchor(id = "comparing-a-value-that-does-not-exist-yet-is-refused-before-anything-runs")]
+#[dacc_derive::doc_anchor(
+    id = "comparing-a-value-that-does-not-exist-yet-is-refused-before-anything-runs"
+)]
 fn comparing_a_value_that_does_not_exist_yet_is_refused_before_anything_runs() {
     for body in [
         r#"x = db.ip == "10.0.0.1""#,
@@ -139,7 +141,9 @@ x = db.addresses[0]
 /// is refused afterwards instead, so the invariant holds and only the diagnostic
 /// is weaker.
 #[test]
-#[dacc_derive::doc_anchor(id = "branching-on-a-value-that-does-not-exist-yet-refuses-the-whole-run")]
+#[dacc_derive::doc_anchor(
+    id = "branching-on-a-value-that-does-not-exist-yet-refuses-the-whole-run"
+)]
 fn branching_on_a_value_that_does_not_exist_yet_refuses_the_whole_run() {
     let refusal = evaluate(
         "main.star",
@@ -552,7 +556,9 @@ if held() < held():
 /// The one an independent review found first: put the handle in a dictionary and
 /// read it back, and the pattern that matched `x.y` sees an index instead.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-value-that-does-not-exist-yet-cannot-be-laundered-through-a-dictionary")]
+#[dacc_derive::doc_anchor(
+    id = "a-value-that-does-not-exist-yet-cannot-be-laundered-through-a-dictionary"
+)]
 fn a_value_that_does_not_exist_yet_cannot_be_laundered_through_a_dictionary() {
     let refusal = evaluate(
         "main.star",
@@ -575,7 +581,9 @@ else:
 }
 
 #[test]
-#[dacc_derive::doc_anchor(id = "a-value-that-does-not-exist-yet-cannot-be-laundered-through-a-list")]
+#[dacc_derive::doc_anchor(
+    id = "a-value-that-does-not-exist-yet-cannot-be-laundered-through-a-list"
+)]
 fn a_value_that_does_not_exist_yet_cannot_be_laundered_through_a_list() {
     let refusal = evaluate(
         "main.star",
@@ -617,7 +625,9 @@ if held["password"] == "changeme":
 }
 
 #[test]
-#[dacc_derive::doc_anchor(id = "a-value-that-does-not-exist-yet-cannot-be-handed-out-of-a-function")]
+#[dacc_derive::doc_anchor(
+    id = "a-value-that-does-not-exist-yet-cannot-be-handed-out-of-a-function"
+)]
 fn a_value_that_does_not_exist_yet_cannot_be_handed_out_of_a_function() {
     let refusal = evaluate(
         "main.star",
@@ -833,7 +843,9 @@ if held.get("password") == "changeme":
 }
 
 #[test]
-#[dacc_derive::doc_anchor(id = "a-value-that-does-not-exist-yet-cannot-be-laundered-through-a-method-call")]
+#[dacc_derive::doc_anchor(
+    id = "a-value-that-does-not-exist-yet-cannot-be-laundered-through-a-method-call"
+)]
 fn a_value_that_does_not_exist_yet_cannot_be_laundered_through_a_method_call() {
     let refusal = evaluate(
         "main.star",
@@ -878,7 +890,9 @@ if empty.get("password", secret("vault", "db/password")) == "changeme":
 /// A `def` body is walked for what it returns. A lambda's was not walked at
 /// all, so the shortest way to write the same thing went straight through.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-value-that-does-not-exist-yet-cannot-be-laundered-through-a-lambda")]
+#[dacc_derive::doc_anchor(
+    id = "a-value-that-does-not-exist-yet-cannot-be-laundered-through-a-lambda"
+)]
 fn a_value_that_does_not_exist_yet_cannot_be_laundered_through_a_lambda() {
     let refusal = evaluate(
         "main.star",

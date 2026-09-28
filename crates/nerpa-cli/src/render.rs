@@ -873,7 +873,9 @@ mod tests {
     }
 
     #[test]
-    #[dacc_derive::doc_anchor(id = "what-could-not-be-looked-at-is-reported-with-its-age-and-never-as-work")]
+    #[dacc_derive::doc_anchor(
+        id = "what-could-not-be-looked-at-is-reported-with-its-age-and-never-as-work"
+    )]
     fn what_could_not_be_looked_at_is_reported_with_its_age_and_never_as_work() {
         let graph = graph_of(vec![
             Resource::new(address("os:file.motd@web-01")).with("path", "/etc/motd"),
@@ -1018,7 +1020,9 @@ mod tests {
     }
 
     #[test]
-    #[dacc_derive::doc_anchor(id = "a-fleet-behind-its-declaration-is-told-about-and-never-planned")]
+    #[dacc_derive::doc_anchor(
+        id = "a-fleet-behind-its-declaration-is-told-about-and-never-planned"
+    )]
     fn a_fleet_behind_its_declaration_is_told_about_and_never_planned() {
         let graph = graph_of(vec![
             Resource::new(address("yandex:instance.web")).with("image", "gentoo-2026-09"),

@@ -154,7 +154,9 @@ fn run(graph: &Graph, provider: Selective) -> (Result<(), RunError>, State) {
 /// The measured bug: an attribute the provider does not own applied cleanly and
 /// re-planned for ever.
 #[test]
-#[dacc_derive::doc_anchor(id = "an-attribute-that-is-not-reported-back-stops-the-run-rather-than-never-settling")]
+#[dacc_derive::doc_anchor(
+    id = "an-attribute-that-is-not-reported-back-stops-the-run-rather-than-never-settling"
+)]
 fn an_attribute_that_is_not_reported_back_stops_the_run_rather_than_never_settling() {
     let graph = graph_of(&[("path", "/etc/motd"), ("owner", "root")]);
     let (outcome, _) = run(&graph, Selective { owns: "path" });

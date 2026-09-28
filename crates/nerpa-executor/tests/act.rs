@@ -381,7 +381,9 @@ fn as_planned(watched: &Path) -> [u8; 32] {
 /// Compared sealed or not at all. A premise that arrives bare would be compared
 /// against an unkeyed digest, the digest a plan's JSON must not carry.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-premise-that-arrives-without-its-seal-is-refused-before-anything-is-done")]
+#[dacc_derive::doc_anchor(
+    id = "a-premise-that-arrives-without-its-seal-is-refused-before-anything-is-done"
+)]
 fn a_premise_that_arrives_without_its_seal_is_refused_before_anything_is_done() {
     let scratch = scratch();
     let watched = scratch.path().join("conf");
@@ -556,7 +558,9 @@ fn a_refusal_before_anything_is_not_where_the_first_premise_is() {
 /// contents are a password, what was read back is the password. The same
 /// reasoning as a premise that arrives bare, and the same invariant.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-write-carrying-a-secret-without-a-seal-is-refused-before-anything")]
+#[dacc_derive::doc_anchor(
+    id = "a-write-carrying-a-secret-without-a-seal-is-refused-before-anything"
+)]
 fn a_write_carrying_a_secret_without_a_seal_is_refused_before_anything() {
     let scratch = scratch();
     let written = scratch.path().join("shadow");

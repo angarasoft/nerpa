@@ -204,7 +204,9 @@ fn a_control_resource_says_so_when_asked() {
 /// may hold a slash, and so may a slot, where `dev-libs/openssl:0/3` is a
 /// subslot. See decision 0038.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-name-and-a-slot-may-hold-a-slash-because-somebody-elses-namespace-does")]
+#[dacc_derive::doc_anchor(
+    id = "a-name-and-a-slot-may-hold-a-slash-because-somebody-elses-namespace-does"
+)]
 fn a_name_and_a_slot_may_hold_a_slash_because_somebody_elses_namespace_does() {
     let package = address("os:package.www-servers/nginx@web-01");
     assert_eq!(package.kind().as_str(), "package");

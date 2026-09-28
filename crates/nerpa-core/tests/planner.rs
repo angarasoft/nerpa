@@ -325,7 +325,9 @@ fn a_removal_comes_after_the_change_of_what_was_recorded_after_it() {
 /// inside the file, against the declared order: a cycle, refused. Found by the
 /// review of RFC 0001's fifth revision.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-moved-file-and-the-service-reacting-to-it-are-planned-in-one-run")]
+#[dacc_derive::doc_anchor(
+    id = "a-moved-file-and-the-service-reacting-to-it-are-planned-in-one-run"
+)]
 fn a_moved_file_and_the_service_reacting_to_it_are_planned_in_one_run() {
     const CONF: &str = "os:file.conf@web-01";
     const SERVICE: &str = "os:service.app@web-01";
@@ -370,7 +372,9 @@ fn a_moved_file_and_the_service_reacting_to_it_are_planned_in_one_run() {
 /// the move does not have to go first against the declared order. Found by the
 /// review of RFC 0001's fifth revision.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-replacement-and-a-move-after-it-on-another-machine-are-planned-in-one-run")]
+#[dacc_derive::doc_anchor(
+    id = "a-replacement-and-a-move-after-it-on-another-machine-are-planned-in-one-run"
+)]
 fn a_replacement_and_a_move_after_it_on_another_machine_are_planned_in_one_run() {
     const X: &str = "os:file.x@web-01";
     const Y: &str = "os:file.y@web-02";

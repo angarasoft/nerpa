@@ -218,7 +218,9 @@ fn a_binary_file_converges() {
 
 /// Writing through a link changes a file the declaration does not name.
 #[test]
-#[dacc_derive::doc_anchor(id = "writing-where-a-symlink-is-replaces-the-link-and-leaves-its-target-alone")]
+#[dacc_derive::doc_anchor(
+    id = "writing-where-a-symlink-is-replaces-the-link-and-leaves-its-target-alone"
+)]
 fn writing_where_a_symlink_is_replaces_the_link_and_leaves_its_target_alone() {
     let scratch = Scratch::new("through");
     let target = scratch.join("target.txt");
@@ -308,7 +310,9 @@ fn an_empty_directory_is_still_removed() {
 /// privileged (0035), which makes that a `chmod` as root on a directory nothing
 /// declared.
 #[test]
-#[dacc_derive::doc_anchor(id = "making-a-directory-where-a-symlink-is-leaves-what-it-pointed-at-alone")]
+#[dacc_derive::doc_anchor(
+    id = "making-a-directory-where-a-symlink-is-leaves-what-it-pointed-at-alone"
+)]
 fn making_a_directory_where_a_symlink_is_leaves_what_it_pointed_at_alone() {
     let scratch = Scratch::new("through-a-directory");
     let target = scratch.join("target");
@@ -475,7 +479,9 @@ fn content_too_large_is_refused_before_the_machine_is_asked() {
 /// A file and a directory at one path are one thing on the machine, so the os
 /// provider names both by their path, in one namespace.
 #[test]
-#[dacc_derive::doc_anchor(id = "the-os-provider-names-files-and-directories-by-path-in-one-namespace")]
+#[dacc_derive::doc_anchor(
+    id = "the-os-provider-names-files-and-directories-by-path-in-one-namespace"
+)]
 fn the_os_provider_names_files_and_directories_by_path_in_one_namespace() {
     let schema = Os::new().schema();
     assert_eq!(

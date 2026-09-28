@@ -193,7 +193,9 @@ fn a_response_carries_the_version_it_was_written_by() {
 /// The length prefix is an instruction to allocate, and it arrives from
 /// somewhere else. Refused before a byte is reserved.
 #[test]
-#[dacc_derive::doc_anchor(id = "an-enormous-announced-frame-is-refused-before-anything-is-allocated")]
+#[dacc_derive::doc_anchor(
+    id = "an-enormous-announced-frame-is-refused-before-anything-is-allocated"
+)]
 fn an_enormous_announced_frame_is_refused_before_anything_is_allocated() {
     let mut wire = u32::MAX.to_be_bytes().to_vec();
     wire.extend_from_slice(b"and then nothing like that much");
@@ -501,7 +503,9 @@ enum NotYetInvented {
 /// before looking at the stamp. The stamp is read first, so the refusal names
 /// the version, which is what somebody reading it can act on.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-frame-from-another-version-is-refused-as-a-version-even-when-what-it-asks-is-new")]
+#[dacc_derive::doc_anchor(
+    id = "a-frame-from-another-version-is-refused-as-a-version-even-when-what-it-asks-is-new"
+)]
 fn a_frame_from_another_version_is_refused_as_a_version_even_when_what_it_asks_is_new() {
     #[derive(serde::Serialize)]
     struct FromTheFuture {
@@ -536,7 +540,9 @@ fn a_frame_from_another_version_is_refused_as_a_version_even_when_what_it_asks_i
 /// Reading the stamp first is not believing the frame first: one of this version
 /// asking for something nobody defined is still refused, as unreadable.
 #[test]
-#[dacc_derive::doc_anchor(id = "a-frame-of-this-version-asking-for-something-nobody-defined-is-still-refused")]
+#[dacc_derive::doc_anchor(
+    id = "a-frame-of-this-version-asking-for-something-nobody-defined-is-still-refused"
+)]
 fn a_frame_of_this_version_asking_for_something_nobody_defined_is_still_refused() {
     #[derive(serde::Serialize)]
     struct Current {
