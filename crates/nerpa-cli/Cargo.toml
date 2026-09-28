@@ -17,6 +17,7 @@ name = "nerpa"
 path = "src/main.rs"
 
 [dependencies]
+dacc-derive = { workspace = true }
 nerpa-config = { workspace = true }
 nerpa-core = { workspace = true }
 nerpa-provider-os = { workspace = true }

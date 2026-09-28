@@ -84,8 +84,8 @@ fn build() -> Answer {
     }
 }
 
+#[dacc_derive::doc_anchor(id = "inv-premise-002-3")]
 fn look(observations: &[Observation], seal: Option<&Seal>) -> Answer {
-    // ENFORCES: INV-PREMISE-002
     // Refused for what the request is, before any of it is carried out: a sealed
     // observation answers with a seal, and there is nothing to seal it with.
     // Reported against the observation that wanted one, it read as that path
@@ -119,8 +119,8 @@ fn look(observations: &[Observation], seal: Option<&Seal>) -> Answer {
     Answer::Found { seen }
 }
 
+#[dacc_derive::doc_anchor(id = "executor-perform")]
 fn perform(premise: &[Premise], operations: &[Operation], seal: Option<&Seal>) -> Answer {
-    // ENFORCES: INV-PREMISE-002
     // A secret write is answered with a sealed digest, and there is nothing to
     // seal it with. Refused before anything runs rather than answered with what
     // was read back, which for a secret write is the secret.
@@ -140,7 +140,6 @@ fn perform(premise: &[Premise], operations: &[Operation], seal: Option<&Seal>) -
         };
     }
 
-    // ENFORCES: INV-PREMISE-002
     // Compared sealed or not at all. A premise that arrived bare would be
     // compared against an unkeyed digest, which is the digest a plan's JSON must
     // not carry, so it is refused before anything is looked at. Decision 0041.
@@ -156,7 +155,6 @@ fn perform(premise: &[Premise], operations: &[Operation], seal: Option<&Seal>) -
         }
     };
 
-    // ENFORCES: INV-PREMISE-001
     // Before anything, and all of it. A batch acting on half a stale reading is
     // worse than one that did not act at all.
     for (at, held) in premise.iter().enumerate() {
@@ -188,7 +186,7 @@ fn perform(premise: &[Premise], operations: &[Operation], seal: Option<&Seal>) -
     Answer::Done { became }
 }
 
-// ENFORCES: INV-READ-001
+#[dacc_derive::doc_anchor(id = "inv-read-001")]
 /// What is at a path, or what a program says.
 ///
 /// Three answers about a path and never two: what is there, that nothing is
@@ -284,6 +282,7 @@ fn written(entry: &Seen, secret: bool, seal: Option<&Seal>) -> Result<Seen, Stri
     })
 }
 
+#[dacc_derive::doc_anchor(id = "inv-delete-001")]
 fn act(operation: &Operation, seal: Option<&Seal>) -> Result<Seen, String> {
     match operation {
         Operation::Directory { path, mode } => {
@@ -352,7 +351,6 @@ fn act(operation: &Operation, seal: Option<&Seal>) -> Result<Seen, String> {
                     return Ok(Seen::Nothing);
                 }
                 Err(error) => return Err(format!("{}: {error}", path.display())),
-                // ENFORCES: INV-DELETE-001
                 // Never recursive. A directory this made may since have been
                 // filled by somebody else, and removing what nothing recorded is
                 // a second, unannounced change.

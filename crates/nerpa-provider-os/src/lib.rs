@@ -322,6 +322,7 @@ fn text(attributes: &Attributes, name: &str) -> Option<String> {
 }
 
 /// What a file is to hold, from text or from bytes.
+#[dacc_derive::doc_anchor(id = "inv-plan-007-2")]
 fn content_of(attributes: &Attributes, address: &Address) -> Result<Vec<u8>, ProviderError> {
     match attributes.get("content") {
         None => Ok(Vec::new()),
@@ -334,7 +335,6 @@ fn content_of(attributes: &Attributes, address: &Address) -> Result<Vec<u8>, Pro
                         address: address.clone(),
                         problem: format!("content holds {value}, which is neither text nor bytes"),
                     })?;
-            // ENFORCES: INV-PLAN-007
             // Planning refuses this already for every value it can see. Checked
             // again here for the one it cannot, a secret's, and because content
             // that overflows a frame fails in a way that names no resource.
@@ -606,6 +606,7 @@ fn conclude_package(change: &Concluding<'_>, became: &Seen) -> Result<Concluded,
 /// A service that is not running is not restarted either — it was not running
 /// before the file changed, and starting it now would be a change nobody
 /// declared.
+#[dacc_derive::doc_anchor(id = "inv-react-004-2")]
 fn prepare_service(change: &Prepared<'_>) -> Result<Planned, ProviderError> {
     let address = change.address;
     let init = init(address, change.facts)?;
@@ -620,7 +621,6 @@ fn prepare_service(change: &Prepared<'_>) -> Result<Planned, ProviderError> {
         Sending::Delete => init.settle(name, false, false),
         _ => {
             let mut settling = init.settle(name, wanted("running"), wanted("enabled"));
-            // ENFORCES: INV-REACT-004
             // Roused as well as changed: settled first, then restarted if it is
             // running. This used to settle and stop there; `start` does nothing to a
             // running unit, and the fresh record cleared the debt, which left a new
@@ -711,6 +711,7 @@ impl Provider for Os {
 
     /// One journey for the whole batch, which is the only reason the batch is
     /// the unit. See `INV-BATCH-001`.
+    #[dacc_derive::doc_anchor(id = "inv-premise-001-2")]
     fn read(
         &self,
         batch: &[Reading],
@@ -782,7 +783,6 @@ impl Provider for Os {
             })
             .collect::<Vec<_>>()
         {
-            // ENFORCES: INV-PREMISE-001
             // What was looked at, and what it was when it was. The batch that
             // acts carries this back and the far end looks again before doing
             // anything — so a file that moved between the looking and the doing

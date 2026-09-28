@@ -34,7 +34,7 @@ type Batch = ((ProviderName, Option<Target>), Vec<Reading>);
 /// Returns [`ProviderError`] if any resource could not be read. A partial
 /// reading is not a smaller reading: planning against it would propose
 /// creating things that are already there.
-// ENFORCES: INV-REACH-001
+#[dacc_derive::doc_anchor(id = "run-observe")]
 pub fn observe(
     graph: &Graph,
     providers: &Providers,
@@ -43,7 +43,6 @@ pub fn observe(
 ) -> Result<Observed, RunError> {
     let mut observed = Observed::new();
 
-    // ENFORCES: INV-BATCH-001
     // Grouped before anything is asked, so that one machine takes one journey
     // rather than one per resource. The key is the pair that decides who is
     // asked and where they have to go; a batch never spans either.
@@ -59,7 +58,6 @@ pub fn observe(
             // resource whose location changed has to be found where it was left,
             // or the change reads as making a second one and abandoning the
             // first.
-            // ENFORCES: INV-STATE-003
             (Some(record), _, _) => record.locator(),
             // No record, and a run that stopped left an entry: what that change
             // may have made is where the entry says, which is not where the
@@ -120,7 +118,6 @@ pub fn observe(
             // failure becomes unreachability rather than only the one that
             // already is, because the subject is a machine rather than a
             // resource on it.
-            // ENFORCES: INV-REACH-002
             Ok(_) | Err(_) => Err(node.clone()),
         }
     });
@@ -163,7 +160,6 @@ pub fn observe(
                     observed.record(address, attributes);
                 }
             }
-            // ENFORCES: INV-REACH-002
             // The one failure a run survives. Everything else still stops it,
             // because everything else means something is wrong rather than
             // merely out of reach. See decision 0020.
@@ -180,13 +176,13 @@ pub fn observe(
 ///
 /// The second half matters as much as the first. A resource the configuration no
 /// longer mentions still has to be read, or its removal would be planned blind.
+#[dacc_derive::doc_anchor(id = "inv-graph-005")]
 fn declared_and_remembered(graph: &Graph, state: &State) -> Result<BTreeSet<Address>, GraphError> {
     // Propagated, not flattened away. `stages()` returns a `Result`, and
     // `.into_iter().flatten()` on one yields nothing for an error — so a graph
     // that could not be ordered used to read as a configuration that declares
     // nothing, and the run would go on to look at what state remembered and at
     // nothing else. Fail closed: the graph is the thing being asked about.
-    // ENFORCES: INV-GRAPH-005
     let declared = graph
         .stages()?
         .into_iter()
@@ -283,6 +279,7 @@ impl Reach for Sealing<'_> {
 ///
 /// Panics if a value is still unresolved when its stage runs, which would mean
 /// the plan's own ordering was wrong. See [`crate::contract`].
+#[dacc_derive::doc_anchor(id = "run-apply")]
 pub fn apply(
     plan: &Plan,
     providers: &Providers,
@@ -301,7 +298,6 @@ pub fn apply(
         for change in stage.changes() {
             let address = change.address();
 
-            // ENFORCES: INV-STATE-006
             // Found as declared, and nothing recorded it — or recorded with other
             // edges than it has now, which is a reorder. Nothing is sent: the
             // machine already is what the plan says, so no provider and no
@@ -323,7 +319,6 @@ pub fn apply(
 
             let provider = providers.for_address(address)?;
             let reach = machines.reach(address.target())?;
-            // ENFORCES: INV-PREMISE-002
             // The seal goes on here, where the machine is known, and not in the
             // plan, where it would travel with the JSON. Providers never see it:
             // they build the batch, and this seals it as it leaves. Decision 0041.
@@ -362,7 +357,6 @@ pub fn apply(
             }
 
             let desired = settled(change, kind, &observed, secrets)?;
-            // ENFORCES: INV-REACT-004
             // Told whether it was roused, whatever else changed. A service whose own
             // attributes change in the same plan as its file is one Update, and the
             // provider has to know to restart it as well.
@@ -469,7 +463,6 @@ fn adopt(state: &mut State, observed: &Observed, change: &Change, secrets: Secre
 
 /// Writes down what this change rouses, before the change is sent.
 ///
-/// ENFORCES: INV-REACT-002
 /// Owed before its cause is sent, not when the reaction's own stage comes.
 /// Written there, a debt was lost by exactly the run that stopped in between — a
 /// machine gone, a Ctrl-C, a failure in a stage between the two — which left a
@@ -478,10 +471,10 @@ fn adopt(state: &mut State, observed: &Observed, change: &Change, secrets: Secre
 /// resolves toward reporting a debt that was in fact paid: one redundant
 /// restart, against an outage nobody knows about.
 ///
-/// ENFORCES: INV-REACT-006
 /// And on the records of reacting resources this plan cannot reach, which the
 /// planner found to have one. Paid in whichever later run their machine answers
 /// in.
+#[dacc_derive::doc_anchor(id = "run-owe")]
 fn owe(
     state: &mut State,
     change: &Change,
@@ -526,7 +519,6 @@ struct Reported<'a> {
 
 /// Writes down what the change became, and refuses what it did not report back.
 ///
-/// ENFORCES: INV-STATE-005
 /// Written down before the next resource is touched. State used to be saved
 /// once, after the whole loop returned, so anything that stopped it — a contract
 /// violation panicking by design, a machine going away, somebody's Ctrl-C — left
@@ -537,7 +529,6 @@ struct Reported<'a> {
 /// by now, and refusing without writing that down would leave it owned by
 /// nobody — the failure this loop was rearranged to stop.
 ///
-/// ENFORCES: INV-PLAN-005
 /// Reporting an attribute back is the provider's claim that it took it. One that
 /// goes in and does not come out never settles: the next plan finds it missing
 /// from the reading, proposes the same change, and every run after that does the
@@ -552,6 +543,7 @@ struct Reported<'a> {
 /// Returns [`RunError::Record`] if state could not be written, and
 /// [`RunError::Unreported`] for an attribute the provider was given and did not
 /// report back.
+#[dacc_derive::doc_anchor(id = "run-wrote")]
 fn wrote(
     state: &mut State,
     observed: &mut Observed,
@@ -602,13 +594,13 @@ fn wrote(
 
 /// One change, sent: one batch, or two where a replacement forgets in between.
 ///
-/// ENFORCES: INV-STATE-005
 /// A replacement is two halves of one batch, and the record is dropped between
 /// them: in between, the old one is gone and the new one is not there yet.
 /// Making the replacement can fail — no quota, no address, no image — and until
 /// this was here that failure left state saying where the old one was, for a
 /// resource that had already been destroyed. Every later plan then reasoned from
 /// that.
+#[dacc_derive::doc_anchor(id = "inv-state-005-2")]
 fn send(
     planned: Planned,
     reach: &dyn Reach,
@@ -900,7 +892,6 @@ enum Stopped {
 
 /// Settles the mark of a change that stopped, and says what stopped it.
 ///
-/// ENFORCES: INV-STATE-005
 /// Written down before the failure is reported, because the report is what ends
 /// the run: a mark left saying "in flight" by a run that is over would hold its
 /// machine for ever, and an entry never written would lose what the far end may
@@ -910,6 +901,7 @@ enum Stopped {
 ///
 /// Returns [`RunError::Record`] if the settling could not be written; otherwise
 /// the failure it was given.
+#[dacc_derive::doc_anchor(id = "inv-state-005-3")]
 fn accounted_for(
     stopped: Stopped,
     address: &Address,
@@ -968,7 +960,6 @@ struct Changing<'a> {
 
 /// Writes the mark, then asks the provider what to send.
 ///
-/// ENFORCES: INV-STATE-005
 /// In this order, and durably, because a request sent without a mark is a change
 /// nothing records: the run that stops in between leaves a machine that was
 /// acted on and a state file saying nothing happened. A provider that then
@@ -979,6 +970,7 @@ struct Changing<'a> {
 ///
 /// Returns [`RunError::Record`] if the mark could not be written down, and
 /// [`RunError::Provider`] if the change could not be prepared.
+#[dacc_derive::doc_anchor(id = "inv-state-005-4")]
 fn marked_and_prepared(
     provider: &dyn Provider,
     change: &Change,
@@ -1079,7 +1071,7 @@ fn unflagged(planned: &Planned, secret: &BTreeSet<String>) -> Option<String> {
     None
 }
 
-// ENFORCES: INV-PROVIDER-002
+#[dacc_derive::doc_anchor(id = "inv-provider-002-2")]
 /// One batch, sent, with an answer for each operation in it.
 ///
 /// Nothing is sent for a change that has no operations: a provider may conclude
@@ -1214,7 +1206,7 @@ fn owe_before(
     }
 }
 
-// ENFORCES: INV-PLAN-004
+#[dacc_derive::doc_anchor(id = "inv-plan-004-2")]
 /// What this change came after, so that its removal can be ordered later.
 ///
 /// Taken from the plan rather than from the graph: the plan is what was actually
@@ -1231,7 +1223,7 @@ fn dependencies(change: &Change) -> BTreeSet<Address> {
 /// Values, except where the declaration said the attribute was a secret — those
 /// become digests here and are never values again. This is the one place a
 /// credential could have been written down, and it is the reason it is not.
-// ENFORCES: INV-SECRET-002
+#[dacc_derive::doc_anchor(id = "inv-secret-002-2")]
 fn recording(reported: &Attributes, change: &Change, secrets: Secrets<'_>) -> Recording {
     let secret: BTreeSet<&str> = change
         .desired()

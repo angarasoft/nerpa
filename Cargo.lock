@@ -1080,6 +1080,7 @@ name = "nerpa-cli"
 version = "0.0.1"
 dependencies = [
  "clap",
+ "dacc-derive",
  "nerpa-config",
  "nerpa-core",
  "nerpa-provider-os",
@@ -1093,6 +1094,7 @@ name = "nerpa-config"
 version = "0.0.1"
 dependencies = [
  "allocative",
+ "dacc-derive",
  "minijinja",
  "minijinja-contrib",
  "nerpa-core",
@@ -1134,6 +1136,7 @@ dependencies = [
 name = "nerpa-executor"
 version = "0.0.1"
 dependencies = [
+ "dacc-derive",
  "nerpa-proto",
  "tempfile",
 ]
@@ -1154,6 +1157,7 @@ dependencies = [
 name = "nerpa-provider-os"
 version = "0.0.1"
 dependencies = [
+ "dacc-derive",
  "nerpa-core",
  "nerpa-proto",
  "nerpa-transport",
@@ -1166,6 +1170,7 @@ name = "nerpa-transport"
 version = "0.0.1"
 dependencies = [
  "blake3",
+ "dacc-derive",
  "nerpa-core",
  "nerpa-executor",
  "nerpa-proto",

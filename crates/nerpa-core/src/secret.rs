@@ -421,7 +421,7 @@ impl<'a> Secrets<'a> {
     ///
     /// Returns [`FetchError`] if the store has nothing there or could not be
     /// asked.
-    // ENFORCES: INV-SECRET-002
+    #[dacc_derive::doc_anchor(id = "inv-secret-002-3")]
     pub fn seal(&self, source: &Source) -> Result<Sealed, FetchError> {
         let value = self.store.fetch(source)?;
         Ok(Sealed::new(source.clone(), self.key, &value))

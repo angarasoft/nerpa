@@ -182,7 +182,7 @@ impl Attribute {
     /// A secret answers `None` here even though its value exists: it exists
     /// somewhere else, and this is the accessor every part of the engine that
     /// writes things down goes through.
-    // ENFORCES: INV-SECRET-001
+    #[dacc_derive::doc_anchor(id = "inv-secret-001")]
     pub fn known(&self) -> Option<&Value> {
         match self {
             Attribute::Known(value) => Some(value),
@@ -204,7 +204,7 @@ impl Attribute {
     }
 
     /// What this attribute is waiting on, if it is waiting.
-    // ENFORCES: INV-GRAPH-003
+    #[dacc_derive::doc_anchor(id = "inv-graph-003-1")]
     pub fn reference(&self) -> Option<&Reference> {
         match self {
             Attribute::Known(_) | Attribute::Secret(_) | Attribute::Chosen(_) => None,

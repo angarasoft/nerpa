@@ -103,7 +103,7 @@ impl Fleet {
     /// Returns a message if the document is not the shape above, if a value is
     /// of a kind the model cannot carry, or if two groups give one node the same
     /// key.
-    // ENFORCES: INV-FLEET-001
+    #[dacc_derive::doc_anchor(id = "inv-fleet-001")]
     pub fn read(text: &str) -> Result<Self, String> {
         let document: toml::Value =
             toml::from_str(text).map_err(|error| format!("the fleet is not TOML: {error}"))?;

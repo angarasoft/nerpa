@@ -203,7 +203,7 @@ fn steps(cycle: &[Step]) -> String {
 /// Returns [`GraphError`] if the configuration cannot be ordered at all — a
 /// cycle, a dangling dependency, or a resource on a node the inventory does not
 /// know. Nothing is planned for a graph that cannot be walked.
-// ENFORCES: INV-PLAN-002
+#[dacc_derive::doc_anchor(id = "inv-plan-002")]
 #[allow(
     clippy::result_large_err,
     reason = "diagnostics beat a lint on a cold path"
@@ -407,6 +407,7 @@ struct Removals {
 impl Planning<'_> {
     /// One walk of the graph, in the order the work will happen, knowing what the
     /// walks before it found held.
+    #[dacc_derive::doc_anchor(id = "planner-walk")]
     fn walk(&self, held: &Held) -> Result<Walk, PlanError> {
         let mut walk = Walk::default();
         // What this plan is changing, so that a resource reacting to one of them
@@ -424,7 +425,6 @@ impl Planning<'_> {
                     continue;
                 };
 
-                // ENFORCES: INV-REACH-001
                 // Out of reach, or downstream of something that is. A resource
                 // whose dependency could not be read has nowhere to take its
                 // values from, so nothing can be said about it either.
@@ -442,7 +442,6 @@ impl Planning<'_> {
                         .any(|dependency| walk.unplannable.contains(*dependency))
                 });
 
-                // ENFORCES: INV-PLAN-009
                 // What a removal takes away, by what names it on its machine. A
                 // declared resource naming the same thing is made again after the
                 // removal rather than read from before it: the reading describes a
@@ -459,7 +458,6 @@ impl Planning<'_> {
                 for removal in claimed {
                     walk.claims.insert(removal.clone(), address.clone());
                 }
-                // ENFORCES: INV-PLAN-010
                 // And one naming what a removal that cannot be planned yet will
                 // take away once it can waits with it. Planned in the meantime, it
                 // was adopted from the reading, and the removal, planned in
@@ -485,7 +483,6 @@ impl Planning<'_> {
                 if out_of_reach || is_held || blocked || waits_for_removal || waits.is_some() {
                     walk.unplannable.insert(address.clone());
                     self.owe_or_hold(&mut walk, resource, &changing);
-                    // ENFORCES: INV-REACH-002
                     // A held machine answered; it is simply not this run's to
                     // act on. Reported as one that did not answer, it would send
                     // somebody looking at the network.
@@ -551,7 +548,6 @@ impl Planning<'_> {
                         takes_over: reads_what_is_taken,
                     },
                 )? {
-                    // ENFORCES: INV-REACT-001
                     // Only what moves on the machine rouses anything. An adoption
                     // or a reorder writes state and leaves the file as it was, and
                     // counting one restarted every service reacting to a file that
@@ -566,7 +562,7 @@ impl Planning<'_> {
         Ok(walk)
     }
 
-    // ENFORCES: INV-REACT-006
+    #[dacc_derive::doc_anchor(id = "inv-react-006-1")]
     /// What this plan sends that rouses `resource`, which cannot be planned.
     ///
     /// The reaction is owed on its record, written before the cause is sent and
@@ -593,7 +589,7 @@ impl Planning<'_> {
         }
     }
 
-    // ENFORCES: INV-REACH-004
+    #[dacc_derive::doc_anchor(id = "inv-reach-004-2")]
     /// What a resource that cannot be planned, and is not out of reach itself,
     /// waits for.
     ///
@@ -629,12 +625,12 @@ impl Planning<'_> {
     /// In reverse dependency order, taken from state because the configuration
     /// that described a dependency is exactly what was deleted. Where each goes is
     /// decided with everything else, in `assemble`.
+    #[dacc_derive::doc_anchor(id = "planner-removals")]
     fn removals(&self, walk: &Walk) -> Removals {
         let mut removals = Removals::default();
         for (index, level) in self.doomed.iter().enumerate() {
             let before = removals.planned.len();
             for address in level {
-                // ENFORCES: INV-REACH-001
                 // A removal is planned from state rather than from a reading, so
                 // whether its machine answered is asked here. One that did not is
                 // reported and not planned, and so is every removal that has to
@@ -656,7 +652,6 @@ impl Planning<'_> {
                         removals.held.insert(address.clone());
                         continue;
                     }
-                    // ENFORCES: INV-REACH-004
                     // Out of reach only when its own machine did not answer.
                     match (out_of_reach, waiting, node) {
                         (false, Some(on), _) => {
@@ -725,6 +720,7 @@ impl Planning<'_> {
     /// declared after the removals state can take first, so a removal that waits
     /// for nothing still comes before everything declared: a resource on its way
     /// out can be holding something a new one needs — a name, a port, a path.
+    #[dacc_derive::doc_anchor(id = "inv-react-006-2")]
     fn assemble(&self, walk: Walk, removals: Removals) -> Result<Plan, PlanError> {
         let steps = self.edges(&walk, &removals);
 
@@ -741,7 +737,6 @@ impl Planning<'_> {
         }
         let rank = ranked(&nodes, &steps)?;
 
-        // ENFORCES: INV-REACT-006
         // Each cause carries the debts it leaves on records this plan cannot
         // reach, so that apply writes them before sending it.
         let mut declared: BTreeMap<Address, Change> = walk
@@ -810,6 +805,7 @@ impl Planning<'_> {
     }
 
     /// Every edge between one plan's changes and removals, and why each is there.
+    #[dacc_derive::doc_anchor(id = "planner-edges")]
     fn edges(&self, walk: &Walk, removals: &Removals) -> BTreeMap<(Address, Address), Because> {
         let removing: BTreeSet<&Address> = removals.planned.iter().map(Change::address).collect();
         let sending: BTreeMap<&Address, ChangeKind> = walk
@@ -832,7 +828,6 @@ impl Planning<'_> {
         }
         for address in removing.iter().copied() {
             for other in self.later(address).iter().copied() {
-                // ENFORCES: INV-STATE-002
                 // What a resource came after is removed after it. Not within a
                 // level state could not order, which it removes together.
                 let earlier_level = removals
@@ -842,7 +837,6 @@ impl Planning<'_> {
                 if removing.contains(other) && earlier_level {
                     step(address, other, Because::RemovedAfterRemoval);
                 }
-                // ENFORCES: INV-PLAN-011
                 // After the change of whatever state recorded after it. A file
                 // recorded after its directory and moved out of it while the
                 // directory's declaration went was still inside when the directory
@@ -852,7 +846,6 @@ impl Planning<'_> {
                     step(address, other, Because::RemovedAfterChange);
                 }
             }
-            // ENFORCES: INV-PLAN-009
             // What names the thing a removal takes away is made after it.
             if let Some(taker) = walk.claims.get(address) {
                 step(taker, address, Because::MadeAfterRemoval);
@@ -873,7 +866,6 @@ impl Planning<'_> {
                 if other == *address {
                     continue;
                 }
-                // ENFORCES: INV-PLAN-011
                 // A replacement's removal of what was there likewise. Removals
                 // first had kept a directory replaced after the removal of a file
                 // recorded inside it without the planner saying so, and ordering
@@ -942,6 +934,7 @@ impl Planning<'_> {
     /// Whether the change planned for `later` has to come before `earlier`'s
     /// removal of what is there: it sends something that can move it, and it can
     /// move out of `earlier`.
+    #[dacc_derive::doc_anchor(id = "inv-plan-011-3")]
     fn moves_out(
         &self,
         sending: &BTreeMap<&Address, ChangeKind>,
@@ -954,7 +947,6 @@ impl Planning<'_> {
         ) && self.may_move_out(later, earlier)
     }
 
-    // ENFORCES: INV-PLAN-011
     /// Whether `later`, declared and recorded after `earlier`, can be in the way of
     /// removing what `earlier` is: on the same machine, of a kind whose provider
     /// names what it is there, and not declared under the name state recorded.
@@ -1078,6 +1070,7 @@ fn cycle(
 
 /// What state recorded as coming after each address: each record's edges, the
 /// other way round.
+#[dacc_derive::doc_anchor(id = "inv-plan-008")]
 fn recorded_after(state: &State) -> BTreeMap<&Address, Vec<&Address>> {
     let mut after: BTreeMap<&Address, Vec<&Address>> = BTreeMap::new();
     for address in state.addresses() {
@@ -1090,7 +1083,6 @@ fn recorded_after(state: &State) -> BTreeMap<&Address, Vec<&Address>> {
     after
 }
 
-// ENFORCES: INV-PLAN-008
 /// Refuses two resources on one machine that name the same thing there.
 ///
 /// Addresses are unique by construction; what they declare is not. Two files at
@@ -1135,6 +1127,7 @@ fn one_thing_once(graph: &Graph, schema: &Schema) -> Result<(), PlanError> {
 /// Taken from state, because the configuration that named them is gone or names
 /// something else now. A record whose naming attribute is not a plain value names
 /// nothing here.
+#[dacc_derive::doc_anchor(id = "inv-plan-009-3")]
 fn taken_away(
     doomed: &[Vec<Address>],
     graph: &Graph,
@@ -1147,7 +1140,6 @@ fn taken_away(
             taken.entry(name).or_default().push(address.clone());
         }
     }
-    // ENFORCES: INV-PLAN-009
     // And the name a declared resource moves away from, which the change that moves
     // it removes. A resource declared there was read there, adopted or updated from
     // the thing about to be deleted, and the move deleted it after: state recorded a
@@ -1182,6 +1174,7 @@ fn recorded_name(
 
 /// What a declared resource names on its machine, if its provider says and the
 /// value is known when planning.
+#[dacc_derive::doc_anchor(id = "inv-react-005-2")]
 fn name_of(resource: &Resource, schema: &Schema) -> Option<(Target, String, String)> {
     let address = resource.address();
     let node = address.target()?;
@@ -1192,7 +1185,6 @@ fn name_of(resource: &Resource, schema: &Schema) -> Option<(Target, String, Stri
     Some((node.clone(), namespace.to_owned(), one_spelling(value)))
 }
 
-// ENFORCES: INV-REACT-005
 /// Refuses a reaction on a kind whose provider says it cannot react.
 ///
 /// Refused where it is written as well, when a configuration is evaluated. This
@@ -1261,6 +1253,7 @@ type Differences = (Vec<AttributeDelta>, Vec<(String, Confidence)>);
 /// Every refusal that reads one attribute at a time lives here, so that a
 /// resource is turned down while it is being described rather than after a kind
 /// has been decided for it.
+#[dacc_derive::doc_anchor(id = "planner-differences")]
 fn differences(
     resource: &Resource,
     existing: Option<&BTreeMap<String, Value>>,
@@ -1275,7 +1268,6 @@ fn differences(
     for (name, declared) in resource.attributes() {
         let after = resolve(declared, observed, secrets)?;
 
-        // ENFORCES: INV-PLAN-007
         // Refused while planning, so nothing is done on the strength of a plan
         // whose batch cannot be written. A secret is sealed before this point and
         // is checked by its provider before sending instead.
@@ -1291,7 +1283,6 @@ fn differences(
                 most,
             });
         }
-        // ENFORCES: INV-PLAN-012
         // A mode is the number the text it is written in spells. Compared as
         // written, "644" never matched
         // the "0644" a reading reports, and every run changed it again; one beyond
@@ -1317,7 +1308,6 @@ fn differences(
         // Reduced here, at the edge: a secret attribute's observed value is a
         // real credential read back off a machine, and this is the last place it
         // is allowed to be one. Everything downstream sees a digest.
-        // ENFORCES: INV-SECRET-002
         let before = existing
             .and_then(|attributes| attributes.get(name))
             .map(|value| {
@@ -1340,7 +1330,6 @@ fn differences(
         // underneath it, so this is reported and never turned into work — but
         // reported every time, because a fleet quietly years behind is the
         // failure this is meant to prevent. See decision 0021.
-        // ENFORCES: INV-BIRTH-001
         if existing.is_some() && schema.is_at_birth(address, name) {
             outdated.push(Outdated::new(address.clone(), name.clone(), before, after));
             continue;
@@ -1374,6 +1363,7 @@ struct Bearings<'a> {
     takes_over: bool,
 }
 
+#[dacc_derive::doc_anchor(id = "planner-change-for")]
 fn change_for(
     resource: &Resource,
     observed: &Observed,
@@ -1426,14 +1416,12 @@ fn change_for(
         // cannot tell the two apart. So it goes again rather than being adopted
         // or passed over, and it says so. RFC 0001 §5.6.
         (Some(_), Some(again)) => (again, true),
-        // ENFORCES: INV-STATE-006
         // It matches its declaration and nothing records it: found on a machine
         // somebody configured before, or made by a run that stopped before it
         // could write that down. Nothing is done to it, and it is written down,
         // because from here on it is Nerpa's to remove. Planned as nothing, it
         // was never recorded, and taking its declaration away removed nothing.
         (Some(_), None) if recorded.is_none() => (ChangeKind::Adopt, false),
-        // ENFORCES: INV-STATE-002
         // It matches and is recorded, and what it comes after is not what state
         // remembers: an `after` written in, a reference added, a reaction. Nothing
         // is done to it, and it is recorded again, because those edges are what
@@ -1476,7 +1464,6 @@ fn change_for(
     }))
 }
 
-// ENFORCES: INV-PREMISE-002
 /// What a change was computed from, sealed for the machine it was read on.
 ///
 /// A premise is a digest of what is there now, and what is there now is
@@ -1504,7 +1491,7 @@ fn sealed_for_its_machine(
         .collect()
 }
 
-// ENFORCES: INV-PLAN-003
+#[dacc_derive::doc_anchor(id = "planner-resolve")]
 /// A declared attribute, with references resolved against what already exists.
 fn resolve(
     declared: &Attribute,
@@ -1525,7 +1512,6 @@ fn resolve(
         // Every branch is written down, so the graph is known whichever way this
         // goes. What is open is the value, and only within the set — which the
         // plan can print, and a person can approve.
-        // ENFORCES: INV-FACT-001
         Attribute::Chosen(choice) => {
             match observed.fact(choice.fact().node(), choice.fact().name()) {
                 Some(said) => match choice.given(said) {

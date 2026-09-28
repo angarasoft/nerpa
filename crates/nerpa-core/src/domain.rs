@@ -59,7 +59,7 @@ impl Address {
     /// would be a second source of truth, and the two could disagree — at which
     /// point the planner would look for a node that the address says is not
     /// there, or skip one that is.
-    // ENFORCES: INV-DOMAIN-001
+    #[dacc_derive::doc_anchor(id = "inv-domain-001")]
     pub fn domain(&self) -> ExecutionDomain {
         match self.target() {
             None => ExecutionDomain::Control,

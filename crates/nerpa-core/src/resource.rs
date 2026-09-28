@@ -23,7 +23,7 @@ use crate::requires;
 /// record of what the incident was.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 #[non_exhaustive]
-// ENFORCES: INV-DRIFT-001
+#[dacc_derive::doc_anchor(id = "inv-drift-001")]
 pub enum Protection {
     /// Drift is corrected: the declaration wins.
     #[default]

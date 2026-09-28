@@ -77,8 +77,7 @@ type Tainted = BTreeMap<String, Opaque>;
 /// Refuses the comparisons that evaluation cannot catch.
 ///
 /// Returns one message per offending comparison, in source order.
-// ENFORCES: INV-PLAN-001
-// ENFORCES: INV-SECRET-004
+#[dacc_derive::doc_anchor(id = "config-comparisons")]
 pub(crate) fn comparisons(module: &AstModule) -> Vec<String> {
     let mut tainted = Tainted::new();
     // A name can be bound after it is read and a function can call one defined

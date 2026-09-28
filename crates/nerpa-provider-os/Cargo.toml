@@ -13,6 +13,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+dacc-derive = { workspace = true }
 nerpa-core = { workspace = true }
 nerpa-proto = { workspace = true }
 thiserror = { workspace = true }

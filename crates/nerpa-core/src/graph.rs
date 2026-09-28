@@ -257,9 +257,7 @@ impl Graph {
     /// another resource is an ordering whether or not anybody noticed it; and
     /// anything living on a node comes after whatever creates that node.
     ///
-    // ENFORCES: INV-GRAPH-002
-    // ENFORCES: INV-GRAPH-003
-    // ENFORCES: INV-GRAPH-004
+    #[dacc_derive::doc_anchor(id = "graph-edges")]
     #[allow(
         clippy::result_large_err,
         reason = "diagnostics beat a lint on a cold path"
@@ -340,8 +338,7 @@ impl Graph {
     /// Panics if a contract is violated — that is, if this function's own
     /// bookkeeping has become inconsistent. See [`crate::contract`].
     ///
-    // ENFORCES: INV-GRAPH-001
-    // ENFORCES: INV-GRAPH-002
+    #[dacc_derive::doc_anchor(id = "graph-stages")]
     #[allow(
         clippy::result_large_err,
         reason = "diagnostics beat a lint on a cold path"

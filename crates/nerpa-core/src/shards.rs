@@ -614,7 +614,7 @@ fn read(path: &Path) -> Result<String, StoreError> {
 ///
 /// Returns [`StoreError::File`] if the directory or any file in it could not be
 /// written.
-// ENFORCES: INV-STATE-004
+#[dacc_derive::doc_anchor(id = "inv-state-004-1")]
 pub fn save(directory: &Path, state: &State, key: &Key) -> Result<(), StoreError> {
     write_all(directory, state, key, None)
 }

@@ -342,7 +342,7 @@ pub fn opened(
     })
 }
 
-// ENFORCES: INV-WIRE-003
+#[dacc_derive::doc_anchor(id = "inv-wire-003-2")]
 /// Whether the far end is the executor this nerpa carries.
 ///
 /// Asked before anything else is, because the executor is what acts on a

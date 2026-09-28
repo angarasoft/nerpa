@@ -689,13 +689,13 @@ pub fn read<R: Read, T: for<'de> Deserialize<'de>>(source: &mut R) -> Result<T, 
 }
 
 /// The bytes of one frame, before anything in them is believed.
+#[dacc_derive::doc_anchor(id = "inv-wire-002")]
 fn frame<R: Read>(source: &mut R) -> Result<Vec<u8>, WireError> {
     let mut prefix = [0_u8; 4];
     source
         .read_exact(&mut prefix)
         .map_err(|error| WireError::Connection(error.to_string()))?;
 
-    // ENFORCES: INV-WIRE-002
     // The size arrives from the other end of a pipe. Checked before a byte is
     // reserved, because believing it is how a confused peer turns a number into
     // memory exhaustion.
@@ -788,7 +788,7 @@ fn stamped(body: &[u8]) -> Result<(), WireError> {
 /// # Errors
 ///
 /// Everything [`read`] returns, plus [`WireError::Version`].
-// ENFORCES: INV-WIRE-001
+#[dacc_derive::doc_anchor(id = "inv-wire-001")]
 pub fn read_request<R: Read>(source: &mut R) -> Result<Request, WireError> {
     let body = frame(source)?;
     stamped(&body)?;

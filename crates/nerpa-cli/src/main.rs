@@ -182,7 +182,7 @@ fn reachable(graph: &nerpa_core::Graph, fleet: &Fleet) -> Result<Machines, Strin
 /// on regardless.
 type Opening<'a> = dyn Fn(&Target) -> Result<Box<dyn Reach>, String> + Sync + 'a;
 
-// ENFORCES: INV-REACH-001
+#[dacc_derive::doc_anchor(id = "inv-reach-001-1")]
 /// Opens a connection to each machine, and says which ones would not open.
 ///
 /// The opening is a parameter rather than a call, because this is the step that
@@ -213,6 +213,7 @@ fn registry(nodes: &[Target], open: &Opening<'_>) -> (Machines, Vec<String>) {
 ///
 /// Everything that can fail because that machine is not there fails here, so
 /// the caller has one place to decide what an absent machine means.
+#[dacc_derive::doc_anchor(id = "inv-wire-003-1")]
 fn speaking(
     node: &Target,
     fleet: &Fleet,
@@ -278,7 +279,6 @@ fn speaking(
             ("ssh".to_owned(), arguments, Some(carried.build.as_str()))
         }
     };
-    // ENFORCES: INV-WIRE-003
     // Which build answered is asked before anything is read, because what is
     // read is the executor's account of the machine, and an account from a build
     // this nerpa does not ship is not one it has a reason to believe. Opening

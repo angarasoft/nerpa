@@ -21,7 +21,7 @@ use nerpa_core::value::Value;
 use nerpa_core::{BlastRadius, Change, ChangeKind, Confidence, Plan, StageKind, Target};
 
 /// The whole plan, as text.
-// ENFORCES: INV-AGENT-001
+#[dacc_derive::doc_anchor(id = "inv-agent-001-1")]
 pub(crate) fn plan(plan: &Plan) -> String {
     if plan.is_empty() && plan.is_complete() && plan.outdated().is_empty() {
         return "nothing to do: the world already matches the configuration\n".to_owned();
@@ -63,7 +63,7 @@ pub(crate) fn plan(plan: &Plan) -> String {
 /// Never among the stages, because it is not work and never will be until
 /// somebody decides it is. Printed anyway, on every plan, because the failure
 /// this exists to prevent is a fleet quietly years behind. See decision 0021.
-// ENFORCES: INV-BIRTH-001
+#[dacc_derive::doc_anchor(id = "inv-birth-001-1")]
 fn behind(outdated: &[Outdated]) -> String {
     if outdated.is_empty() {
         return String::new();
@@ -92,7 +92,7 @@ fn behind(outdated: &[Outdated]) -> String {
     out
 }
 
-// ENFORCES: INV-REACH-003
+#[dacc_derive::doc_anchor(id = "inv-reach-003-1")]
 /// What could not be looked at, and how old the last look was.
 ///
 /// Printed with the summary rather than among the stages: it is not work, and a

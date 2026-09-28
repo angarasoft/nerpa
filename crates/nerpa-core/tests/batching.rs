@@ -217,7 +217,7 @@ fn the_batch_carries_where_to_look() {
 
 /// For a resource state remembers, where to look is where it was left — not
 /// where the declaration now points.
-// ENFORCES: INV-STATE-003
+#[dacc_derive::doc_anchor(id = "inv-state-003-2")]
 #[test]
 fn what_state_remembers_beats_what_the_declaration_says() {
     let graph = graph_of(vec![file("motd", "web-01")]);

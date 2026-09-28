@@ -17,6 +17,7 @@ name = "nerpa-executor"
 path = "src/main.rs"
 
 [dependencies]
+dacc-derive = { workspace = true }
 nerpa-proto = { workspace = true }
 
 [dev-dependencies]

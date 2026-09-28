@@ -114,6 +114,7 @@ impl Reading {
     }
 }
 
+#[dacc_derive::doc_anchor(id = "inv-reach-002-2")]
 /// Why a provider could not do what it was asked.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[non_exhaustive]
@@ -137,7 +138,6 @@ pub enum ProviderError {
         /// What was wrong with it.
         problem: String,
     },
-    // ENFORCES: INV-REACH-002
     /// The machine could not be contacted at all.
     ///
     /// Deliberately separate from every other failure. Treating a permission
@@ -314,8 +314,6 @@ pub enum Afterwards {
 }
 
 /// Reads and changes resources of the kinds it owns.
-// ENFORCES: INV-PROVIDER-001
-// ENFORCES: INV-PROVIDER-002
 // `read` is the only method here that is handed a connection. What a change is
 // made of is said, not done: the engine sends it.
 #[dacc_derive::doc_anchor(id = "provider-trait")]
@@ -331,7 +329,7 @@ pub trait Provider: Send + Sync {
     /// Only what exists comes back; an address absent from the answer does not
     /// exist. Not existing is an answer, not a failure.
     ///
-    // ENFORCES: INV-BATCH-001
+    #[dacc_derive::doc_anchor(id = "inv-batch-001-1")]
     /// **A batch, not one at a time**, and that is the whole shape of it. The
     /// difference between one journey to a machine and one per resource is what
     /// makes Ansible slow, and an interface that can only ask about a single

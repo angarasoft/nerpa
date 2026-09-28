@@ -34,7 +34,7 @@ fn named(digest: &str) -> String {
     format!(".cache/nerpa/nerpa-executor-{digest}")
 }
 
-// ENFORCES: INV-DELIVERY-001
+#[dacc_derive::doc_anchor(id = "inv-delivery-001-1")]
 /// The command that says whether the whole executor is already at `path`.
 ///
 /// Executable is not enough. A copy cut short under this name, which the copy
@@ -44,7 +44,7 @@ fn present(path: &str, length: usize) -> String {
     format!("test -x {path} && test \"$(($(wc -c < {path})))\" -eq {length}")
 }
 
-// ENFORCES: INV-DELIVERY-001
+#[dacc_derive::doc_anchor(id = "inv-delivery-001-2")]
 /// The command that puts the executor at `path` from its standard input, whole or
 /// not at all.
 ///

@@ -126,6 +126,7 @@ fn core_value_of(value: Value<'_>) -> Option<CoreValue> {
 #[starlark_module]
 pub(crate) fn nerpa(builder: &mut GlobalsBuilder) {
     /// Declares that a resource should exist, and returns something to read it by.
+    #[dacc_derive::doc_anchor(id = "inv-react-005-1")]
     fn resource<'v>(
         #[starlark(require = pos)] address: &str,
         #[starlark(require = pos, default = NoneType)] attributes: Value<'v>,
@@ -163,7 +164,6 @@ pub(crate) fn nerpa(builder: &mut GlobalsBuilder) {
         // silence, and two modules cannot collide over "restart nginx".
         if !reacts_to.is_none() {
             for item in reacts_to.iterate(eval.heap())? {
-                // ENFORCES: INV-REACT-005
                 // Refused where it is written. A package had nothing a change
                 // elsewhere could ask of it: a reaction did nothing on rhel and
                 // merged it again on Portage.

@@ -184,7 +184,7 @@ impl Templates for Held {
     }
 }
 
-// ENFORCES: INV-TEMPLATE-001
+#[dacc_derive::doc_anchor(id = "inv-template-001")]
 /// Everything a template may use, added one at a time to an empty environment.
 ///
 /// Named rather than inherited, for the reason in this module's documentation.

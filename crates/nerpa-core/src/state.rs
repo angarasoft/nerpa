@@ -154,7 +154,7 @@ impl Record {
     /// A secret is not among them, and cannot be: state never held it. Anything
     /// that needs one has to fetch it from the store again, which is the whole
     /// point of not keeping it here.
-    // ENFORCES: INV-SECRET-003
+    #[dacc_derive::doc_anchor(id = "inv-secret-003")]
     #[must_use]
     pub fn locator(&self) -> Attributes {
         self.attributes
@@ -571,7 +571,7 @@ impl State {
     /// A cycle among remembered edges cannot happen — they were applied in some
     /// order once — so one is treated as a flat set rather than an error nobody
     /// could act on.
-    // ENFORCES: INV-STATE-002
+    #[dacc_derive::doc_anchor(id = "inv-state-002-3")]
     #[must_use]
     pub fn abandoned(&self, declared: &BTreeSet<&Address>) -> Vec<Vec<Address>> {
         // Entries as well as records. A change that failed after its operations

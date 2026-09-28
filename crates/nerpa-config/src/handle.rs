@@ -144,7 +144,7 @@ impl<'v> StarlarkValue<'v> for Handle {
         refuse(self.to_string(), "iteration")
     }
 
-    // ENFORCES: INV-PLAN-001
+    #[dacc_derive::doc_anchor(id = "inv-plan-001-1")]
     fn to_bool(&self) -> bool {
         // The one refusal that cannot be made here. See the module documentation:
         // recorded now, and the whole evaluation is refused afterwards.
@@ -201,7 +201,7 @@ impl<'v> StarlarkValue<'v> for SecretRef {
         refuse(self.to_string(), "iteration")
     }
 
-    // ENFORCES: INV-SECRET-004
+    #[dacc_derive::doc_anchor(id = "inv-secret-004-1")]
     fn to_bool(&self) -> bool {
         BRANCHED_ON.with_borrow_mut(|taken| taken.push(self.to_string()));
         true
@@ -335,7 +335,7 @@ impl<'v> StarlarkValue<'v> for FactRef {
         refuse(self.to_string(), "iteration")
     }
 
-    // ENFORCES: INV-FACT-001
+    #[dacc_derive::doc_anchor(id = "inv-fact-001-1")]
     fn to_bool(&self) -> bool {
         BRANCHED_ON.with_borrow_mut(|taken| taken.push(self.to_string()));
         true
@@ -389,7 +389,7 @@ impl<'v> StarlarkValue<'v> for ChoiceRef {
         refuse(self.to_string(), "iteration")
     }
 
-    // ENFORCES: INV-FACT-001
+    #[dacc_derive::doc_anchor(id = "inv-fact-001-2")]
     fn to_bool(&self) -> bool {
         BRANCHED_ON.with_borrow_mut(|taken| taken.push(self.to_string()));
         true

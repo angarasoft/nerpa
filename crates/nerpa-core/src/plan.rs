@@ -347,7 +347,7 @@ impl Change {
         &self.premise
     }
 
-    // ENFORCES: INV-PLAN-004
+    #[dacc_derive::doc_anchor(id = "inv-plan-004-1")]
     /// Every attribute the resource should end up with, in a stable order.
     #[must_use]
     pub fn desired(&self) -> &[(String, Confidence)] {
@@ -382,7 +382,7 @@ impl Change {
     }
 }
 
-// ENFORCES: INV-REACH-004
+#[dacc_derive::doc_anchor(id = "inv-reach-004-1")]
 /// A resource this plan says nothing about because it waits for another that
 /// cannot be planned.
 ///
@@ -714,7 +714,7 @@ impl BlastRadius {
     }
 }
 
-// ENFORCES: INV-AGENT-001
+#[dacc_derive::doc_anchor(id = "inv-agent-001-2")]
 /// Everything a run intends to do, in the order it will do it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct Plan {
@@ -801,7 +801,7 @@ impl Plan {
         &self.held
     }
 
-    // ENFORCES: INV-REACH-003
+    #[dacc_derive::doc_anchor(id = "inv-reach-003-2")]
     /// Whether everything the configuration declares could be looked at.
     ///
     /// A plan that is not complete cannot be signed: it holds an age, an age
@@ -915,7 +915,7 @@ impl Plan {
     /// Returns [`Unhashable`] if any machine could not be looked at. Such a plan
     /// is incomplete by `INV-REACH-003` and says so; a digest over it would move
     /// every second, which is worse than not having one.
-    // ENFORCES: INV-PLAN-006
+    #[dacc_derive::doc_anchor(id = "inv-plan-006-1")]
     pub fn digest(&self) -> Result<PlanDigest, Unhashable> {
         if !self.is_complete() {
             return Err(Unhashable {

@@ -406,7 +406,7 @@ pub fn load(path: &Path) -> Result<(State, Key), StoreError> {
 ///
 /// Returns [`StoreError::File`] if the file could not be written or moved into
 /// place.
-// ENFORCES: INV-STATE-004
+#[dacc_derive::doc_anchor(id = "inv-state-004-2")]
 pub fn save(path: &Path, state: &State, key: &Key) -> Result<(), StoreError> {
     let document = Document {
         version: FORMAT_VERSION,
@@ -466,7 +466,7 @@ pub fn save(path: &Path, state: &State, key: &Key) -> Result<(), StoreError> {
 /// disk yet — the file can come back empty, or under its temporary name, or not
 /// at all. Three calls make the difference, and this module's promise of "whole
 /// or not at all" was worth two of them less than it said.
-// ENFORCES: INV-STATE-004
+#[dacc_derive::doc_anchor(id = "inv-state-004-3")]
 pub(crate) fn durably(temporary: &Path, path: &Path, bytes: &[u8]) -> Result<(), std::io::Error> {
     use std::io::Write as _;
 

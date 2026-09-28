@@ -140,8 +140,7 @@ impl From<bool> for Value {
     }
 }
 
-// ENFORCES: INV-VALUE-001
-// ENFORCES: INV-PLAN-006
+#[dacc_derive::doc_anchor(id = "value-encode")]
 /// A canonical encoding of a value, for anything that has to hash one.
 ///
 /// Written out rather than borrowed from `serde` because a digest must depend on

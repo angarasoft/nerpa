@@ -227,7 +227,7 @@ impl Schema {
     }
 }
 
-// ENFORCES: INV-PLAN-012
+#[dacc_derive::doc_anchor(id = "inv-plan-012-2")]
 /// The mode a file mode written in octal spells: `"0644"`, `"644"` or `"0o644"`.
 ///
 /// `None` for text that is not octal, and for a number beyond the permission bits,

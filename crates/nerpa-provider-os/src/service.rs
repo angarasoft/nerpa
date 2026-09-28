@@ -194,7 +194,7 @@ impl Init {
         }
     }
 
-    // ENFORCES: INV-REACT-003
+    #[dacc_derive::doc_anchor(id = "inv-react-003")]
     /// What to run to make a running service take a changed file.
     ///
     /// This is what being roused means for a service, and it is the reason
