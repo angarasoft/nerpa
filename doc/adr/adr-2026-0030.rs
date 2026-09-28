@@ -1,10 +1,11 @@
-use slipway_core::nonempty_str;
+use crate::taxonomy::Subsystem;
+use slipway_core::{nonempty_str, taxon};
 use slipway_knowledge::{Breaking, DocStatus};
 
 slipway_knowledge::adr!(
     title: "Claim less, and attack what is claimed",
     status: DocStatus::Active,
-    subsystems: &[],
+    subsystems: &[taxon!(Subsystem, Gate)],
     context: r"- Corrected: 2026-09-06 — a miscount of the architecture markers, and two
   invariants named here as promoted that had to go back. Facts only; the
   reasoning is as it was written.

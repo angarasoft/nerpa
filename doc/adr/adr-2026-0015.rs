@@ -1,10 +1,11 @@
-use slipway_core::nonempty_str;
+use crate::taxonomy::Subsystem;
+use slipway_core::{nonempty_str, taxon};
 use slipway_knowledge::{Breaking, DocStatus};
 
 slipway_knowledge::adr!(
     title: "Test by guarantee, and run every apply twice",
     status: DocStatus::Active,
-    subsystems: &[],
+    subsystems: &[taxon!(Subsystem, Gate)],
     context: r#"## Context
 
 Most of what this tool claims cannot be checked by asserting on a return value.

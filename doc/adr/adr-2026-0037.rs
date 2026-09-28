@@ -1,10 +1,11 @@
-use slipway_core::nonempty_str;
+use crate::taxonomy::Subsystem;
+use slipway_core::{nonempty_str, taxon};
 use slipway_knowledge::{Breaking, DocStatus};
 
 slipway_knowledge::adr!(
     title: "Teleport is a route, not a transport",
     status: DocStatus::Active,
-    subsystems: &[],
+    subsystems: &[taxon!(Subsystem, Transport)],
     context: r"- Corrected: 2026-09-06 — the two machines were named by their real hostnames
   and the proxy by its real address. What was measured is what matters and whose
   machines they were is not; a repository open to everybody is not the place to

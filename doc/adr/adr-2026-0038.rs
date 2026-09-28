@@ -1,10 +1,11 @@
-use slipway_core::nonempty_str;
+use crate::taxonomy::Subsystem;
+use slipway_core::{nonempty_str, taxon};
 use slipway_knowledge::{Breaking, DocStatus};
 
 slipway_knowledge::adr!(
     title: "Two package families, and a refusal by name for the rest",
     status: DocStatus::Active,
-    subsystems: &[],
+    subsystems: &[taxon!(Subsystem, Os)],
     context: r#"## Context
 
 Packages are the first thing nerpa manages whose meaning differs by machine. A

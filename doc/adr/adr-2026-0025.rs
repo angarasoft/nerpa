@@ -1,10 +1,11 @@
-use slipway_core::nonempty_str;
+use crate::taxonomy::Subsystem;
+use slipway_core::{nonempty_str, taxon};
 use slipway_knowledge::{Breaking, DocStatus};
 
 slipway_knowledge::adr!(
     title: "The inventory is known; facts are not",
     status: DocStatus::Active,
-    subsystems: &[],
+    subsystems: &[taxon!(Subsystem, Core)],
     context: r#"## Context
 
 A fleet cannot be a hundred declarations. Ansible's answer is the inventory —

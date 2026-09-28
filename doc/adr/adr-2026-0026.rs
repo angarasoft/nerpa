@@ -1,10 +1,11 @@
-use slipway_core::nonempty_str;
+use crate::taxonomy::Subsystem;
+use slipway_core::{nonempty_str, taxon};
 use slipway_knowledge::{Breaking, DocStatus};
 
 slipway_knowledge::adr!(
     title: "A reaction is an edge, and an unpaid one is owed",
     status: DocStatus::Active,
-    subsystems: &[],
+    subsystems: &[taxon!(Subsystem, Core)],
     context: r#"- Corrected: 2026-09-11 — "a debt has to be written down before the action is
   attempted" was built as before the reaction, and a run that stopped between the
   cause and the reaction lost the debt: found by the review of RFC 0001. It is

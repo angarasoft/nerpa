@@ -1,10 +1,11 @@
-use slipway_core::nonempty_str;
+use crate::taxonomy::Subsystem;
+use slipway_core::{nonempty_str, taxon};
 use slipway_knowledge::{Breaking, DocStatus};
 
 slipway_knowledge::adr!(
     title: "A plan carries the premise it was computed from",
     status: DocStatus::Active,
-    subsystems: &[],
+    subsystems: &[taxon!(Subsystem, Core)],
     context: r#"- Corrected: 2026-09-11 — "the same encoding **unkeyed**" put an unkeyed digest of
   whatever was read into the plan, and for a secret already on disk that reached
   the plan's JSON; a test found it. Premise digests are sealed for their machine

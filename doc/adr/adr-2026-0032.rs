@@ -1,10 +1,11 @@
-use slipway_core::nonempty_str;
+use crate::taxonomy::Subsystem;
+use slipway_core::{nonempty_str, taxon};
 use slipway_knowledge::{Breaking, DocStatus};
 
 slipway_knowledge::adr!(
     title: "Provider logic stays on the control machine",
     status: DocStatus::Active,
-    subsystems: &[],
+    subsystems: &[taxon!(Subsystem, Core)],
     context: r"- Corrected: 2026-09-06 — the round-trip figures were stated without saying where
   they came from, which `docs/WRITING.md` refuses. Sources added; no reasoning
   changed.

@@ -1,10 +1,11 @@
-use slipway_core::nonempty_str;
+use crate::taxonomy::Subsystem;
+use slipway_core::{nonempty_str, taxon};
 use slipway_knowledge::{Breaking, DocStatus};
 
 slipway_knowledge::adr!(
     title: "A privileged executor is one the machine already had",
     status: DocStatus::Active,
-    subsystems: &[],
+    subsystems: &[taxon!(Subsystem, Executor)],
     context: r#"- Corrected: 2026-09-10 — the example named `/usr/local/libexec`, and `install`
   does not create a parent that is not there. A stock Gentoo has no `libexec`
   under `/usr/local`, so the command in this record failed on the first machine

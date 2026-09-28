@@ -1,10 +1,11 @@
-use slipway_core::nonempty_str;
+use crate::taxonomy::Subsystem;
+use slipway_core::{nonempty_str, taxon};
 use slipway_knowledge::{Breaking, DocStatus};
 
 slipway_knowledge::adr!(
     title: "Parallelism is threads, and providers are `Sync`",
     status: DocStatus::Active,
-    subsystems: &[],
+    subsystems: &[taxon!(Subsystem, Core)],
     context: r#"- Corrected: 2026-09-17 — "state is written from one place" was built as one
   writer of one file, which made every machine wait for every other machine's
   write. 0045 keeps the recorder as the one place that decides the order and

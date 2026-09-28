@@ -1,10 +1,11 @@
-use slipway_core::nonempty_str;
+use crate::taxonomy::Subsystem;
+use slipway_core::{nonempty_str, taxon};
 use slipway_knowledge::{Breaking, DocStatus};
 
 slipway_knowledge::adr!(
     title: "Ship a static executor and treat the transport as a plug",
     status: DocStatus::Active,
-    subsystems: &[],
+    subsystems: &[taxon!(Subsystem, Executor)],
     context: r#"- Corrected: 2026-09-07 — "It is signed, and verification runs in both
   directions" is written below in the present tense and nothing signs anything.
   There is no signing primitive in the dependency tree; delivery names the binary

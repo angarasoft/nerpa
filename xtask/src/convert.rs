@@ -40,6 +40,66 @@ enum Status {
     Proposed,
 }
 
+/// The subsystem each decision belongs to, by number — the wave-1
+/// classification against the taxonomy, reviewed rather than assumed.
+const SUBSYSTEMS: &[(u16, &str)] = &[
+    (1, "Core"),
+    (2, "Proto"),
+    (3, "Core"),
+    (4, "Core"),
+    (5, "Config"),
+    (6, "Core"),
+    (7, "Core"),
+    (8, "Gate"),
+    (9, "Transport"),
+    (10, "Executor"),
+    (11, "Core"),
+    (12, "Cli"),
+    (13, "Os"),
+    (14, "Gate"),
+    (15, "Gate"),
+    (16, "Gate"),
+    (17, "Core"),
+    (18, "Config"),
+    (19, "Cli"),
+    (20, "Transport"),
+    (21, "Core"),
+    (22, "Gate"),
+    (23, "Config"),
+    (24, "Core"),
+    (25, "Core"),
+    (26, "Core"),
+    (27, "Transport"),
+    (28, "Core"),
+    (29, "Core"),
+    (30, "Gate"),
+    (31, "Core"),
+    (32, "Core"),
+    (33, "Os"),
+    (34, "Core"),
+    (35, "Transport"),
+    (36, "Docs"),
+    (37, "Transport"),
+    (38, "Os"),
+    (39, "Executor"),
+    (40, "Executor"),
+    (41, "Core"),
+    (42, "Core"),
+    (43, "Core"),
+    (44, "Executor"),
+    (45, "Core"),
+    (46, "Core"),
+    (47, "Core"),
+    (48, "Core"),
+];
+
+fn subsystem(number: u16) -> Option<&'static str> {
+    SUBSYSTEMS
+        .iter()
+        .find(|(candidate, _)| *candidate == number)
+        .map(|(_, name)| *name)
+}
+
 // ---------------------------------------------------------------------------
 // Markdown → Decision
 // ---------------------------------------------------------------------------
@@ -218,14 +278,24 @@ fn render_rs(decision: &Decision) -> String {
         context.push_str(body);
     }
 
+    let (imports, subsystems) = match subsystem(decision.number) {
+        Some(name) => (
+            "use crate::taxonomy::Subsystem;\nuse slipway_core::{nonempty_str, taxon};\nuse slipway_knowledge::{Breaking, DocStatus};",
+            format!("subsystems: &[taxon!(Subsystem, {name})],"),
+        ),
+        None => (
+            "use slipway_core::nonempty_str;\nuse slipway_knowledge::{Breaking, DocStatus};",
+            "subsystems: &[],".to_owned(),
+        ),
+    };
+
     format!(
-        r#"use slipway_core::nonempty_str;
-use slipway_knowledge::{{Breaking, DocStatus}};
+        r#"{}
 
 slipway_knowledge::adr!(
     title: "{}",
     status: {},
-    subsystems: &[],
+    {}
     context: {},
     decision: {},
     trade_offs: &[{}],
@@ -237,8 +307,10 @@ slipway_knowledge::adr!(
     related_rfcs: &[],
 );
 "#,
+        imports,
         escape_title(&decision.title),
         status_to_rs(&decision.status),
+        subsystems,
         raw_literal(&context),
         raw_literal(&decision.decision),
         raw_literal(&decision.consequences),

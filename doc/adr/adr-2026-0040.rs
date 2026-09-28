@@ -1,10 +1,11 @@
-use slipway_core::nonempty_str;
+use crate::taxonomy::Subsystem;
+use slipway_core::{nonempty_str, taxon};
 use slipway_knowledge::{Breaking, DocStatus};
 
 slipway_knowledge::adr!(
     title: "An executor says which build it is",
     status: DocStatus::Active,
-    subsystems: &[],
+    subsystems: &[taxon!(Subsystem, Executor)],
     context: r#"- Corrected: 2026-09-10 — "an executor from before this refuses the first frame
   by name" was written before it was run, and is not what happened. Against a
   machine still holding version 2 the executor said `unknown variant build`: it
