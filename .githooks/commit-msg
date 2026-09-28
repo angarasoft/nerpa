@@ -1,18 +1,9 @@
 #!/usr/bin/env bash
-# The commit subject has to have the shape this project settled on.
-#
-# The rule and the reasoning live in docs/COMMITS.md; the check itself lives in
-# xtask, with fixtures, because a second implementation in shell would be a
-# second thing to keep in step with the first and it never is.
-#
-# Install with `cargo xtask hooks`. Hooks are not cloned, so a working copy that
-# has not run it is not being checked — which is the one thing this file cannot
-# do anything about.
+# A commit carries a basis and its subject carries Slipway's form. The check
+# lives in the Slipway tool, not in a second implementation that would drift
+# from it; the hook is written by hand rather than installed, so this repository
+# stays in English.
 set -euo pipefail
 
-if ! command -v cargo >/dev/null 2>&1; then
-    echo "commit-msg: cargo is not on PATH, so the subject was not checked" >&2
-    exit 0
-fi
+exec cargo slipway hook commit-msg "$1"
 
-exec cargo run --quiet --package xtask -- commit-msg "$1"
