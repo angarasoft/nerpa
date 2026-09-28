@@ -12,7 +12,7 @@ within a week.
 
 | Kind | Home |
 | --- | --- |
-| Why a decision was taken, and when | `docs/decisions/` — immutable once accepted, superseded rather than edited |
+| Why a decision was taken, and when | `doc/adr/` — the registry, written as code, immutable once accepted, superseded rather than edited |
 | A change worked out, measured and attacked before its decisions are taken | `docs/rfcs/` — reviewed on purpose, with the findings kept in the document, then turned into records |
 | What the system is, as contracts | `docs/ARCHITECTURE.md` — every section names its record and says whether it is built |
 | What must never break, and how it could | `docs/invariants.toml` — the registry, checked against the code both ways |
@@ -50,7 +50,7 @@ the writing.
 | When this changes | This changes with it | Held by |
 | --- | --- | --- |
 | A guarantee is added, or one stops holding | `docs/invariants.toml`, an `// ENFORCES:` anchor, the tests it names | `cargo xtask invariants` |
-| A decision is taken or reversed | A new record in `docs/decisions/`, and the superseded one points forward | `cargo xtask docs` |
+| A decision is taken or reversed | A new record in `doc/adr/`, and the superseded one points forward | the gate, `cargo xtask ci` |
 | Something in the architecture is built, or turns out not to be | The section's status in `docs/ARCHITECTURE.md` | `cargo xtask docs` |
 | A file named in this map moves | This map | `cargo xtask docs` |
 | The planner's shape changes | `docs/budgets.toml`, if the measured cost moved | `cargo xtask budget` (nightly) |

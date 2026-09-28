@@ -8,7 +8,7 @@ one place.
 | Question | Where | Checked by |
 | --- | --- | --- |
 | How do I use this thing? | rustdoc, in the code | `missing_docs`, `# Errors` and `# Panics` sections, no broken links |
-| Why is it like this? | `docs/decisions/` | `cargo xtask docs` |
+| Why is it like this? | `doc/adr/` — the registry, written as code; `docs/decisions/` until wave 1 moves them | the gate, `cargo xtask ci` |
 | What are we about to decide, and has it been attacked? | `docs/rfcs/` | review, logged in the document |
 | What must never break? | `docs/invariants.toml` | `cargo xtask invariants` |
 | What shape is it in now? | `docs/ARCHITECTURE.md` | `cargo xtask docs` |
