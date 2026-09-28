@@ -6,7 +6,7 @@ Why the suite is shaped the way it is:
 
 ## The suite is indexed by guarantee, not by module
 
-`docs/invariants.toml` is the index. Each entry names the tests that prove it, and
+`doc/invariant/` is the index. Each entry names the tests that prove it, and
 `cargo xtask invariants` fails if a named test disappears or is renamed. Adding a
 guarantee means adding an entry, an `// ENFORCES:` anchor, and a test the entry
 names — in that order, because writing the guarantee down first is what stops it
@@ -61,7 +61,7 @@ and that is a bug in the resource, not in the test.
 
 A test that exercises a guarantee and a test that attacks one are different
 things, and the registry now tells them apart. Every built entry in
-`docs/invariants.toml` writes down its `bypass` — what an attempt to violate it
+`doc/invariant/` writes down its `bypass` — what an attempt to violate it
 would actually look like — and an entry may only be `enforced` if its
 `adversarial` list names tests that carry that attempt out and assert it is
 refused.

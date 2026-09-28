@@ -25,7 +25,7 @@ Pages say whether they were derived or written. This one was written.
 
 ## What is guaranteed
 
-A sample of the registry, rendered from `docs/invariants.toml`:
+A sample of the registry, rendered from `doc/invariant/`:
 
 ```{nerpa-invariant} INV-ADDR-001
 ```

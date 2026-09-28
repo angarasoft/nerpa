@@ -17,7 +17,7 @@ failure has to stop the process, what a slot is for. It may not assert a
 guarantee except by naming an invariant, which renders its statement, how it
 could be bypassed, and whether anybody has attacked it.
 
-The reason is not tidiness. `docs/invariants.toml` is checked against the code in
+The reason is not tidiness. `doc/invariant/` is checked against the code in
 both directions and a claim in it has to survive an adversarial test before it
 may say `enforced`. A sentence in a document is checked by nobody. Letting prose
 promise things puts the weakest surface in the project in front of the reader,

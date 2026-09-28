@@ -64,7 +64,7 @@ not look like a classic vulnerability:
 
 ## What is already known, and is not a report
 
-`docs/invariants.toml` is the honest surface of this project. Every guarantee is
+`doc/invariant/` is the honest surface of this project. Every guarantee is
 registered with the statement, **how it could be bypassed**, and whether anybody
 has written a test that carries that bypass out. An entry marked `enforced` has
 been attacked; one marked `claimed` is believed and undemonstrated, and its

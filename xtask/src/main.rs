@@ -13,7 +13,7 @@
 //!   cargo xtask fmt         formatting
 //!   cargo xtask lint        clippy, then this repository's own rules
 //!   cargo xtask test        the test suites, with and without contracts
-//!   cargo xtask invariants  docs/invariants.toml against the code, both ways
+//!   cargo xtask invariants  doc/invariant/ against the code, both ways
 //!   cargo xtask docs        decision records, then rustdoc with warnings denied
 //!   cargo xtask deny        dependency licences and advisories
 //!
@@ -57,7 +57,7 @@ tasks:
   fmt         check formatting
   lint        clippy with warnings denied, then repository rules
   test        the suites, with and without contracts
-  invariants  docs/invariants.toml against the code, in both directions
+  invariants  doc/invariant/ against the code, in both directions
   docs        decision records, then rustdoc with warnings denied
   deny        dependency licences and advisories
   mutants     mutation testing (minutes; not part of ci)

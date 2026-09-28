@@ -10,7 +10,7 @@ one place.
 | How do I use this thing? | rustdoc, in the code | `missing_docs`, `# Errors` and `# Panics` sections, no broken links |
 | Why is it like this? | `doc/adr/` — the registry, written as code | the gate, `cargo xtask ci` |
 | What are we about to decide, and has it been attacked? | `docs/rfcs/` | review, logged in the document |
-| What must never break? | `docs/invariants.toml` | `cargo xtask invariants` |
+| What must never break? | `doc/invariant/` | `cargo xtask invariants` |
 | What shape is it in now? | `docs/ARCHITECTURE.md` | `cargo xtask docs` |
 | Where does this go? | `docs/MAP.md` | `cargo xtask docs` |
 | What must never happen? | `RULES.md` | itself |
@@ -50,7 +50,7 @@ first again.
 
 - Changes behaviour → an entry in `CHANGELOG.md`.
 - Changes a decision, or makes one → a record in `doc/adr/`.
-- Adds a guarantee the tool must hold → an entry in `docs/invariants.toml` with
+- Adds a guarantee the tool must hold → an entry in `doc/invariant/` with
   the `bypass` it could suffer, an `// ENFORCES:` anchor, and a test the entry
   names. It is `claimed` until an `adversarial` test carries that bypass out.
 - Builds something the architecture described as planned → the section's marker
@@ -80,7 +80,7 @@ sources that already exist and are already checked —
 * **Order** comes from `ARCHITECTURE.md`. Its sections are a sequence somebody
   curated and a gate keeps honest; the book does not need a second one.
 * **Explanation** comes from module `//!` documentation, read at build time.
-* **Promises** come from `docs/invariants.toml`, and from nowhere else. Prose may
+* **Promises** come from `doc/invariant/`, and from nowhere else. Prose may
   explain anything and may assert a guarantee only by naming an invariant, so the
   book cannot promise more than the registry — which is itself checked against
   the code in both directions.

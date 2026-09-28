@@ -658,6 +658,6 @@ the origin of each value, summary before detail, identical changes aggregated.
 
 ## What holds it together · built
 
-`docs/invariants.toml` lists the guarantees that must not break, each naming the
+`doc/invariant/` lists the guarantees that must not break, each naming the
 code that enforces it and the tests that prove it. `cargo xtask ci` fails if
 either link rots. Start there when changing anything in this document.

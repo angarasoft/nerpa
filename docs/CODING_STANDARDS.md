@@ -111,4 +111,4 @@ A test name is a sentence about a guarantee, not a label for a function.
 `test_graph_2` says nothing.
 
 A test that exists only to raise coverage is noise. A test that pins a guarantee
-from `docs/invariants.toml` is the point, and the registry should name it.
+from `doc/invariant/` is the point, and the registry should name it.
