@@ -38,6 +38,7 @@ mod tests {
         assert!(!ALL_SLICES.is_empty(), "slice registry is empty");
         assert!(!ALL_WORK.is_empty(), "work registry is empty");
         assert!(!review::ALL_REVIEWS.is_empty(), "review registry is empty");
+        assert!(!invariant::ALL_INVARIANTS.is_empty(), "invariant registry is empty");
         for (_, d) in ALL {
             assert!(!d.title.trim().is_empty(), "decision without a title");
         }
