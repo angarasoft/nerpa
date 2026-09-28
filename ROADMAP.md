@@ -125,87 +125,11 @@ machines were then put back by nerpa itself: the files it made removed, and a
 stopped service and a configuration it had rewritten returned to what they were,
 byte for byte.
 
-## Stage 2 — what cannot be changed later
+## Stages 2 to 6 — in the registry
 
-Nothing here can be shown off on a fleet, and all of it costs a day now and a
-migration once anybody's state file exists.
-
-* **Secrets.** `Attribute::Secret`, state holding a reference and a digest rather
-  than a value. The architecture already claims this; today a password in a
-  configuration would land in state in clear text, which is the thing Terraform is
-  criticised for here.
-* **Renaming a resource.** Addresses are frozen by
-  `0002` and there is
-  no path from one name to another but destroy and recreate. Terraform learned
-  this painfully and added `moved` blocks afterwards.
-* **Facts as values.** `0006`
-  refused facts deciding which resources exist, and was right. A path that differs
-  by distribution is a *value*, and there is no mechanism. The boundary needs a
-  decision before an implementation, or in six months nobody will remember why one
-  is allowed and the other is not.
-
-**Risk retired:** that the frozen parts of the model can carry what was promised
-of them.
-
-**Exit:** a password in a configuration appears in neither the state file nor the
-plan, and the resource that uses it still converges. A resource renamed in the
-configuration keeps its identity and is not rebuilt. A value derived from a fact
-works, and an attempt to decide a resource's existence from one is refused with a
-line number.
-
-## Stage 3 — the cloud, and a way in from Terraform
-
-Code generation from provider JSON schemas: Starlark stubs, an in-tree `yandex`
-provider covering ten to fifteen types, a `tfstate` reader. Import moves secrets
-out of state rather than copying them. Machines are visited in parallel, because
-a fleet is where sequential stops being acceptable. For applying, how is
-[RFC 0001](docs/rfcs/0001-applying-in-streamed-batches.md), accepted: machines side
-by side, one recorder, state in a shard per machine. Batching a machine's changes
-into one conversation waits for it and for what it alone gains
-([RFC 0003](docs/rfcs/0003-streamed-batches.md)).
-
-**Risk retired:** that provider schemas carry enough to generate against, and that
-importing beats recreating.
-
-**Exit:** one real environment moves across without recreating a single resource;
-`nerpa plan` immediately after import is empty. Import reports every secret it
-found in clear text in the old state. Recorded-exchange tests cover the provider.
-
-## Stage 4 — who is allowed to do what
-
-Grants, approval against a plan hash, the hash-chained log.
-
-**Risk retired:** that separation of duties survives contact with a real change,
-and that a signature over observed state is not so brittle as to be unusable.
-
-**Exit:** a run where one party applies and another signs, on the live fleet. An
-apply with a signature taken before an out-of-band change is refused, naming what
-moved. The log verifies from the first entry.
-
-## Stage 5 — the machine-facing surface
-
-MCP server, typed plan, blast radius.
-
-**Risk retired:** that an agent can decide from the plan document alone, and that a
-grant actually confines one.
-
-**Exit:** an agent plans and applies a change end to end under a grant, with a
-human signing the hash. A deliberately over-reaching request is refused by the
-grant rather than by the agent's judgement.
-
-## Stage 6 — other people's work
-
-The WIT interface and the WASM provider loader. A separate `.tf` to `.star`
-converter. Packaging and versioning for shared configuration, without which
-"a module is a function" is true and useless.
-
-**Risk retired:** that a sandboxed provider can do real work, that the capability
-boundary holds, and that somebody outside this repository can share something.
-
-**Exit:** a provider built outside this repository loads, creates a resource, and
-demonstrably cannot read a credential value or reach a host outside its manifest.
-
-At this point the repository opens.
+Stages 2 to 6 are now thrusts `t0002` through `t0006` in `doc/thrust/`; each
+stage's exit criterion is the thrust's outcome. Stages 0 and 1 stay here as
+history.
 
 ## Not scheduled
 
