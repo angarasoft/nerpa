@@ -1,8 +1,8 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{nonempty_str, taxon};
-use slipway_knowledge::{Breaking, DocStatus};
+use dacc_core::{nonempty_str, taxon};
+use dacc_knowledge::{Breaking, DocStatus};
 
-slipway_knowledge::adr!(
+dacc_knowledge::adr!(
     title: "A premise is sealed for the machine it describes",
     status: DocStatus::Active,
     subsystems: &[taxon!(Subsystem, Core)],
@@ -72,7 +72,7 @@ trusting that.
 "],
     constraints: &[],
     authors: nonempty_str!["Anishchuk Sergei"],
-    decided_at: slipway_core::date!(2026, 9, 10),
+    decided_at: dacc_core::date!(2026, 9, 10),
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],

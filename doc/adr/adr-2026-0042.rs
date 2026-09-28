@@ -1,8 +1,8 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{nonempty_str, taxon};
-use slipway_knowledge::{Breaking, DocStatus};
+use dacc_core::{nonempty_str, taxon};
+use dacc_knowledge::{Breaking, DocStatus};
 
-slipway_knowledge::adr!(
+dacc_knowledge::adr!(
     title: "A resource found as declared is adopted, and the plan says so",
     status: DocStatus::Active,
     subsystems: &[taxon!(Subsystem, Core)],
@@ -63,7 +63,7 @@ know about, and a plan that adopts has a number it did not have before.
 "],
     constraints: &[],
     authors: nonempty_str!["Anishchuk Sergei"],
-    decided_at: slipway_core::date!(2026, 9, 11),
+    decided_at: dacc_core::date!(2026, 9, 11),
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],

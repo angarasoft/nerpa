@@ -11,19 +11,19 @@
 
 #![allow(clippy::unwrap_used, clippy::print_stdout)]
 
-use slipway_scan::ScanError;
-use slipway_scan::plan::{SLICES, THRUSTS, WORK, emit_plan, emit_work_checks, scan_plan};
+use dacc_scan::ScanError;
+use dacc_scan::plan::{SLICES, THRUSTS, WORK, emit_plan, emit_work_checks, scan_plan};
 use std::{env, fs, path::PathBuf};
 
 fn main() {
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let out = PathBuf::from(env::var("OUT_DIR").unwrap());
 
-    let decisions = unwrap_scan(slipway_scan::scan_decisions(&manifest.join("adr")));
-    fs::write(out.join("adr.rs"), slipway_scan::emit_refs(&decisions)).unwrap();
+    let decisions = unwrap_scan(dacc_scan::scan_decisions(&manifest.join("adr")));
+    fs::write(out.join("adr.rs"), dacc_scan::emit_refs(&decisions)).unwrap();
 
-    let specs = unwrap_scan(slipway_scan::scan_specs(&manifest.join("rfc")));
-    fs::write(out.join("rfc.rs"), slipway_scan::emit_spec_refs(&specs)).unwrap();
+    let specs = unwrap_scan(dacc_scan::scan_specs(&manifest.join("rfc")));
+    fs::write(out.join("rfc.rs"), dacc_scan::emit_spec_refs(&specs)).unwrap();
 
     let thrusts = unwrap_scan(scan_plan(&manifest.join("thrust"), &THRUSTS));
     let slices = unwrap_scan(scan_plan(&manifest.join("slice"), &SLICES));
@@ -36,7 +36,7 @@ fn main() {
 
     // The journal folds into states at build time: a machine violation does not
     // compile and names the event file.
-    let journal = unwrap_scan(slipway_scan::journal::scan_journal(
+    let journal = unwrap_scan(dacc_scan::journal::scan_journal(
         &manifest.join("journal"),
         &work,
     ));
@@ -44,13 +44,13 @@ fn main() {
 
     // Code anchors: a decision names a code fragment, and the scan turns the
     // marker in the product's source into a reference constant.
-    let anchors = unwrap_scan(slipway_scan::anchors::scan_anchors(&[&manifest
+    let anchors = unwrap_scan(dacc_scan::anchors::scan_anchors(&[&manifest
         .parent()
         .unwrap()
         .join("crates")]));
     fs::write(
         out.join("anchor.rs"),
-        slipway_scan::anchors::emit_anchor_refs(&anchors),
+        dacc_scan::anchors::emit_anchor_refs(&anchors),
     )
     .unwrap();
 
@@ -64,7 +64,7 @@ fn unwrap_scan<T>(r: Result<T, ScanError>) -> T {
     match r {
         Ok(v) => v,
         Err(e) => {
-            println!("cargo::error=slipway: {e}");
+            println!("cargo::error=dacc: {e}");
             std::process::exit(1);
         }
     }

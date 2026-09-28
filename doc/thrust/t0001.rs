@@ -1,8 +1,8 @@
-use slipway_core::NonEmptyStr;
+use dacc_core::NonEmptyStr;
 
-slipway_work::thrust!(1,
-    title: NonEmptyStr::new("nerpa runs on Slipway: the registry, the gate, and proof of done"),
+dacc_work::thrust!(1,
+    title: NonEmptyStr::new("nerpa runs on dacc: the registry, the gate, and proof of done"),
     outcome: NonEmptyStr::new(
-        "Every decision, specification, proposal, invariant and piece of planned work lives in the compiled registry at doc/, every commit after the switch carries a basis, and the verdict on whether Slipway earned adoption is recorded against criteria written before the start."
+        "Every decision, specification, proposal, invariant and piece of planned work lives in the compiled registry at doc/, every commit after the switch carries a basis, and the verdict on whether dacc earned adoption is recorded against criteria written before the start."
     ),
 );

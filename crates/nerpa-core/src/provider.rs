@@ -318,7 +318,7 @@ pub enum Afterwards {
 // ENFORCES: INV-PROVIDER-002
 // `read` is the only method here that is handed a connection. What a change is
 // made of is said, not done: the engine sends it.
-#[slipway_derive::doc_anchor(id = "provider-trait")]
+#[dacc_derive::doc_anchor(id = "provider-trait")]
 pub trait Provider: Send + Sync {
     /// The name this provider answers to in an address.
     fn name(&self) -> &ProviderName;

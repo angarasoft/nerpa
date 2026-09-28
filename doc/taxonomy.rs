@@ -6,10 +6,10 @@
 //!
 //! The split follows the crate layout: a subsystem is the boundary behind which a
 //! separate decision about how a layer is built stands. `Pilot` is the thrust
-//! `slipway_pilot` — the pilot's own protocol, measurements and findings — kept
+//! `dacc_pilot` — the pilot's own protocol, measurements and findings — kept
 //! apart so that a commit scope for it exists without touching a product crate.
 
-slipway_core::declare_taxonomy! {
+dacc_core::declare_taxonomy! {
     Subsystem => [Core, Config, Proto, Executor, Transport, Os, Cli, Gate, Docs, Pilot],
     Team => [Maintainers],
 }

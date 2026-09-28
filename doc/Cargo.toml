@@ -19,10 +19,10 @@ path = "lib.rs"
 workspace = true
 
 [dependencies]
-slipway-core = { workspace = true }
-slipway-knowledge = { workspace = true }
-slipway-work = { workspace = true }
+dacc-core = { workspace = true }
+dacc-knowledge = { workspace = true }
+dacc-work = { workspace = true }
 chrono = { workspace = true }
 
 [build-dependencies]
-slipway-scan = { workspace = true }
+dacc-scan = { workspace = true }

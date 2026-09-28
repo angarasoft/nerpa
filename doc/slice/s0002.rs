@@ -1,6 +1,6 @@
-use slipway_core::{BlastRadius, NonEmptyStr};
+use dacc_core::{BlastRadius, NonEmptyStr};
 
-slipway_work::slice!(2,
+dacc_work::slice!(2,
     title: NonEmptyStr::new("Wave 1: decisions move into the registry"),
     thrust: crate::thrust::t0001,
     outcome: NonEmptyStr::new(

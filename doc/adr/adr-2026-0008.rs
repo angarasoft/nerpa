@@ -1,8 +1,8 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{nonempty_str, taxon};
-use slipway_knowledge::{Breaking, DocStatus};
+use dacc_core::{nonempty_str, taxon};
+use dacc_knowledge::{Breaking, DocStatus};
 
-slipway_knowledge::adr!(
+dacc_knowledge::adr!(
     title: "Put the gate in before the code it checks",
     status: DocStatus::Active,
     subsystems: &[taxon!(Subsystem, Gate)],
@@ -37,7 +37,7 @@ that is its output.
 "],
     constraints: &[],
     authors: nonempty_str!["Anishchuk Sergei"],
-    decided_at: slipway_core::date!(2026, 9, 4),
+    decided_at: dacc_core::date!(2026, 9, 4),
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],

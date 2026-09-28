@@ -1,8 +1,8 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{nonempty_str, taxon};
-use slipway_knowledge::{Breaking, DocStatus};
+use dacc_core::{nonempty_str, taxon};
+use dacc_knowledge::{Breaking, DocStatus};
 
-slipway_knowledge::adr!(
+dacc_knowledge::adr!(
     title: "An independent reading is a record of its own, not a note in somebody else's",
     status: DocStatus::Active,
     subsystems: &[taxon!(Subsystem, Pilot)],
@@ -16,7 +16,7 @@ slipway_knowledge::adr!(
     decision: r"
         An independent reading is a record of its own type, the local review!:
         its angle, its findings, and what became of each, filed at doc/review/.
-        The type is local until Slipway ships an equivalent, at which point a
+        The type is local until dacc ships an equivalent, at which point a
         decision supersedes it and a work item converts its records.
     ",
     trade_offs: &[
@@ -26,7 +26,7 @@ slipway_knowledge::adr!(
         "A review's author writes no other pilot record.",
     ],
     authors: nonempty_str!["Anishchuk Sergei"],
-    decided_at: slipway_core::date!(2026, 9, 28),
+    decided_at: dacc_core::date!(2026, 9, 28),
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[crate::rfc::rfc_2026_001],

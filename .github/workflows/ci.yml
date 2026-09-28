@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # The pushed range, for `cargo slipway msg-check --range`.
+          # The pushed range, for `cargo dacc msg-check --range`.
           fetch-depth: 0
 
       # No toolchain is named here on purpose: rust-toolchain.toml is the single
@@ -37,8 +37,8 @@ jobs:
 
       # The same revision Cargo.toml pins; a second copy of the revision would
       # drift from the first.
-      - name: Install cargo-slipway
-        run: cargo install --locked --git https://github.com/anishukserg/slipway --rev 40e9905 slipway-cli
+      - name: Install cargo-dacc
+        run: cargo install --locked dacc-cli
 
       # One entry point, and the same one a developer runs before pushing. A CI
       # file that grows its own list of steps ends up checking something subtly
@@ -53,7 +53,7 @@ jobs:
       # pushed range, not just the tip.
       - name: Commit messages
         if: github.event_name == 'push'
-        run: cargo slipway msg-check --range "${{ github.event.before }}..${{ github.event.after }}"
+        run: cargo dacc msg-check --range "${{ github.event.before }}..${{ github.event.after }}"
 
   mutants:
     name: mutants

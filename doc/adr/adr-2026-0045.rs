@@ -1,8 +1,8 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{nonempty_str, taxon};
-use slipway_knowledge::{Breaking, DocStatus};
+use dacc_core::{nonempty_str, taxon};
+use dacc_knowledge::{Breaking, DocStatus};
 
-slipway_knowledge::adr!(
+dacc_knowledge::adr!(
     title: "Machines apply side by side, and one recorder owns state",
     status: DocStatus::Active,
     subsystems: &[taxon!(Subsystem, Core)],
@@ -39,7 +39,7 @@ step 1's accepted cost.
 "],
     constraints: &[],
     authors: nonempty_str!["Anishchuk Sergei"],
-    decided_at: slipway_core::date!(2026, 9, 17),
+    decided_at: dacc_core::date!(2026, 9, 17),
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],

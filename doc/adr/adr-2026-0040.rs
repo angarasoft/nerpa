@@ -1,8 +1,8 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{nonempty_str, taxon};
-use slipway_knowledge::{Breaking, DocStatus};
+use dacc_core::{nonempty_str, taxon};
+use dacc_knowledge::{Breaking, DocStatus};
 
-slipway_knowledge::adr!(
+dacc_knowledge::adr!(
     title: "An executor says which build it is",
     status: DocStatus::Active,
     subsystems: &[taxon!(Subsystem, Executor)],
@@ -109,7 +109,7 @@ builds a nerpa accepts rather than which one it carries — a list, not a name.
 "],
     constraints: &[],
     authors: nonempty_str!["Anishchuk Sergei"],
-    decided_at: slipway_core::date!(2026, 9, 10),
+    decided_at: dacc_core::date!(2026, 9, 10),
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],

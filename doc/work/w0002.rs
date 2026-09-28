@@ -1,8 +1,8 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{taxon, BlastRadius, NonEmptyStr};
-use slipway_work::WorkOrigin;
+use dacc_core::{taxon, BlastRadius, NonEmptyStr};
+use dacc_work::WorkOrigin;
 
-slipway_work::work!(2,
+dacc_work::work!(2,
     title: NonEmptyStr::new("The converter writes every decision into the registry, without loss"),
     slice: crate::slice::s0002,
     origin: WorkOrigin::Decision(crate::adr::adr_2026_051),

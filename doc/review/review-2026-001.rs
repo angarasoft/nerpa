@@ -1,4 +1,4 @@
-use slipway_core::{NonEmptyStr, nonempty_str};
+use dacc_core::{NonEmptyStr, nonempty_str};
 
 crate::review!(
     title: NonEmptyStr::new("The conversion, read after it happened"),
@@ -8,5 +8,5 @@ crate::review!(
         "The classification is a first pass against the taxonomy; it is a review of a mapping, not a claim that the mapping is final.",
     ],
     authors: nonempty_str!["Anishchuk Sergei"],
-    decided_at: slipway_core::date!(2026, 9, 28),
+    decided_at: dacc_core::date!(2026, 9, 28),
 );

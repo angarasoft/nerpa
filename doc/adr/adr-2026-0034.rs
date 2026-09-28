@@ -1,8 +1,8 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{nonempty_str, taxon};
-use slipway_knowledge::{Breaking, DocStatus};
+use dacc_core::{nonempty_str, taxon};
+use dacc_knowledge::{Breaking, DocStatus};
 
-slipway_knowledge::adr!(
+dacc_knowledge::adr!(
     title: "A plan carries the premise it was computed from",
     status: DocStatus::Active,
     subsystems: &[taxon!(Subsystem, Core)],
@@ -89,7 +89,7 @@ many large files, and paid on every apply whether anything moved or not.
 "],
     constraints: &[],
     authors: nonempty_str!["Anishchuk Sergei"],
-    decided_at: slipway_core::date!(2026, 9, 6),
+    decided_at: dacc_core::date!(2026, 9, 6),
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],

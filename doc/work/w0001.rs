@@ -1,8 +1,8 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{taxon, BlastRadius, NonEmptyStr};
-use slipway_work::WorkOrigin;
+use dacc_core::{taxon, BlastRadius, NonEmptyStr};
+use dacc_work::WorkOrigin;
 
-slipway_work::work!(1,
+dacc_work::work!(1,
     title: NonEmptyStr::new("The registry skeleton: doc/ crate, taxonomy, and the pilot's first records"),
     slice: crate::slice::s0001,
     origin: WorkOrigin::Decision(crate::adr::adr_2026_050),

@@ -1,8 +1,8 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{taxon, BlastRadius, NonEmptyStr};
-use slipway_work::WorkOrigin;
+use dacc_core::{taxon, BlastRadius, NonEmptyStr};
+use dacc_work::WorkOrigin;
 
-slipway_work::work!(4,
+dacc_work::work!(4,
     title: NonEmptyStr::new("Links and code references point at the registry"),
     slice: crate::slice::s0002,
     origin: WorkOrigin::Decision(crate::adr::adr_2026_051),

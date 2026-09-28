@@ -1,8 +1,8 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{taxon, BlastRadius, NonEmptyStr};
-use slipway_work::WorkOrigin;
+use dacc_core::{taxon, BlastRadius, NonEmptyStr};
+use dacc_work::WorkOrigin;
 
-slipway_work::work!(6,
+dacc_work::work!(6,
     title: NonEmptyStr::new("The review type: an independent reading is a record of its own"),
     slice: crate::slice::s0002,
     origin: WorkOrigin::Decision(crate::adr::adr_2026_055),

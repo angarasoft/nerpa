@@ -1,16 +1,16 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{nonempty_str, taxon};
-use slipway_knowledge::{Breaking, DocStatus};
+use dacc_core::{nonempty_str, taxon};
+use dacc_knowledge::{Breaking, DocStatus};
 
-slipway_knowledge::adr!(
-    title: "The gate's composition on nerpa: Slipway's steps around cargo xtask ci",
+dacc_knowledge::adr!(
+    title: "The gate's composition on nerpa: dacc's steps around cargo xtask ci",
     status: DocStatus::Active,
     subsystems: &[taxon!(Subsystem, Gate), taxon!(Subsystem, Pilot)],
     context: r"
         The gate is thirteen steps: external names, markdown links, the journal,
         the project command, fmt, clippy, build and tests, the error-code probe,
         the attacks, docs, MSRV, MSRV attacks, and deny. Measured on nerpa at
-        Slipway 40e9905: external names not run (no list); markdown links failed
+        dacc 40e9905: external names not run (no list); markdown links failed
         on a gitignored .venv-docs until it moved outside the tree; attacks
         failed at the default floor 36 because nerpa has no compile_fail attacks;
         MSRV failed while rust-version was 1.98 and only 1.98.1 was installed;
@@ -28,7 +28,7 @@ slipway_knowledge::adr!(
         external names).
     ",
     trade_offs: &[
-        "gate_command duplicates fmt, clippy and the build the gate's own steps also run; the duplication is a finding for Slipway, accepted rather than left unstated.",
+        "gate_command duplicates fmt, clippy and the build the gate's own steps also run; the duplication is a finding for dacc, accepted rather than left unstated.",
         "doctest_floor 0 records honestly that nothing is attack-tested yet; the floor rises only when the local invariant type lands in wave 3.",
         "A git dependency without a version is a wildcard to cargo-deny; the version field is the cost of the pin.",
     ],
@@ -38,7 +38,7 @@ slipway_knowledge::adr!(
         "rust-version and rust-toolchain.toml name the same version.",
     ],
     authors: nonempty_str!["Anishchuk Sergei"],
-    decided_at: slipway_core::date!(2026, 9, 28),
+    decided_at: dacc_core::date!(2026, 9, 28),
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[crate::rfc::rfc_2026_001],

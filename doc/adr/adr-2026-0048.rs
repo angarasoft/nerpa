@@ -1,8 +1,8 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{nonempty_str, taxon};
-use slipway_knowledge::{Breaking, DocStatus};
+use dacc_core::{nonempty_str, taxon};
+use dacc_knowledge::{Breaking, DocStatus};
 
-slipway_knowledge::adr!(
+dacc_knowledge::adr!(
     title: "A run that stops holds the machines it was acting on",
     status: DocStatus::Active,
     subsystems: &[taxon!(Subsystem, Core)],
@@ -40,7 +40,7 @@ next run, and two ways for a run to end with nothing written down.
 "],
     constraints: &[],
     authors: nonempty_str!["Anishchuk Sergei"],
-    decided_at: slipway_core::date!(2026, 9, 17),
+    decided_at: dacc_core::date!(2026, 9, 17),
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],

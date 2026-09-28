@@ -1,8 +1,8 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{nonempty_str, taxon};
-use slipway_knowledge::{Breaking, DocStatus};
+use dacc_core::{nonempty_str, taxon};
+use dacc_knowledge::{Breaking, DocStatus};
 
-slipway_knowledge::adr!(
+dacc_knowledge::adr!(
     title: "A rename is a migration, and it says when it can be deleted",
     status: DocStatus::Active,
     subsystems: &[taxon!(Subsystem, Core)],
@@ -58,7 +58,7 @@ files it has no business knowing about.
 "#],
     constraints: &[],
     authors: nonempty_str!["Anishchuk Sergei"],
-    decided_at: slipway_core::date!(2026, 9, 5),
+    decided_at: dacc_core::date!(2026, 9, 5),
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],

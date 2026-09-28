@@ -1,8 +1,8 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{nonempty_str, taxon};
-use slipway_knowledge::{Breaking, DocStatus};
+use dacc_core::{nonempty_str, taxon};
+use dacc_knowledge::{Breaking, DocStatus};
 
-slipway_knowledge::adr!(
+dacc_knowledge::adr!(
     title: "Ship a static executor and treat the transport as a plug",
     status: DocStatus::Active,
     subsystems: &[taxon!(Subsystem, Executor)],
@@ -45,7 +45,7 @@ protocol is now a compatibility surface that has to be versioned.
 "],
     constraints: &[],
     authors: nonempty_str!["Anishchuk Sergei"],
-    decided_at: slipway_core::date!(2026, 9, 4),
+    decided_at: dacc_core::date!(2026, 9, 4),
     breaking: Breaking::No,
     code_refs: &[crate::anchor::wire_protocol],
     related_rfcs: &[],

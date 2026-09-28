@@ -1,8 +1,8 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{nonempty_str, taxon};
-use slipway_knowledge::{Breaking, DocStatus};
+use dacc_core::{nonempty_str, taxon};
+use dacc_knowledge::{Breaking, DocStatus};
 
-slipway_knowledge::adr!(
+dacc_knowledge::adr!(
     title: "`process` is a provider's word, never an author's",
     status: DocStatus::Active,
     subsystems: &[taxon!(Subsystem, Os)],
@@ -87,7 +87,7 @@ not a run whose state can be inferred — it has to be re-read.
 "#],
     constraints: &[],
     authors: nonempty_str!["Anishchuk Sergei"],
-    decided_at: slipway_core::date!(2026, 9, 6),
+    decided_at: dacc_core::date!(2026, 9, 6),
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],

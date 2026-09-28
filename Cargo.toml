@@ -41,16 +41,15 @@ nerpa-proto = { path = "crates/nerpa-proto", version = "=0.0.1" }
 nerpa-transport = { path = "crates/nerpa-transport", version = "=0.0.1" }
 nerpa-provider-os = { path = "crates/nerpa-provider-os", version = "=0.0.1" }
 
-# Slipway: the methodology the registry runs on, and the pilot that tests it as
-# the first project outside Slipway itself. Pinned to one revision; moving to a
-# newer one is a single commit with a work item of its own. The version field is
-# what deny.toml reads: a git dependency without it is a wildcard under `deny`.
-slipway-core = { git = "https://github.com/anishukserg/slipway", rev = "40e9905", version = "0.1.0" }
-slipway-knowledge = { git = "https://github.com/anishukserg/slipway", rev = "40e9905", version = "0.1.0" }
-slipway-work = { git = "https://github.com/anishukserg/slipway", rev = "40e9905", version = "0.1.0" }
-slipway-scan = { git = "https://github.com/anishukserg/slipway", rev = "40e9905", version = "0.1.0" }
-slipway-derive = { git = "https://github.com/anishukserg/slipway", rev = "40e9905", version = "0.1.0" }
-# Dates for decision records. Arrives with Slipway; named here so the tree sees
+# dacc: the methodology the registry runs on, and the pilot that tests it as
+# the first project outside dacc itself. Published on crates.io, so the tree
+# names a version rather than a revision.
+dacc-core = "0.1.0"
+dacc-knowledge = "0.1.0"
+dacc-work = "0.1.0"
+dacc-scan = "0.1.0"
+dacc-derive = "0.1.0"
+# Dates for decision records. Arrives with dacc; named here so the tree sees
 # one version of it rather than two.
 chrono = { version = "0.4.32", default-features = false, features = ["std"] }
 

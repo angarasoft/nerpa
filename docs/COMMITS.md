@@ -5,12 +5,12 @@
 
 The body, after a blank line, saying why.
 
-Slipway-Work: w0001
+Dacc-Work: w0001
 ```
 
 The scope in parentheses names a subsystem of the registry's taxonomy, and every
-commit carries a basis — `Slipway-Work: wNNNN` — naming the work item it belongs
-to. Both are checked by `.githooks/commit-msg` and `cargo slipway msg-check`, so
+commit carries a basis — `Dacc-Work: wNNNN` — naming the work item it belongs
+to. Both are checked by `.githooks/commit-msg` and `cargo dacc msg-check`, so
 this page is a description of a gate rather than an appeal to anybody's memory.
 
 The convention is a decision, not a habit: `doc/adr/adr-2026-054.rs`.
@@ -18,7 +18,7 @@ The convention is a decision, not a habit: `doc/adr/adr-2026-054.rs`.
 ## Install the hook
 
 ```console
-$ cargo slipway hooks install
+$ cargo dacc hooks install
 ```
 
 Once per clone. Hooks are not cloned, so a working copy that has not run this is
@@ -28,7 +28,7 @@ about.
 ## Making a commit
 
 ```console
-$ cargo slipway commit -F <message> -- <paths…>
+$ cargo dacc commit -F <message> -- <paths…>
 ```
 
 Paths are named explicitly rather than taken from `git add -A`, the gate runs on
@@ -75,7 +75,7 @@ If a change wants two types it is two commits.
 * A body that runs straight on from the subject. There is a blank line between
   them, because every tool that shows a log assumes it.
 * A subject over 90 characters.
-* A commit after the switch without a basis. The `Slipway-Work: wNNNN` trailer
+* A commit after the switch without a basis. The `Dacc-Work: wNNNN` trailer
   must name a work item in the commit's own tree.
 
 ## What is only mentioned

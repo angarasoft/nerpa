@@ -1,13 +1,13 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{nonempty_str, taxon};
-use slipway_knowledge::{Breaking, DocStatus};
+use dacc_core::{nonempty_str, taxon};
+use dacc_knowledge::{Breaking, DocStatus};
 
-slipway_knowledge::adr!(
+dacc_knowledge::adr!(
     title: "The pilot is judged against criteria written before it started, by the owner after an independent reading",
     status: DocStatus::Active,
     subsystems: &[taxon!(Subsystem, Pilot)],
     context: r"
-        The pilot exists to test Slipway, not merely to move nerpa onto it. A
+        The pilot exists to test dacc, not merely to move nerpa onto it. A
         criterion written after the data is in is a description, not a test, so
         every hypothesis names what measures it, where the number comes from, and
         which result stops or narrows the pilot.
@@ -36,7 +36,7 @@ slipway_knowledge::adr!(
         "The verdict is read first by a different model than the one that did most of the work.",
     ],
     authors: nonempty_str!["Anishchuk Sergei"],
-    decided_at: slipway_core::date!(2026, 9, 28),
+    decided_at: dacc_core::date!(2026, 9, 28),
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[crate::rfc::rfc_2026_001],

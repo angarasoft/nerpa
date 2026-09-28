@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# A commit carries a basis and its subject carries Slipway's form. The check
-# lives in the Slipway tool, not in a second implementation that would drift
+# A commit carries a basis and its subject carries dacc's form. The check
+# lives in the dacc tool, not in a second implementation that would drift
 # from it; the hook is written by hand rather than installed, so this repository
 # stays in English.
 set -euo pipefail
 
-exec cargo slipway hook commit-msg "$1"
+exec cargo dacc hook commit-msg "$1"
 

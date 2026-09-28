@@ -1,5 +1,5 @@
 # The gate's composition on nerpa, decided in doc/adr/adr-2026-053.rs.
-# Read by `cargo slipway gate` and the hooks from the tree being checked.
+# Read by `cargo dacc gate` and the hooks from the tree being checked.
 #
 # This is a draft for the measurement; the composition is decided in adr-2026-053.
 
@@ -14,16 +14,16 @@ subject_limit = "90"
 # Where a refusal points. nerpa's rules live in docs/COMMITS.md.
 commit_rules = "docs/COMMITS.md"
 
-# nerpa has no Slipway-style compile_fail attacks yet; its invariants are held by
+# nerpa has no dacc-style compile_fail attacks yet; its invariants are held by
 # `cargo xtask invariants`. The floor is the actual count — zero until wave 3.
 doctest_floor = "0"
 
 # nerpa's single entry point, run as the delegated project step. It duplicates
 # fmt/clippy/test with the gate's own steps — that duplication is a finding for
-# Slipway, accepted here rather than left unstated.
+# dacc, accepted here rather than left unstated.
 gate_command = "cargo xtask ci"
 
-# The tool writes these subjects in English (Slipway F10).
+# The tool writes these subjects in English (dacc F10).
 subject_started = "[PLAN]({scope}): work {id} started"
 subject_landed = "[PLAN]({scope}): work {id} landed"
 subject_abandoned = "[PLAN]({scope}): work {id} abandoned"

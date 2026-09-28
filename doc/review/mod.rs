@@ -1,9 +1,9 @@
 //! The review type: an independent reading — its angle, its findings, and what
 //! became of each. Local to nerpa, introduced by `adr-2026-055`, and retired
-//! when Slipway ships an equivalent.
+//! when dacc ships an equivalent.
 
 use chrono::NaiveDate;
-use slipway_core::{NonEmpty, NonEmptyStr};
+use dacc_core::{NonEmpty, NonEmptyStr};
 
 /// One independent reading of the pilot's work.
 #[derive(Debug)]

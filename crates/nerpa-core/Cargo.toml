@@ -29,7 +29,7 @@ getrandom.workspace = true
 rustix = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-slipway-derive = { workspace = true }
+dacc-derive = { workspace = true }
 thiserror = { workspace = true }
 
 [lints]

@@ -471,6 +471,59 @@ dependencies = [
 ]
 
 [[package]]
+name = "dacc-core"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "208a0e6e799da9fad361684ab751a65b158a0067ed338a0d7a564a64f63948a3"
+
+[[package]]
+name = "dacc-derive"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "80dae7cda5b9c86ea10bb5d80bae6fd79ea46967f7ded569819412ed8e700da8"
+dependencies = [
+ "dacc-core",
+]
+
+[[package]]
+name = "dacc-journal"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b0bab96e4f05d6d58535e31a30c1e0dd43276742956450d70d1417b85c3f0e46"
+
+[[package]]
+name = "dacc-knowledge"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "131dfe1859d8b41f2b81debc5a8b10177cbb6aaab14180e43890fbba355ac135"
+dependencies = [
+ "chrono",
+ "dacc-core",
+]
+
+[[package]]
+name = "dacc-scan"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ad2a61fdf52958a1d9a4cd702d749dcd1cde33271ed9d28c9dad43d515124b7"
+dependencies = [
+ "dacc-core",
+ "dacc-journal",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
+name = "dacc-work"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "794fd954e202cbea623725d49b9d662eb011220e881b986aa0cd6a7438d5aa4f"
+dependencies = [
+ "dacc-core",
+]
+
+[[package]]
 name = "dashmap"
 version = "6.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1056,13 +1109,13 @@ dependencies = [
  "base64",
  "blake3",
  "ciborium",
+ "dacc-derive",
  "getrandom 0.4.3",
  "nerpa-proto",
  "proptest",
  "rustix",
  "serde",
  "serde_json",
- "slipway-derive",
  "thiserror",
 ]
 
@@ -1071,10 +1124,10 @@ name = "nerpa-doc"
 version = "0.0.1"
 dependencies = [
  "chrono",
- "slipway-core",
- "slipway-knowledge",
- "slipway-scan",
- "slipway-work",
+ "dacc-core",
+ "dacc-knowledge",
+ "dacc-scan",
+ "dacc-work",
 ]
 
 [[package]]
@@ -1091,9 +1144,9 @@ version = "0.0.1"
 dependencies = [
  "blake3",
  "ciborium",
+ "dacc-derive",
  "serde",
  "serde_bytes",
- "slipway-derive",
  "thiserror",
 ]
 
@@ -1678,53 +1731,6 @@ name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
-
-[[package]]
-name = "slipway-core"
-version = "0.1.0"
-source = "git+https://github.com/anishukserg/slipway?rev=40e9905#40e9905a39dd6aef514f263d2e94ad70ac262a02"
-
-[[package]]
-name = "slipway-derive"
-version = "0.1.0"
-source = "git+https://github.com/anishukserg/slipway?rev=40e9905#40e9905a39dd6aef514f263d2e94ad70ac262a02"
-dependencies = [
- "slipway-core",
-]
-
-[[package]]
-name = "slipway-journal"
-version = "0.1.0"
-source = "git+https://github.com/anishukserg/slipway?rev=40e9905#40e9905a39dd6aef514f263d2e94ad70ac262a02"
-
-[[package]]
-name = "slipway-knowledge"
-version = "0.1.0"
-source = "git+https://github.com/anishukserg/slipway?rev=40e9905#40e9905a39dd6aef514f263d2e94ad70ac262a02"
-dependencies = [
- "chrono",
- "slipway-core",
-]
-
-[[package]]
-name = "slipway-scan"
-version = "0.1.0"
-source = "git+https://github.com/anishukserg/slipway?rev=40e9905#40e9905a39dd6aef514f263d2e94ad70ac262a02"
-dependencies = [
- "proc-macro2",
- "quote",
- "slipway-core",
- "slipway-journal",
- "syn 2.0.119",
-]
-
-[[package]]
-name = "slipway-work"
-version = "0.1.0"
-source = "git+https://github.com/anishukserg/slipway?rev=40e9905#40e9905a39dd6aef514f263d2e94ad70ac262a02"
-dependencies = [
- "slipway-core",
-]
 
 [[package]]
 name = "smallvec"

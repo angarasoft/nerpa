@@ -1,9 +1,9 @@
 use crate::taxonomy::Subsystem;
-use slipway_core::{nonempty_str, taxon};
-use slipway_knowledge::DocStatus;
+use dacc_core::{nonempty_str, taxon};
+use dacc_knowledge::DocStatus;
 
-slipway_knowledge::rfc!(
-    title: "The pilot: Slipway's promises under test, stated as invariants",
+dacc_knowledge::rfc!(
+    title: "The pilot: dacc's promises under test, stated as invariants",
     status: DocStatus::Active,
     target: &[taxon!(Subsystem, Pilot), taxon!(Subsystem, Gate), taxon!(Subsystem, Docs)],
     goal: r"
@@ -15,7 +15,7 @@ slipway_knowledge::rfc!(
     ",
     input_contract: r"
         The registry at doc/, written as code: adr/, rfc/, thrust/, slice/, work/,
-        journal/ and taxonomy.rs. A commit after the switch carries a Slipway-Work
+        journal/ and taxonomy.rs. A commit after the switch carries a Dacc-Work
         trailer naming a work item in the commit's own tree.
     ",
     output_contract: r"
@@ -32,6 +32,6 @@ slipway_knowledge::rfc!(
         "Converting a Markdown record to the registry and back loses nothing: the sections compare byte for byte.",
     ],
     authors: nonempty_str!["Anishchuk Sergei"],
-    decided_at: slipway_core::date!(2026, 9, 28),
+    decided_at: dacc_core::date!(2026, 9, 28),
     decided_by: &[crate::adr::adr_2026_050],
 );
