@@ -1,10 +1,11 @@
 # Pinned to what pip actually resolved, not to versions somebody hoped for.
 # A documentation build that drifts breaks on another machine for reasons nobody
-# can reproduce. Regenerate with:
+# can reproduce. The venv lives OUTSIDE the tree: the gate walks the tree and
+# would read third-party READMEs from site-packages. Regenerate with:
 #
-#     python3 -m venv .venv-docs
-#     .venv-docs/bin/pip install sphinx myst-parser furo
-#     .venv-docs/bin/pip freeze > docs/book/requirements.txt
+#     python3 -m venv ~/projects/.venvs/nerpa-docs
+#     ~/projects/.venvs/nerpa-docs/bin/pip install sphinx myst-parser furo
+#     ~/projects/.venvs/nerpa-docs/bin/pip freeze > docs/book/requirements.txt
 #
 accessible-pygments==0.0.5
 alabaster==1.0.0
