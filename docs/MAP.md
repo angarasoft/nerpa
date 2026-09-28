@@ -13,7 +13,7 @@ within a week.
 | Kind | Home |
 | --- | --- |
 | Why a decision was taken, and when | `doc/adr/` — the registry, written as code, immutable once accepted, superseded rather than edited |
-| A change worked out, measured and attacked before its decisions are taken | `docs/rfcs/` — reviewed on purpose, with the findings kept in the document, then turned into records |
+| A change worked out, measured and attacked before its decisions are taken | `doc/proposal/` — reviewed on purpose, with the findings kept in the document, then turned into records |
 | What the system is, as contracts | `docs/ARCHITECTURE.md` — every section names its record and says whether it is built |
 | What must never break, and how it could | `doc/invariant/` — the registry, checked against the code both ways |
 | What is being built, in what order | `ROADMAP.md` — stages with exit criteria that can be executed |
@@ -49,7 +49,7 @@ the writing.
 
 | When this changes | This changes with it | Held by |
 | --- | --- | --- |
-| A guarantee is added, or one stops holding | `doc/invariant/`, an `// ENFORCES:` anchor, the tests it names | `cargo xtask invariants` |
+| A guarantee is added, or one stops holding | `doc/invariant/`, a `#[doc_anchor]`, the tests it names | `cargo xtask invariants` |
 | A decision is taken or reversed | A new record in `doc/adr/`, and the superseded one points forward | the gate, `cargo xtask ci` |
 | Something in the architecture is built, or turns out not to be | The section's status in `docs/ARCHITECTURE.md` | `cargo xtask docs` |
 | A file named in this map moves | This map | `cargo xtask docs` |
