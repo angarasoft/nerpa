@@ -35,5 +35,9 @@ macro_rules! review {
 #[path = "review-2026-001.rs"]
 pub mod review_2026_001;
 
+/// The second review: wave 2, measured after it happened.
+#[path = "review-2026-002.rs"]
+pub mod review_2026_002;
+
 /// Every review, in order. Kept by hand until the scan learns the local type.
-pub static ALL_REVIEWS: &[&Review] = &[&review_2026_001::REVIEW];
+pub static ALL_REVIEWS: &[&Review] = &[&review_2026_001::REVIEW, &review_2026_002::REVIEW];
