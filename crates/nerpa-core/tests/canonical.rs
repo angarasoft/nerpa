@@ -88,6 +88,7 @@ fn key_for_digests() -> Key {
     Key::from_bytes([7; 32])
 }
 
+#[dacc_derive::doc_anchor(id = "canonical-proptests")]
 proptest! {
     // More than the default, because the universe these draw from is deliberately
     // small: the properties want to land on the same shape twice, and cases are
@@ -154,6 +155,7 @@ proptest! {
 /// A container holding nothing is still a value, and the two empty ones are not
 /// each other. Generated tests reach this rarely; it costs one line to be sure.
 #[test]
+#[dacc_derive::doc_anchor(id = "an-empty-list-and-an-empty-map-are-different-numbers")]
 fn an_empty_list_and_an_empty_map_are_different_numbers() {
     let key = key_for_digests();
     assert_ne!(

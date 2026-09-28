@@ -119,6 +119,7 @@ fn a_first_run_has_no_state_and_that_is_not_an_error() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-file-from-a-version-this-one-does-not-understand-is-refused")]
 fn a_file_from_a_version_this_one_does_not_understand_is_refused() {
     let scratch = Scratch::new("version");
     fs::write(scratch.file(), r#"{"version": 99, "resources": {}}"#).expect("written");
@@ -155,6 +156,7 @@ fn an_address_the_model_refuses_is_refused_on_the_way_in_too() {
 /// A half-written state file claims things that are not true, which is worse
 /// than no state file at all.
 #[test]
+#[dacc_derive::doc_anchor(id = "writing-replaces-the-previous-file-only-once-it-is-whole")]
 fn writing_replaces_the_previous_file_only_once_it_is_whole() {
     let scratch = Scratch::new("atomic");
     store::save(&scratch.file(), &populated(), &DIGEST_KEY).expect("writes");
@@ -180,6 +182,7 @@ fn writing_replaces_the_previous_file_only_once_it_is_whole() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "two-runs-cannot-hold-the-state-at-once")]
 fn two_runs_cannot_hold_the_state_at_once() {
     let scratch = Scratch::new("lock");
     let held = Lock::take(&scratch.file()).expect("nobody else has it");
@@ -259,6 +262,7 @@ fn a_record_from_the_future_is_reported_as_no_age_at_all() {
 /// instead, it is released when the process ends, however it ends. RFC 0001
 /// §5.8.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-lock-file-left-behind-by-a-dead-run-is-not-a-lock")]
 fn a_lock_file_left_behind_by_a_dead_run_is_not_a_lock() {
     let scratch = Scratch::new("stale");
     let mut left = scratch.file().into_os_string();
@@ -279,6 +283,7 @@ fn a_lock_file_left_behind_by_a_dead_run_is_not_a_lock() {
 /// §5.8, where `plan` takes it shared so that it never reads a live run's marks
 /// as though that run had ended.
 #[test]
+#[dacc_derive::doc_anchor(id = "two-plans-may-read-at-once-and-a-run-that-writes-may-not")]
 fn two_plans_may_read_at_once_and_a_run_that_writes_may_not() {
     let scratch = Scratch::new("shared");
     let reading = Lock::shared(&scratch.file()).expect("nobody holds it");

@@ -332,6 +332,7 @@ fn only_a_change_that_sends_something_reaches_a_provider() {
 /// operation carries which attribute; the engine checks the mark against the
 /// names it settled, so the two claims have to line up.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-write-that-carries-a-secret-says-so")]
 fn a_write_that_carries_a_secret_says_so() {
     let observed = Observed::new();
     let desired = file_of("/etc/shadow", "correct-horse", Some("0600"));

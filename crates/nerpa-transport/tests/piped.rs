@@ -134,6 +134,7 @@ fn carried() -> String {
 /// The executor this nerpa carries is recognised, and the connection that asked
 /// is still the one the run goes on to use.
 #[test]
+#[dacc_derive::doc_anchor(id = "the-executor-this-nerpa-carries-is-recognised")]
 fn the_executor_this_nerpa_carries_is_recognised() {
     let reach = Piped::running(&node("web-01"), &executor(), &[]).expect("it starts");
 
@@ -152,6 +153,7 @@ fn the_executor_this_nerpa_carries_is_recognised() {
 /// asking tells it apart. It is refused naming both builds, because the way out
 /// is installing one of them.
 #[test]
+#[dacc_derive::doc_anchor(id = "an-executor-from-another-build-is-refused-naming-both")]
 fn an_executor_from_another_build_is_refused_naming_both() {
     let reach = Piped::running(&node("web-01"), &executor(), &[]).expect("it starts");
     let expected = nerpa_proto::build_of(b"the executor after a fix");
@@ -177,6 +179,7 @@ fn an_executor_from_another_build_is_refused_naming_both() {
 
 /// A far end that cannot say which build it is is not assumed to be the right one.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-far-end-that-cannot-say-which-build-it-is-is-not-taken-for-the-right-one")]
 fn a_far_end_that_cannot_say_which_build_it_is_is_not_taken_for_the_right_one() {
     #[derive(Debug)]
     struct Older;

@@ -454,6 +454,7 @@ mod tests {
     /// short copy was moved into place, where a file test took it for the executor
     /// on every later run. Found by the review of RFC 0001's fifth revision.
     #[test]
+    #[dacc_derive::doc_anchor(id = "an-interrupted-copy-is-never-put-under-the-executors-name")]
     fn an_interrupted_copy_is_never_put_under_the_executors_name() {
         let dir = tempfile::tempdir().expect("a scratch directory");
         let path = named("0123456789abcdef");
@@ -518,6 +519,7 @@ mod tests {
     /// And a short copy already under the name, left by a delivery before this,
     /// is not taken for the executor, so it is delivered again.
     #[test]
+    #[dacc_derive::doc_anchor(id = "a-short-copy-already-there-is-not-taken-for-the-executor")]
     fn a_short_copy_already_there_is_not_taken_for_the_executor() {
         let dir = tempfile::tempdir().expect("a scratch directory");
         let path = named("0123456789abcdef");

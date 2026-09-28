@@ -524,6 +524,7 @@ mod tests {
     }
 
     #[test]
+    #[dacc_derive::doc_anchor(id = "a-connection-that-fails-before-anything-is-read-does-not-end-the-run")]
     fn a_connection_that_fails_before_anything_is_read_does_not_end_the_run() {
         let nodes = [node("up"), node("down"), node("also-up")];
         let (machines, _) = registry(&nodes, &opens);
@@ -545,6 +546,7 @@ mod tests {
     }
 
     #[test]
+    #[dacc_derive::doc_anchor(id = "the-machine-that-would-not-open-is-named-once-and-says-why")]
     fn the_machine_that_would_not_open_is_named_once_and_says_why() {
         let nodes = [node("up"), node("down")];
         let (_, refused) = registry(&nodes, &opens);
@@ -594,6 +596,7 @@ mod tests {
     }
 
     #[test]
+    #[dacc_derive::doc_anchor(id = "a-fleet-where-nothing-opens-is-empty-rather-than-fatal")]
     fn a_fleet_where_nothing_opens_is_empty_rather_than_fatal() {
         let nodes = [node("down")];
         let (machines, refused) = registry(&nodes, &opens);

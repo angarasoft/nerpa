@@ -96,6 +96,7 @@ fn sent_for(init: &str, kind: ChangeKind, roused: bool) -> Vec<Vec<String>> {
 /// measured to exit 0 and do nothing for a stopped service. Found by the second
 /// review of RFC 0001.
 #[test]
+#[dacc_derive::doc_anchor(id = "being-roused-restarts-a-service-only-if-it-is-running")]
 fn being_roused_restarts_a_service_only_if_it_is_running() {
     assert_eq!(
         sent_for("systemd", ChangeKind::React, true)[0],
@@ -111,6 +112,7 @@ fn being_roused_restarts_a_service_only_if_it_is_running() {
 /// roused: settled and nothing more, because a restart nobody asked for is still
 /// a restart.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-service-changing-and-roused-is-settled-then-restarted")]
 fn a_service_changing_and_roused_is_settled_then_restarted() {
     let lines = |sent: Vec<Vec<String>>| -> Vec<String> {
         sent.into_iter().map(|program| program.join(" ")).collect()
@@ -133,6 +135,7 @@ fn a_service_changing_and_roused_is_settled_then_restarted() {
 
 /// The os provider says a package cannot react, and a service can.
 #[test]
+#[dacc_derive::doc_anchor(id = "the-os-provider-says-a-package-cannot-react")]
 fn the_os_provider_says_a_package_cannot_react() {
     let schema = Os::new().schema();
     assert!(!schema.reacts(&address("os:package.app-misc/jq@web-01")));
@@ -150,6 +153,7 @@ static NO_STORE: Remembered = Remembered::EMPTY;
 /// `start` instead; `start` does nothing to a running unit, and the fresh record
 /// cleared the debt. Found by the second review of RFC 0001.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-service-owed-a-restart-is-restarted-when-it-changes-as-well")]
 fn a_service_owed_a_restart_is_restarted_when_it_changes_as_well() {
     const CONF: &str = "os:file.nginx-conf@web-01";
     const SERVICE: &str = "os:service.nginx@web-01";

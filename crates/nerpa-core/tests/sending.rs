@@ -271,6 +271,7 @@ fn attempt(
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "the-engine-sends-what-the-provider-prepared")]
 fn the_engine_sends_what_the_provider_prepared() {
     let (ledger, state) = run(&graph_of("/etc/motd"), &Observed::new(), State::new());
 
@@ -288,6 +289,7 @@ fn the_engine_sends_what_the_provider_prepared() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-replacement-is-forgotten-between-the-half-that-removes-and-the-half-that-makes")]
 fn a_replacement_is_forgotten_between_the_half_that_removes_and_the_half_that_makes() {
     let mut was = Attributes::new();
     was.insert("path".to_owned(), Value::Text("/etc/motd.old".to_owned()));
@@ -380,6 +382,7 @@ fn a_secret_no_write_carries_is_refused_before_anything_is_sent() {
 /// password itself. The provider marks it and the engine checks the mark, so a
 /// provider that forgets is caught by something that did not write the mark.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-secret-carried-by-a-write-that-is-not-marked-secret-is-refused")]
 fn a_secret_carried_by_a_write_that_is_not_marked_secret_is_refused() {
     let store = Remembered::new().holding("db/password", "correct-horse");
     let secrets = Secrets::new(&DIGEST_KEY, &store);

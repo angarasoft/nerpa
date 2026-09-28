@@ -12,6 +12,7 @@ use nerpa_core::address::{AddressError, address};
 use nerpa_core::{Address, ExecutionDomain, Kind, Name, Provider, Slot, Target};
 
 #[test]
+#[dacc_derive::doc_anchor(id = "control-resources-have-no-node")]
 fn control_resources_have_no_node() {
     let vm = address("yandex:instance.db");
 
@@ -23,6 +24,7 @@ fn control_resources_have_no_node() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "target-resources-name-the-node-they-live-on")]
 fn target_resources_name_the_node_they_live_on() {
     let package = address("os:package.nginx@web-01");
 
@@ -35,6 +37,7 @@ fn target_resources_name_the_node_they_live_on() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "slots-let-two-versions-coexist")]
 fn slots_let_two_versions_coexist() {
     let older = address("os:package.python:3.11@web-01");
     let newer = address("os:package.python:3.12@web-01");
@@ -56,6 +59,7 @@ fn a_name_may_contain_dots_because_kind_is_split_off_first() {
 /// from the way it parsed would produce two hashes for one plan, and quietly
 /// invalidate a signature that was given in good faith.
 #[test]
+#[dacc_derive::doc_anchor(id = "every-shape-round-trips")]
 fn every_shape_round_trips() {
     for text in [
         "yandex:instance.db",
@@ -70,6 +74,7 @@ fn every_shape_round_trips() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "nothing-can-be-mistaken-for-a-command-line-option")]
 fn nothing_can_be_mistaken_for_a_command_line_option() {
     for text in [
         "os:package.-rf@web-01",
@@ -138,6 +143,7 @@ fn malformed_text_is_reported_rather_than_guessed_at() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "addresses-are-built-as-well-as-parsed")]
 fn addresses_are_built_as_well_as_parsed() {
     let built = Address::control(
         Provider::new("os").unwrap(),
@@ -198,6 +204,7 @@ fn a_control_resource_says_so_when_asked() {
 /// may hold a slash, and so may a slot, where `dev-libs/openssl:0/3` is a
 /// subslot. See decision 0038.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-name-and-a-slot-may-hold-a-slash-because-somebody-elses-namespace-does")]
 fn a_name_and_a_slot_may_hold_a_slash_because_somebody_elses_namespace_does() {
     let package = address("os:package.www-servers/nginx@web-01");
     assert_eq!(package.kind().as_str(), "package");

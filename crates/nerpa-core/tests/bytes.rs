@@ -21,6 +21,7 @@ fn round_trip(value: &Value) -> Value {
 /// variant depending on which side of the model built it, the two would compare
 /// unequal, and a run would never converge.
 #[test]
+#[dacc_derive::doc_anchor(id = "bytes-that-are-text-become-text")]
 fn bytes_that_are_text_become_text() {
     assert_eq!(
         Value::bytes(b"listen 80;\n".to_vec()),
@@ -34,6 +35,7 @@ fn bytes_that_are_text_become_text() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "bytes-survive-a-state-file")]
 fn bytes_survive_a_state_file() {
     let der = Value::Bytes(vec![0x30, 0x82, 0x01, 0x0a, 0xff, 0xfe]);
     assert_eq!(round_trip(&der), der);
@@ -46,6 +48,7 @@ fn bytes_survive_a_state_file() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "every-other-shape-still-round-trips")]
 fn every_other_shape_still_round_trips() {
     for value in [
         Value::Text("hello".to_owned()),
@@ -64,6 +67,7 @@ fn every_other_shape_still_round_trips() {
 /// A map that would read back as bytes is refused rather than written, which is
 /// what lets the reader decide without guessing.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-map-shaped-like-bytes-is-refused-rather-than-silently-misread")]
 fn a_map_shaped_like_bytes_is_refused_rather_than_silently_misread() {
     let collides = Value::Map(BTreeMap::from([(
         "__bytes__".to_owned(),
@@ -80,6 +84,7 @@ fn a_map_shaped_like_bytes_is_refused_rather_than_silently_misread() {
 /// Only that exact shape. A map that merely mentions the key, or has anything
 /// else beside it, is an ordinary map and must stay one.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-map-that-only-resembles-the-reserved-shape-is-left-alone")]
 fn a_map_that_only_resembles_the_reserved_shape_is_left_alone() {
     for entries in [
         BTreeMap::from([
@@ -97,6 +102,7 @@ fn a_map_that_only_resembles_the_reserved_shape_is_left_alone() {
 /// Text and bytes holding the same octets are different values, and a digest
 /// has to say so or a rotation between them would read as no change.
 #[test]
+#[dacc_derive::doc_anchor(id = "text-and-bytes-are-not-the-same-value")]
 fn text_and_bytes_are_not_the_same_value() {
     use nerpa_core::secret::{Digest, Key};
 

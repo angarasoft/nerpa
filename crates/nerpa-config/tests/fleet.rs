@@ -42,6 +42,7 @@ fn graph_of(source: &str) -> nerpa_core::Graph {
 
 /// The whole point: one declaration, every machine in the group.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-group-is-iterated-and-a-hundred-machines-are-not-a-hundred-declarations")]
 fn a_group_is_iterated_and_a_hundred_machines_are_not_a_hundred_declarations() {
     let graph = graph_of(
         r#"
@@ -64,6 +65,7 @@ for host in group("web"):
 /// A node saying what it is is a statement, not a rank in a table of twenty-two
 /// levels nobody can remember.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-node-may-say-what-its-groups-do-not")]
 fn a_node_may_say_what_its_groups_do_not() {
     let graph = graph_of(
         r#"
@@ -78,6 +80,7 @@ for host in group("production"):
 /// Here the question has one answer per value, and a collision is something
 /// somebody decides rather than something a rule decides for them.
 #[test]
+#[dacc_derive::doc_anchor(id = "two-groups-giving-one-node-the-same-key-is-an-error-naming-both")]
 fn two_groups_giving_one_node_the_same_key_is_an_error_naming_both() {
     let refusal = Fleet::read(
         r#"
@@ -100,6 +103,7 @@ groups = ["web", "production"]
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-value-the-fleet-does-not-give-is-a-refusal-rather-than-a-default")]
 fn a_value_the_fleet_does_not_give_is_a_refusal_rather_than_a_default() {
     let refusal = evaluate(
         "main.star",
@@ -132,6 +136,7 @@ for host in group("nonesuch"):
 /// Only what a run touches, because a document describing two hundred machines
 /// should not make a run that touches three open two hundred connections.
 #[test]
+#[dacc_derive::doc_anchor(id = "only-the-machines-a-run-reaches-for-join-its-inventory")]
 fn only_the_machines_a_run_reaches_for_join_its_inventory() {
     let graph = graph_of(
         r#"
@@ -150,6 +155,7 @@ for host in group("web"):
 /// A fleet is data by the time the program sees it, so it may be compared and
 /// branched on — which is exactly what a fact may not do.
 #[test]
+#[dacc_derive::doc_anchor(id = "what-the-fleet-says-may-decide-which-resources-exist")]
 fn what_the_fleet_says_may_decide_which_resources_exist() {
     let graph = graph_of(
         r#"

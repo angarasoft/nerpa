@@ -132,6 +132,7 @@ fn a_resource_that_does_not_exist_is_created() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-resource-that-already-matches-produces-nothing")]
 fn a_resource_that_already_matches_produces_nothing() {
     let graph = graph_of(vec![
         Resource::new(address("yandex:instance.db")).with("cores", 8),
@@ -155,6 +156,7 @@ fn a_resource_that_already_matches_produces_nothing() {
 /// its removal will be ordered by. Planned as nothing, the edge never reached
 /// state. Decision 0043.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-resource-given-a-new-edge-is-reordered-and-nothing-else")]
 fn a_resource_given_a_new_edge_is_reordered_and_nothing_else() {
     let graph = graph_of(vec![
         Resource::new(address("yandex:instance.db")).with("cores", 8),
@@ -204,6 +206,7 @@ fn a_resource_given_a_new_edge_is_reordered_and_nothing_else() {
 /// path used to remove the file and adopt the new resource from the reading taken
 /// before the removal. Found by the second review of RFC 0001.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-resource-naming-what-a-removal-takes-is-created-after-it")]
 fn a_resource_naming_what_a_removal_takes_is_created_after_it() {
     let schema = Schema::new().identity(
         Provider::new("os").unwrap(),
@@ -257,6 +260,7 @@ fn a_resource_naming_what_a_removal_takes_is_created_after_it() {
 /// the directory was removed; the removal refused, and every later run did the
 /// same. Found by the narrow review of RFC 0001.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-removal-comes-after-the-change-of-what-was-recorded-after-it")]
 fn a_removal_comes_after_the_change_of_what_was_recorded_after_it() {
     let graph = graph_of(vec![
         Resource::new(address("os:file.conf@web-01"))
@@ -321,6 +325,7 @@ fn a_removal_comes_after_the_change_of_what_was_recorded_after_it() {
 /// inside the file, against the declared order: a cycle, refused. Found by the
 /// review of RFC 0001's fifth revision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-moved-file-and-the-service-reacting-to-it-are-planned-in-one-run")]
 fn a_moved_file_and_the_service_reacting_to_it_are_planned_in_one_run() {
     const CONF: &str = "os:file.conf@web-01";
     const SERVICE: &str = "os:service.app@web-01";
@@ -365,6 +370,7 @@ fn a_moved_file_and_the_service_reacting_to_it_are_planned_in_one_run() {
 /// the move does not have to go first against the declared order. Found by the
 /// review of RFC 0001's fifth revision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-replacement-and-a-move-after-it-on-another-machine-are-planned-in-one-run")]
 fn a_replacement_and_a_move_after_it_on_another_machine_are_planned_in_one_run() {
     const X: &str = "os:file.x@web-01";
     const Y: &str = "os:file.y@web-02";
@@ -419,6 +425,7 @@ fn a_replacement_and_a_move_after_it_on_another_machine_are_planned_in_one_run()
 /// where the new one could find what it needs still held. Found by the review of
 /// RFC 0001's fifth revision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-removal-nothing-moves-out-of-still-comes-first")]
 fn a_removal_nothing_moves_out_of_still_comes_first() {
     const OLD: &str = "os:service.nginx@web-01";
     const NEW: &str = "os:service.caddy@web-01";
@@ -456,6 +463,7 @@ fn a_removal_nothing_moves_out_of_still_comes_first() {
 /// removal moves after the change of what state recorded after it: one order keeps
 /// both, where the removal used to be refused for having to come between them.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-resource-naming-what-a-removal-takes-moves-after-it")]
 fn a_resource_naming_what_a_removal_takes_moves_after_it() {
     let os = Provider::new("os").unwrap();
     let schema = Schema::new()
@@ -525,6 +533,7 @@ fn a_resource_naming_what_a_removal_takes_moves_after_it() {
 /// file is made after the directory is removed. Found by the review of RFC 0001's
 /// fourth revision, where the refusal named the file as both sides.
 #[test]
+#[dacc_derive::doc_anchor(id = "an-order-no-run-can-follow-is-refused-step-by-step")]
 fn an_order_no_run_can_follow_is_refused_step_by_step() {
     let os = Provider::new("os").unwrap();
     let schema = Schema::new()
@@ -588,6 +597,7 @@ fn an_order_no_run_can_follow_is_refused_step_by_step() {
 /// and it is written down, so that taking its declaration away later removes it.
 /// Planned as nothing, it never was. Decision 0042.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-resource-that-already-matches-and-is-not-recorded-is-adopted")]
 fn a_resource_that_already_matches_and_is_not_recorded_is_adopted() {
     let graph = graph_of(vec![
         Resource::new(address("yandex:instance.db")).with("cores", 8),
@@ -662,6 +672,7 @@ fn an_attribute_that_cannot_change_in_place_makes_it_a_replacement_and_says_whic
 /// reads from already exists, the value is known now — and without that nothing
 /// reading another resource would ever converge.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-reference-to-something-that-exists-is-already-known")]
 fn a_reference_to_something_that_exists_is_already_known() {
     let graph = graph_of(vec![
         Resource::new(address("yandex:instance.db")),
@@ -708,6 +719,7 @@ fn a_reference_to_something_that_exists_is_already_known() {
 /// The property this tool exists to have. Applying a plan and planning again
 /// must produce nothing at all.
 #[test]
+#[dacc_derive::doc_anchor(id = "planning-after-applying-produces-an-empty-plan")]
 fn planning_after_applying_produces_an_empty_plan() {
     let graph = graph_of(vec![
         Resource::new(address("yandex:instance.db")).with("cores", 8),
@@ -792,6 +804,7 @@ fn the_blast_radius_names_every_machine_and_counts_what_cannot_be_undone() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "stages-with-nothing-to-do-are-left-out-but-order-is-kept")]
 fn stages_with_nothing_to_do_are_left_out_but_order_is_kept() {
     let graph = graph_of(vec![
         Resource::new(address("yandex:network.main")).with("name", "main"),
@@ -828,6 +841,7 @@ fn stages_with_nothing_to_do_are_left_out_but_order_is_kept() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-graph-that-cannot-be-ordered-is-not-planned-at-all")]
 fn a_graph_that_cannot_be_ordered_is_not_planned_at_all() {
     let graph = graph_of(vec![
         Resource::new(address("os:file.a@web-01")).after(address("os:file.b@web-01")),
@@ -960,6 +974,7 @@ fn the_total_counts_removals_alongside_everything_else() {
 /// A plan is what an agent decides from, so it has to survive being written out
 /// and read back exactly — including the values that are not known yet.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-plan-survives-a-trip-through-json")]
 fn a_plan_survives_a_trip_through_json() {
     let graph = graph_of(vec![
         Resource::new(address("yandex:instance.db"))
@@ -1004,6 +1019,7 @@ fn a_plan_survives_a_trip_through_json() {
 /// planning, at exactly the bound its provider declares, rather than found when
 /// its batch is written, after earlier changes in the run have been made.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-value-too-large-for-one-operation-is-refused-when-planning")]
 fn a_value_too_large_for_one_operation_is_refused_when_planning() {
     let schema = Schema::new().bounded(
         Provider::new("os").unwrap(),
@@ -1043,6 +1059,7 @@ fn a_value_too_large_for_one_operation_is_refused_when_planning() {
 /// A reaction on a kind that cannot react is refused when planning as well, for a
 /// graph that did not come from a configuration.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-kind-that-cannot-react-is-refused-when-planning")]
 fn a_kind_that_cannot_react_is_refused_when_planning() {
     let schema =
         Schema::new().cannot_react(Provider::new("os").unwrap(), Kind::new("package").unwrap());
@@ -1064,6 +1081,7 @@ fn a_kind_that_cannot_react_is_refused_when_planning() {
 /// however the path is spelled, are the same thing there; the same path on
 /// another machine is not.
 #[test]
+#[dacc_derive::doc_anchor(id = "two-resources-naming-one-thing-on-a-machine-are-refused")]
 fn two_resources_naming_one_thing_on_a_machine_are_refused() {
     let os = Provider::new("os").unwrap();
     let schema = Schema::new()

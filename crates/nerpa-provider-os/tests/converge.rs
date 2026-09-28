@@ -120,6 +120,7 @@ fn next_plan(graph: &Graph, state: &State) -> nerpa_core::Plan {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-file-is-written-and-the-second-run-has-nothing-to-do")]
 fn a_file_is_written_and_the_second_run_has_nothing_to_do() {
     let scratch = Scratch::new("write");
     let path = scratch.join("motd");
@@ -162,6 +163,7 @@ fn a_file_is_written_and_the_second_run_has_nothing_to_do() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-file-edited-by-hand-is-brought-back")]
 fn a_file_edited_by_hand_is_brought_back() {
     let scratch = Scratch::new("drift");
     let path = scratch.join("nginx.conf");
@@ -250,6 +252,7 @@ fn a_directory_comes_before_the_file_in_it() {
 /// memory of where the file was, this reads as making a second one and
 /// abandoning the first. It used to.
 #[test]
+#[dacc_derive::doc_anchor(id = "moving-a-file-replaces-it-and-takes-the-old-one-with-it")]
 fn moving_a_file_replaces_it_and_takes_the_old_one_with_it() {
     let scratch = Scratch::new("move");
     let providers = providers();
@@ -305,6 +308,7 @@ fn moving_a_file_replaces_it_and_takes_the_old_one_with_it() {
 /// A resource that leaves the configuration leaves the world. Nothing in the
 /// world says so — only state remembers that Nerpa made it.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-resource-removed-from-the-configuration-is-removed-from-the-machine")]
 fn a_resource_removed_from_the_configuration_is_removed_from_the_machine() {
     let scratch = Scratch::new("delete");
     let providers = providers();
@@ -362,6 +366,7 @@ fn a_resource_removed_from_the_configuration_is_removed_from_the_machine() {
 /// Removal order comes from what was recorded, because the configuration that
 /// described the dependency is exactly what was deleted.
 #[test]
+#[dacc_derive::doc_anchor(id = "what-depended-on-a-thing-is-removed-before-the-thing")]
 fn what_depended_on_a_thing_is_removed_before_the_thing() {
     let scratch = Scratch::new("order-delete");
     let providers = providers();
@@ -424,6 +429,7 @@ fn what_depended_on_a_thing_is_removed_before_the_thing() {
 /// `after` was forgotten, and the file and its directory were removed in one
 /// stage in any order. Review found it.
 #[test]
+#[dacc_derive::doc_anchor(id = "what-came-after-a-thing-is-removed-before-the-thing")]
 fn what_came_after_a_thing_is_removed_before_the_thing() {
     let scratch = Scratch::new("order-after");
     let providers = providers();
@@ -468,6 +474,7 @@ fn what_came_after_a_thing_is_removed_before_the_thing() {
 /// `after` written in later was never recorded, and the file and its directory
 /// were removed together in any order.
 #[test]
+#[dacc_derive::doc_anchor(id = "an-edge-added-to-a-resource-that-already-matches-is-remembered")]
 fn an_edge_added_to_a_resource_that_already_matches_is_remembered() {
     let scratch = Scratch::new("order-added");
     let providers = providers();
@@ -541,6 +548,7 @@ fn an_edge_added_to_a_resource_that_already_matches_is_remembered() {
 /// thing it points at existed. State kept no edge for it, since only a value
 /// still unknown was taken to mean a dependency. Review found it.
 #[test]
+#[dacc_derive::doc_anchor(id = "what-read-from-a-thing-that-already-existed-is-removed-before-the-thing")]
 fn what_read_from_a_thing_that_already_existed_is_removed_before_the_thing() {
     let scratch = Scratch::new("order-resolved");
     let providers = providers();
@@ -607,6 +615,7 @@ fn what_read_from_a_thing_that_already_existed_is_removed_before_the_thing() {
 /// A value that does not exist at plan time is filled in from what the earlier
 /// stage produced, and only then written.
 #[test]
+#[dacc_derive::doc_anchor(id = "an-unresolved-value-is-settled-from-the-stage-before-it")]
 fn an_unresolved_value_is_settled_from_the_stage_before_it() {
     let scratch = Scratch::new("resolve");
     let providers = providers();
@@ -782,6 +791,7 @@ fn the_registry_merges_what_each_provider_refuses_to_change() {
 /// recorded it, and a file Nerpa had been told about could never be removed by
 /// taking its declaration away. Found by the review of RFC 0001.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-file-that-was-already-there-is-adopted-rather-than-remade")]
 fn a_file_that_was_already_there_is_adopted_rather_than_remade() {
     let scratch = Scratch::new("adopt");
     let providers = providers();
@@ -852,6 +862,7 @@ fn a_file_that_was_already_there_is_adopted_rather_than_remade() {
 /// removes the file. Whether a file happened to match on the first run used to
 /// decide whether it could ever be removed at all.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-file-that-was-adopted-is-removed-once-its-declaration-is")]
 fn a_file_that_was_adopted_is_removed_once_its_declaration_is() {
     let scratch = Scratch::new("adopt-remove");
     let providers = providers();
@@ -907,6 +918,7 @@ fn a_file_that_was_adopted_is_removed_once_its_declaration_is() {
 /// declares, and a whole state file written for each of those is thousands of
 /// writes saying that nothing happened.
 #[test]
+#[dacc_derive::doc_anchor(id = "what-is-adopted-is-written-down-once-rather-than-once-for-each")]
 fn what_is_adopted_is_written_down_once_rather_than_once_for_each() {
     let scratch = Scratch::new("adopt-once");
     let providers = providers();
@@ -950,6 +962,7 @@ fn what_is_adopted_is_written_down_once_rather_than_once_for_each() {
 /// taken before the delete, so the second run proposed making it again. Found by
 /// the second review of RFC 0001.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-resource-renamed-at-the-same-path-converges-in-one-run")]
 fn a_resource_renamed_at_the_same_path_converges_in_one_run() {
     let scratch = Scratch::new("rename-same-path");
     let providers = providers();
@@ -1000,6 +1013,7 @@ fn a_resource_renamed_at_the_same_path_converges_in_one_run() {
 /// removed while the file was still in it, the removal refused, and every later run
 /// did the same. Found by the narrow review of RFC 0001.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-directory-is-removed-after-the-file-moved-out-of-it")]
 fn a_directory_is_removed_after_the_file_moved_out_of_it() {
     let scratch = Scratch::new("move-out");
     let providers = providers();
@@ -1062,6 +1076,7 @@ fn a_directory_is_removed_after_the_file_moved_out_of_it() {
 /// old directory was deleted with the file still inside, and every run refused.
 /// Found by the review of RFC 0001's fourth revision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-replaced-directory-waits-for-the-removal-of-what-was-inside-it")]
 fn a_replaced_directory_waits_for_the_removal_of_what_was_inside_it() {
     let scratch = Scratch::new("replaced-after-removal");
     let (old, new) = (scratch.join("d"), scratch.join("e"));
@@ -1107,6 +1122,7 @@ fn a_replaced_directory_waits_for_the_removal_of_what_was_inside_it() {
 /// came first and every run refused. Found by the review of RFC 0001's fourth
 /// revision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-replaced-directory-waits-for-the-file-moving-out-of-it")]
 fn a_replaced_directory_waits_for_the_file_moving_out_of_it() {
     let scratch = Scratch::new("replaced-after-change");
     let (old, new) = (scratch.join("d"), scratch.join("e"));
@@ -1154,6 +1170,7 @@ fn a_replaced_directory_waits_for_the_file_moving_out_of_it() {
 /// path stayed on the machine with nothing recording it, and the next run had
 /// nothing to do. Found by the review of RFC 0001's fourth revision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-file-moved-onto-a-path-a-removal-frees-leaves-nothing-at-the-old-path")]
 fn a_file_moved_onto_a_path_a_removal_frees_leaves_nothing_at_the_old_path() {
     let scratch = Scratch::new("moved-onto-freed");
     let (old, freed) = (scratch.join("x"), scratch.join("y"));
@@ -1196,6 +1213,7 @@ fn a_file_moved_onto_a_path_a_removal_frees_leaves_nothing_at_the_old_path() {
 /// matched the "0644" reading reports, and every run changed it again. Found by the
 /// review of RFC 0001's fourth revision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-mode-is-compared-as-the-number-it-spells")]
 fn a_mode_is_compared_as_the_number_it_spells() {
     for (name, written) in [("short", "644"), ("prefixed", "0o644")] {
         let scratch = Scratch::new(&format!("mode-{name}"));
@@ -1219,6 +1237,7 @@ fn a_mode_is_compared_as_the_number_it_spells() {
 /// keeps only those, so it never matched either. Found by the review of RFC 0001's
 /// fourth revision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-mode-beyond-the-permission-bits-is-refused-while-planning")]
 fn a_mode_beyond_the_permission_bits_is_refused_while_planning() {
     let scratch = Scratch::new("mode-beyond");
     let graph = graph_of(vec![
@@ -1247,6 +1266,7 @@ fn a_mode_beyond_the_permission_bits_is_refused_while_planning() {
 /// premise moved; either took more runs to come back. Found by the review of RFC
 /// 0001's fifth revision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-file-declared-where-a-replacement-moves-one-away-is-made-after-it")]
 fn a_file_declared_where_a_replacement_moves_one_away_is_made_after_it() {
     for (name, content) in [("same", "x\n"), ("other", "t\n")] {
         let scratch = Scratch::new(&format!("freed-by-move-{name}"));
@@ -1295,6 +1315,7 @@ fn a_file_declared_where_a_replacement_moves_one_away_is_made_after_it() {
 /// `"400"` means `0400`, and Starlark evaluates `0o600` to 384 before nerpa sees
 /// either. Found by the narrow review of RFC 0001's sixth revision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-mode-written-as-a-number-is-refused-and-says-to-quote-it")]
 fn a_mode_written_as_a_number_is_refused_and_says_to_quote_it() {
     let scratch = Scratch::new("mode-number");
     let graph = graph_of(vec![
@@ -1328,6 +1349,7 @@ fn a_mode_written_as_a_number_is_refused_and_says_to_quote_it() {
 /// or somebody's Ctrl-C leaves every resource already made with nothing saying
 /// it exists — not rolled back, forgotten.
 #[test]
+#[dacc_derive::doc_anchor(id = "what-was-already-made-is-recorded-before-the-next-thing-is-touched")]
 fn what_was_already_made_is_recorded_before_the_next_thing_is_touched() {
     let scratch = Scratch::new("checkpoint");
     let first = scratch.join("first");
@@ -1384,6 +1406,7 @@ fn what_was_already_made_is_recorded_before_the_next_thing_is_touched() {
 /// A compile-time bound would say the type is `Sync`; this says the code behind
 /// it survives being used that way, which is the part a bound cannot promise.
 #[test]
+#[dacc_derive::doc_anchor(id = "one-provider-serves-two-threads-at-once")]
 fn one_provider_serves_two_threads_at_once() {
     fn shareable<T: Send + Sync>(_: &T) {}
 
@@ -1463,6 +1486,7 @@ fn one_provider_serves_two_threads_at_once() {
 /// be. Facts are gathered in the same run, from the same executor, and the
 /// choice is settled before anything is written.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-value-chosen-by-a-fact-settles-from-the-machine")]
 fn a_value_chosen_by_a_fact_settles_from_the_machine() {
     let scratch = Scratch::new("facts");
     let wide = scratch.join("wide.conf");
@@ -1521,6 +1545,7 @@ fn a_value_chosen_by_a_fact_settles_from_the_machine() {
 /// defaulted. A silent default is a machine configured as though it were a
 /// different one, which is worse than one that is not configured.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-machine-that-says-something-unaccounted-for-is-refused")]
 fn a_machine_that_says_something_unaccounted_for_is_refused() {
     let scratch = Scratch::new("unaccounted");
     let mut only_arm = std::collections::BTreeMap::new();
@@ -1554,6 +1579,7 @@ fn a_machine_that_says_something_unaccounted_for_is_refused() {
 /// the file after the plan is made and before it is applied: the change must not
 /// happen, and what they wrote must still be there. See decision 0034.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-file-that-moved-after-the-plan-was-made-is-not-written-over")]
 fn a_file_that_moved_after_the_plan_was_made_is_not_written_over() {
     let scratch = Scratch::new("premise");
     let path = scratch.join("motd");

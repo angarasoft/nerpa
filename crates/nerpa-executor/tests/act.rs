@@ -110,6 +110,7 @@ fn looking_at_a_program_reports_what_it_said() {
 /// would be reporting a file it never checked, and writing nothing would go
 /// unnoticed.
 #[test]
+#[dacc_derive::doc_anchor(id = "what-it-did-is-read-back-rather-than-echoed")]
 fn what_it_did_is_read_back_rather_than_echoed() {
     let scratch = scratch();
     let file = scratch.path().join("nested").join("motd");
@@ -145,6 +146,7 @@ fn what_it_did_is_read_back_rather_than_echoed() {
 /// Between the looking and the doing, the machine can change. Our window is the
 /// whole run where Ansible's is one task, so the batch carries what it assumed.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-batch-whose-premise-moved-does-nothing-and-says-which")]
 fn a_batch_whose_premise_moved_does_nothing_and_says_which() {
     let scratch = scratch();
     let watched = scratch.path().join("conf");
@@ -356,6 +358,7 @@ fn a_program_that_does_not_read_its_input_is_not_a_failure() {
 /// the engine computes over the file it carries — here, the test binary this
 /// executor is linked into.
 #[test]
+#[dacc_derive::doc_anchor(id = "which-build-is-read-off-the-binary-that-is-running")]
 fn which_build_is_read_off_the_binary_that_is_running() {
     let running = fs::read(std::env::current_exe().unwrap()).unwrap();
     assert_eq!(
@@ -378,6 +381,7 @@ fn as_planned(watched: &Path) -> [u8; 32] {
 /// Compared sealed or not at all. A premise that arrives bare would be compared
 /// against an unkeyed digest, the digest a plan's JSON must not carry.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-premise-that-arrives-without-its-seal-is-refused-before-anything-is-done")]
 fn a_premise_that_arrives_without_its_seal_is_refused_before_anything_is_done() {
     let scratch = scratch();
     let watched = scratch.path().join("conf");
@@ -409,6 +413,7 @@ fn a_premise_that_arrives_without_its_seal_is_refused_before_anything_is_done() 
 /// A premise sealed for one machine does not hold on another, over the very same
 /// bytes: a seal is the machine's own.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-premise-sealed-for-another-machine-does-not-hold")]
 fn a_premise_sealed_for_another_machine_does_not_hold() {
     let scratch = scratch();
     let watched = scratch.path().join("conf");
@@ -436,6 +441,7 @@ fn a_premise_sealed_for_another_machine_does_not_hold() {
 /// A sealed observation answers with what the thing hashed to, sealed, and never
 /// with the thing.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-sealed-observation-answers-with-a-seal-and-never-the-contents")]
 fn a_sealed_observation_answers_with_a_seal_and_never_the_contents() {
     let scratch = scratch();
     let secret = scratch.path().join("shadow");
@@ -550,6 +556,7 @@ fn a_refusal_before_anything_is_not_where_the_first_premise_is() {
 /// contents are a password, what was read back is the password. The same
 /// reasoning as a premise that arrives bare, and the same invariant.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-write-carrying-a-secret-without-a-seal-is-refused-before-anything")]
 fn a_write_carrying_a_secret_without_a_seal_is_refused_before_anything() {
     let scratch = scratch();
     let written = scratch.path().join("shadow");
@@ -621,6 +628,7 @@ fn a_write_is_answered_with_a_digest_and_never_with_the_contents() {
 /// the `os` provider marks an operation private yet; this closes it before one
 /// does.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-private-process-answers-with-a-seal-and-never-with-what-it-said")]
 fn a_private_process_answers_with_a_seal_and_never_with_what_it_said() {
     let answer = answer(&Ask::Perform {
         plan: None,
@@ -649,6 +657,7 @@ fn a_private_process_answers_with_a_seal_and_never_with_what_it_said() {
 /// An error message is the most reliably logged thing in any system. The input
 /// was already withheld; what the program printed on its way out was not.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-private-process-that-fails-does-not-quote-what-it-said")]
 fn a_private_process_that_fails_does_not_quote_what_it_said() {
     let Answer::Failed { problem, .. } = perform(
         Vec::new(),

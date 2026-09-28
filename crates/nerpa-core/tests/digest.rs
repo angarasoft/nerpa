@@ -102,6 +102,7 @@ fn one(attributes: &[(&str, &str)]) -> Plan {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "the-same-plan-is-the-same-number-every-time")]
 fn the_same_plan_is_the_same_number_every_time() {
     let first = one(&[("path", "/etc/motd")]).digest().expect("hashable");
     let second = one(&[("path", "/etc/motd")]).digest().expect("hashable");
@@ -132,6 +133,7 @@ fn the_number_of_a_fixed_plan_is_written_down() {
 /// Anything a person is approving has to be inside the number, or their
 /// signature covers a plan that is not the one that runs.
 #[test]
+#[dacc_derive::doc_anchor(id = "every-part-of-a-change-moves-the-number")]
 fn every_part_of_a_change_moves_the_number() {
     let base = one(&[("path", "/etc/motd")]).digest().expect("hashable");
 
@@ -159,6 +161,7 @@ fn every_part_of_a_change_moves_the_number() {
 /// hash the same. This is what the length in front of every piece of text is
 /// for, and nothing else would notice if it went.
 #[test]
+#[dacc_derive::doc_anchor(id = "text-that-runs-together-does-not-collide")]
 fn text_that_runs_together_does_not_collide() {
     let split = one(&[("ab", "cd")]).digest().expect("hashable");
     let joined = one(&[("abc", "d")]).digest().expect("hashable");
@@ -169,6 +172,7 @@ fn text_that_runs_together_does_not_collide() {
 /// an age moves every second, and a number over it would never settle. So it
 /// has none, and says why.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-plan-that-could-not-look-at-everything-has-no-number")]
 fn a_plan_that_could_not_look_at_everything_has_no_number() {
     let mut observed = Observed::new();
     observed.unreachable(address("os:file.motd@web-01").target().unwrap().clone());
@@ -188,6 +192,7 @@ fn a_plan_that_could_not_look_at_everything_has_no_number() {
 /// An empty plan still has a number: "there is nothing to do" is a statement
 /// somebody may want to have signed.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-plan-with-nothing-in-it-still-has-one")]
 fn a_plan_with_nothing_in_it_still_has_one() {
     let nothing = planned(Vec::new(), &Observed::new());
     assert!(nothing.is_empty());

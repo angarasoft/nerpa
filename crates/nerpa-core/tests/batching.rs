@@ -161,6 +161,7 @@ fn file(name: &str, node: &str) -> Resource {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "every-resource-on-one-machine-is-asked-for-at-once")]
 fn every_resource_on_one_machine_is_asked_for_at_once() {
     let graph = graph_of(vec![
         file("motd", "web-01"),
@@ -181,6 +182,7 @@ fn every_resource_on_one_machine_is_asked_for_at_once() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "separate-machines-are-separate-journeys")]
 fn separate_machines_are_separate_journeys() {
     let graph = graph_of(vec![
         file("motd", "web-01"),
@@ -243,6 +245,7 @@ fn what_state_remembers_beats_what_the_declaration_says() {
 /// A resource the configuration no longer declares still has to be read, or its
 /// removal would be planned blind — and it joins its machine's journey.
 #[test]
+#[dacc_derive::doc_anchor(id = "something-only-state-remembers-travels-with-the-rest")]
 fn something_only_state_remembers_travels_with_the_rest() {
     let graph = graph_of(vec![file("motd", "web-01")]);
 
@@ -272,6 +275,7 @@ fn something_only_state_remembers_travels_with_the_rest() {
 /// remembered, which is the shape of silent wrongness this project exists to
 /// avoid: the run continues, and it continues about the wrong thing.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-graph-that-cannot-be-ordered-stops-the-run-rather-than-reading-as-empty")]
 fn a_graph_that_cannot_be_ordered_stops_the_run_rather_than_reading_as_empty() {
     let mut graph = Graph::new();
     for (name, after) in [("a", "os:file.b@web-01"), ("b", "os:file.a@web-01")] {

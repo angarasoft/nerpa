@@ -62,6 +62,7 @@ resource("yandex:instance.web", {"upstream": db.ip})
 /// silently false and the branch silently does not happen. Nothing at the value
 /// level can intervene; this is caught before evaluation begins.
 #[test]
+#[dacc_derive::doc_anchor(id = "comparing-a-value-that-does-not-exist-yet-is-refused-before-anything-runs")]
 fn comparing_a_value_that_does_not_exist_yet_is_refused_before_anything_runs() {
     for body in [
         r#"x = db.ip == "10.0.0.1""#,
@@ -100,6 +101,7 @@ if "ru-central1-e".upper() == "RU-CENTRAL1-E" and settings["zone"] == "ru-centra
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "iterating-a-value-that-does-not-exist-yet-is-refused")]
 fn iterating_a_value_that_does_not_exist_yet_is_refused() {
     let refusal = evaluate(
         "main.star",
@@ -117,6 +119,7 @@ for disk in db.disks:
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "indexing-a-value-that-does-not-exist-yet-is-refused")]
 fn indexing_a_value_that_does_not_exist_yet_is_refused() {
     let refusal = evaluate(
         "main.star",
@@ -136,6 +139,7 @@ x = db.addresses[0]
 /// is refused afterwards instead, so the invariant holds and only the diagnostic
 /// is weaker.
 #[test]
+#[dacc_derive::doc_anchor(id = "branching-on-a-value-that-does-not-exist-yet-refuses-the-whole-run")]
 fn branching_on_a_value_that_does_not_exist_yet_refuses_the_whole_run() {
     let refusal = evaluate(
         "main.star",
@@ -395,6 +399,7 @@ resource("os:file.credentials@web-01", {
 /// Comparing a secret is not a mistake about ordering. It is an oracle: a
 /// configuration that can ask "is the password admin?" can ask it in a loop.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-secret-refuses-to-be-compared")]
 fn a_secret_refuses_to_be_compared() {
     let refusal = evaluate(
         "main.star",
@@ -415,6 +420,7 @@ if secret("lockbox", "prod/db/password") == "admin":
 
 /// The same through a name, because that is how anybody would actually write it.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-secret-held-in-a-variable-refuses-to-be-compared-too")]
 fn a_secret_held_in_a_variable_refuses_to_be_compared_too() {
     let refusal = evaluate(
         "main.star",
@@ -435,6 +441,7 @@ if password == "admin":
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-secret-refuses-to-be-a-condition")]
 fn a_secret_refuses_to_be_a_condition() {
     let refusal = evaluate(
         "main.star",
@@ -460,6 +467,7 @@ if secret("lockbox", "prod/db/password"):
 /// not followed — that would need the call sites of every function — and this is
 /// the route through it. The value itself has to refuse, and does.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-secret-passed-into-a-function-still-refuses-to-be-compared")]
 fn a_secret_passed_into_a_function_still_refuses_to_be_compared() {
     let refusal = evaluate(
         "main.star",
@@ -544,6 +552,7 @@ if held() < held():
 /// The one an independent review found first: put the handle in a dictionary and
 /// read it back, and the pattern that matched `x.y` sees an index instead.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-value-that-does-not-exist-yet-cannot-be-laundered-through-a-dictionary")]
 fn a_value_that_does_not_exist_yet_cannot_be_laundered_through_a_dictionary() {
     let refusal = evaluate(
         "main.star",
@@ -566,6 +575,7 @@ else:
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-value-that-does-not-exist-yet-cannot-be-laundered-through-a-list")]
 fn a_value_that_does_not_exist_yet_cannot_be_laundered_through_a_list() {
     let refusal = evaluate(
         "main.star",
@@ -587,6 +597,7 @@ for address in addresses:
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-secret-cannot-be-laundered-through-a-dictionary")]
 fn a_secret_cannot_be_laundered_through_a_dictionary() {
     let refusal = evaluate(
         "main.star",
@@ -606,6 +617,7 @@ if held["password"] == "changeme":
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-value-that-does-not-exist-yet-cannot-be-handed-out-of-a-function")]
 fn a_value_that_does_not_exist_yet_cannot_be_handed_out_of_a_function() {
     let refusal = evaluate(
         "main.star",
@@ -630,6 +642,7 @@ if address() == "10.0.0.1":
 
 /// Containment reads as `False` for the same reason equality does.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-value-that-does-not-exist-yet-cannot-be-tested-for-membership")]
 fn a_value_that_does_not_exist_yet_cannot_be_tested_for_membership() {
     let refusal = evaluate(
         "main.star",
@@ -650,6 +663,7 @@ if db.ip in ["10.0.0.1", "10.0.0.2"]:
 
 /// A comprehension is a loop with the same hole in it.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-comprehension-over-a-deferred-list-is-refused")]
 fn a_comprehension_over_a_deferred_list_is_refused() {
     let refusal = evaluate(
         "main.star",
@@ -672,6 +686,7 @@ resource("yandex:instance.web", {"count": len(matching)})
 /// The check must still let an ordinary configuration through, or it has traded
 /// one silent wrongness for a tool nobody can use.
 #[test]
+#[dacc_derive::doc_anchor(id = "comparing-ordinary-values-is-still-allowed")]
 fn comparing_ordinary_values_is_still_allowed() {
     let graph = graph_of(
         r#"
@@ -690,6 +705,7 @@ if "prod" in environment:
 /// down — so the graph is the same whichever way it goes. That is the whole of
 /// what decision 0029 allows a fact to do.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-value-may-be-chosen-by-what-a-machine-turns-out-to-be")]
 fn a_value_may_be_chosen_by_what_a_machine_turns_out_to_be() {
     let graph = graph_of(
         r#"
@@ -720,6 +736,7 @@ resource("os:file.conf@web-01", {
 /// Every route to the second is refused, and this is the one the language would
 /// otherwise make easiest.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-fact-cannot-decide-whether-a-resource-exists")]
 fn a_fact_cannot_decide_whether_a_resource_exists() {
     let refusal = evaluate(
         "main.star",
@@ -739,6 +756,7 @@ if web.os_family == "debian":
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-fact-refuses-to-be-a-condition-on-its-own")]
 fn a_fact_refuses_to_be_a_condition_on_its_own() {
     let refusal = evaluate(
         "main.star",
@@ -795,6 +813,7 @@ resource("os:file.a@web-01", {"path": select(web.os_family, "debian")})
 /// at the method call, and a secret compared against a guess answered silently.
 /// That is an oracle — the resource appears if and only if the guess is right.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-secret-cannot-be-laundered-through-a-method-call")]
 fn a_secret_cannot_be_laundered_through_a_method_call() {
     let refusal = evaluate(
         "main.star",
@@ -814,6 +833,7 @@ if held.get("password") == "changeme":
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-value-that-does-not-exist-yet-cannot-be-laundered-through-a-method-call")]
 fn a_value_that_does_not_exist_yet_cannot_be_laundered_through_a_method_call() {
     let refusal = evaluate(
         "main.star",
@@ -836,6 +856,7 @@ if held.get("address") == "10.0.0.1":
 /// A method that hands back something it was given rather than something it
 /// held: the receiver is clean and the argument is not.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-secret-cannot-be-laundered-through-a-method-it-was-handed-to")]
 fn a_secret_cannot_be_laundered_through_a_method_it_was_handed_to() {
     let refusal = evaluate(
         "main.star",
@@ -857,6 +878,7 @@ if empty.get("password", secret("vault", "db/password")) == "changeme":
 /// A `def` body is walked for what it returns. A lambda's was not walked at
 /// all, so the shortest way to write the same thing went straight through.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-value-that-does-not-exist-yet-cannot-be-laundered-through-a-lambda")]
 fn a_value_that_does_not_exist_yet_cannot_be_laundered_through_a_lambda() {
     let refusal = evaluate(
         "main.star",

@@ -81,6 +81,7 @@ fn planned(conf_says: &str) -> nerpa_core::Plan {
 /// The property no predecessor has: the restart is in the plan, with its cause,
 /// before anything happens.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-service-whose-file-changes-is-roused-and-the-plan-says-by-what")]
 fn a_service_whose_file_changes_is_roused_and_the_plan_says_by_what() {
     let plan = planned("as it will be\n");
 
@@ -141,6 +142,7 @@ fn a_service_is_not_roused_when_nothing_it_reacts_to_changed() {
 /// recording that fact. `--force-handlers` changes when they run rather than
 /// whether the debt is remembered.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-reaction-that-did-not-finish-is-owed-and-the-next-plan-says-so")]
 fn a_reaction_that_did_not_finish_is_owed_and_the_next_plan_says_so() {
     let (graph, observed, mut state) = world("as it was\n");
 
@@ -186,6 +188,7 @@ fn a_reaction_that_finished_leaves_nothing_owed() {
 
 /// A debt outlives the process that could not pay it, or it is not a debt.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-debt-survives-the-state-file")]
 fn a_debt_survives_the_state_file() {
     let scratch = std::env::temp_dir().join(format!("nerpa-owed-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&scratch);
@@ -214,6 +217,7 @@ fn a_debt_survives_the_state_file() {
 /// state is written for it; a service reacting to it would otherwise be restarted
 /// on every machine a first run adopts, for a file nobody touched.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-file-adopted-or-reordered-rouses-nothing")]
 fn a_file_adopted_or_reordered_rouses_nothing() {
     let (graph, observed, _) = world("as it was\n");
     let adopted =
@@ -383,6 +387,7 @@ fn replanned_after_stopping_between(mut state: State) -> nerpa_core::Plan {
 /// the restart forgotten: the next plan found the file matching, nothing changing,
 /// and nothing owed. Found by the review of RFC 0001.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-run-that-stops-between-a-cause-and-its-reaction-leaves-the-reaction-owed")]
 fn a_run_that_stops_between_a_cause_and_its_reaction_leaves_the_reaction_owed() {
     let (_, _, state) = world("as it was\n");
     let next = replanned_after_stopping_between(state);
@@ -403,6 +408,7 @@ fn a_run_that_stops_between_a_cause_and_its_reaction_leaves_the_reaction_owed() 
 /// in the plan that would otherwise have adopted it — is recorded from what was
 /// read, so that the debt has somewhere to be written.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-reactor-nothing-recorded-yet-is-owed-its-reaction-all-the-same")]
 fn a_reactor_nothing_recorded_yet_is_owed_its_reaction_all_the_same() {
     let mut state = State::new();
     state.record(
@@ -467,6 +473,7 @@ fn far_world() -> (Graph, Observed, State) {
 /// the service kept the old file. Every reaction test ran on one machine. Found by
 /// the narrow review of RFC 0001.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-reaction-on-a-machine-that-did-not-answer-is-owed-on-its-record")]
 fn a_reaction_on_a_machine_that_did_not_answer_is_owed_on_its_record() {
     let (graph, observed, mut state) = far_world();
     state.record(
@@ -526,6 +533,7 @@ fn a_reaction_on_a_machine_that_did_not_answer_is_owed_on_its_record() {
 /// And a service with no record, which has nowhere to owe it, holds the file back
 /// until its machine answers, and the plan says what waits.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-cause-waits-while-what-it-rouses-cannot-be-planned-and-has-no-record")]
 fn a_cause_waits_while_what_it_rouses_cannot_be_planned_and_has_no_record() {
     let (graph, observed, state) = far_world();
 
@@ -559,6 +567,7 @@ fn a_cause_waits_while_what_it_rouses_cannot_be_planned_and_has_no_record() {
 /// what is on a machine could be reported. Found by the review of RFC 0001's
 /// fourth revision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-held-cause-on-no-machine-is-named-all-the-same")]
 fn a_held_cause_on_no_machine_is_named_all_the_same() {
     let mut graph = Graph::new();
     graph.preexisting(nerpa_core::Target::new("web-02").unwrap());
@@ -604,6 +613,7 @@ fn a_held_cause_on_no_machine_is_named_all_the_same() {
 /// is updated. A replacement was held instead, as though the far service were
 /// inside the file. Found by the review of RFC 0001's fifth revision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-replaced-cause-owes-its-reaction-on-a-machine-that-did-not-answer")]
 fn a_replaced_cause_owes_its_reaction_on_a_machine_that_did_not_answer() {
     let os = || nerpa_core::Provider::new("os").unwrap();
     let schema = Schema::new()

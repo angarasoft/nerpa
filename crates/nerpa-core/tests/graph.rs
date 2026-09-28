@@ -79,6 +79,7 @@ fn a_stage_reports_which_nodes_it_touches() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-cycle-is-reported-with-every-resource-in-it")]
 fn a_cycle_is_reported_with_every_resource_in_it() {
     let graph = graph_of(vec![
         Resource::new(address("os:file.a@web-01")).after(address("os:file.b@web-01")),
@@ -94,6 +95,7 @@ fn a_cycle_is_reported_with_every_resource_in_it() {
 /// The cycle report is what somebody debugs at three in the morning. It must not
 /// depend on the order the resources happened to be declared in.
 #[test]
+#[dacc_derive::doc_anchor(id = "cycle-reports-do-not-depend-on-insertion-order")]
 fn cycle_reports_do_not_depend_on_insertion_order() {
     let one = Resource::new(address("os:file.a@web-01")).after(address("os:file.c@web-01"));
     let two = Resource::new(address("os:file.b@web-01")).after(address("os:file.a@web-01"));
@@ -107,6 +109,7 @@ fn cycle_reports_do_not_depend_on_insertion_order() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-dependency-on-a-missing-resource-is-refused")]
 fn a_dependency_on_a_missing_resource_is_refused() {
     let graph = graph_of(vec![
         Resource::new(address("os:service.nginx@web-01")).after(address("os:package.nginx@web-01")),
@@ -175,6 +178,7 @@ fn a_cycle_report_leaves_out_resources_it_does_not_hold_up() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "an-attribute-reading-from-another-resource-is-an-ordering")]
 fn an_attribute_reading_from_another_resource_is_an_ordering() {
     let graph = graph_of(vec![
         Resource::new(address("yandex:instance.db")),
@@ -191,6 +195,7 @@ fn an_attribute_reading_from_another_resource_is_an_ordering() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "two-references-to-one-resource-are-still-one-ordering")]
 fn two_references_to_one_resource_are_still_one_ordering() {
     let graph = graph_of(vec![
         Resource::new(address("yandex:instance.db")),
@@ -220,6 +225,7 @@ fn a_reference_to_a_resource_that_is_not_here_is_refused() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "everything-on-a-node-waits-for-whatever-creates-it")]
 fn everything_on_a_node_waits_for_whatever_creates_it() {
     let mut graph = Graph::new();
     graph
@@ -240,6 +246,7 @@ fn everything_on_a_node_waits_for_whatever_creates_it() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-node-that-was-already-there-adds-no-ordering")]
 fn a_node_that_was_already_there_adds_no_ordering() {
     let mut graph = Graph::new();
     graph
@@ -258,6 +265,7 @@ fn a_node_that_was_already_there_adds_no_ordering() {
 /// Fail closed. Ordering a resource last because nobody said where its machine
 /// comes from would be a guess dressed up as a decision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-resource-on-a-node-nobody-declared-is-refused")]
 fn a_resource_on_a_node_nobody_declared_is_refused() {
     let mut graph = Graph::new();
     graph

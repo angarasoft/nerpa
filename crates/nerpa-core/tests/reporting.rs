@@ -154,6 +154,7 @@ fn run(graph: &Graph, provider: Selective) -> (Result<(), RunError>, State) {
 /// The measured bug: an attribute the provider does not own applied cleanly and
 /// re-planned for ever.
 #[test]
+#[dacc_derive::doc_anchor(id = "an-attribute-that-is-not-reported-back-stops-the-run-rather-than-never-settling")]
 fn an_attribute_that_is_not_reported_back_stops_the_run_rather_than_never_settling() {
     let graph = graph_of(&[("path", "/etc/motd"), ("owner", "root")]);
     let (outcome, _) = run(&graph, Selective { owns: "path" });
@@ -167,6 +168,7 @@ fn an_attribute_that_is_not_reported_back_stops_the_run_rather_than_never_settli
 /// It is refused *after* the record is written. The resource has been made by
 /// then, and refusing without writing that down would leave it owned by nobody.
 #[test]
+#[dacc_derive::doc_anchor(id = "what-was-made-before-the-refusal-is-still-recorded")]
 fn what_was_made_before_the_refusal_is_still_recorded() {
     let graph = graph_of(&[("path", "/etc/motd"), ("owner", "root")]);
     let (outcome, state) = run(&graph, Selective { owns: "path" });
@@ -182,6 +184,7 @@ fn what_was_made_before_the_refusal_is_still_recorded() {
 /// return — echoes it, and the echo is the claim. What it may not do is say
 /// nothing.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-provider-that-echoes-what-it-cannot-read-back-is-accepted")]
 fn a_provider_that_echoes_what_it_cannot_read_back_is_accepted() {
     let graph = graph_of(&[("path", "/etc/motd")]);
     let (outcome, state) = run(&graph, Selective { owns: "path" });

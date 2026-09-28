@@ -89,6 +89,7 @@ fn graph_of(path: &str) -> Graph {
 /// The whole loop, and then a search for the password in everything the run
 /// wrote down.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-password-reaches-the-file-and-nothing-else")]
 fn a_password_reaches_the_file_and_nothing_else() {
     let scratch = Scratch::new("through");
     let path = scratch.join("credentials");
@@ -190,6 +191,7 @@ fn a_secret_that_did_not_change_converges() {
 /// Rotating the credential in the store is a change, and the plan says so
 /// without saying what to.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-rotated-secret-is-reported-as-changed")]
 fn a_rotated_secret_is_reported_as_changed() {
     let scratch = Scratch::new("rotated");
     let path = scratch.join("credentials");
@@ -255,6 +257,7 @@ fn a_secret_that_cannot_be_fetched_stops_the_plan() {
 /// and the rotation still goes through the sealed premise it carries now. See
 /// decision 0041.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-rotated-secret-leaves-no-unkeyed-digest-of-the-old-one-in-the-plan")]
 fn a_rotated_secret_leaves_no_unkeyed_digest_of_the_old_one_in_the_plan() {
     use std::os::unix::fs::PermissionsExt as _;
 

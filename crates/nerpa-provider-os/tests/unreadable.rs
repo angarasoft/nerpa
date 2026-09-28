@@ -83,6 +83,7 @@ fn look(path: &Path) -> Result<Option<Attributes>, String> {
 /// The one that loses data. A file nerpa may not open is not a file that is not
 /// there, and the difference is the whole plan.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-file-that-cannot-be-read-is-refused-rather-than-called-absent")]
 fn a_file_that_cannot_be_read_is_refused_rather_than_called_absent() {
     let scratch = Scratch::new("noperm");
     let path = scratch.join("credentials");
@@ -112,6 +113,7 @@ fn a_file_that_cannot_be_read_is_refused_rather_than_called_absent() {
 /// target. Reporting the mode of one and the contents of the other is a record
 /// of an object that does not exist.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-symlink-is-reported-as-a-symlink-and-not-followed")]
 fn a_symlink_is_reported_as_a_symlink_and_not_followed() {
     let scratch = Scratch::new("symlink");
     let target = scratch.join("target.txt");
@@ -134,6 +136,7 @@ fn a_symlink_is_reported_as_a_symlink_and_not_followed() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-broken-symlink-is-there-rather-than-absent")]
 fn a_broken_symlink_is_there_rather_than_absent() {
     let scratch = Scratch::new("broken");
     let link = scratch.join("link.conf");
@@ -149,6 +152,7 @@ fn a_broken_symlink_is_there_rather_than_absent() {
 /// A certificate is a file somebody manages. It used to read as absent, then
 /// briefly as a refusal, and now as what it is.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-file-that-is-not-text-is-read-as-the-bytes-it-holds")]
 fn a_file_that_is_not_text_is_read_as_the_bytes_it_holds() {
     let scratch = Scratch::new("bytes");
     let path = scratch.join("cert.der");
@@ -214,6 +218,7 @@ fn a_binary_file_converges() {
 
 /// Writing through a link changes a file the declaration does not name.
 #[test]
+#[dacc_derive::doc_anchor(id = "writing-where-a-symlink-is-replaces-the-link-and-leaves-its-target-alone")]
 fn writing_where_a_symlink_is_replaces_the_link_and_leaves_its_target_alone() {
     let scratch = Scratch::new("through");
     let target = scratch.join("target.txt");
@@ -254,6 +259,7 @@ fn writing_where_a_symlink_is_replaces_the_link_and_leaves_its_target_alone() {
 /// A directory nerpa made may since have been filled by somebody else.
 /// Recursively deleting what it never created is a second, unannounced change.
 #[test]
+#[dacc_derive::doc_anchor(id = "deleting-a-directory-does-not-take-what-nerpa-did-not-make")]
 fn deleting_a_directory_does_not_take_what_nerpa_did_not_make() {
     let scratch = Scratch::new("rmdir");
     let directory = scratch.join("conf.d");
@@ -280,6 +286,7 @@ fn deleting_a_directory_does_not_take_what_nerpa_did_not_make() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "an-empty-directory-is-still-removed")]
 fn an_empty_directory_is_still_removed() {
     let scratch = Scratch::new("rmdir-empty");
     let directory = scratch.join("conf.d");
@@ -301,6 +308,7 @@ fn an_empty_directory_is_still_removed() {
 /// privileged (0035), which makes that a `chmod` as root on a directory nothing
 /// declared.
 #[test]
+#[dacc_derive::doc_anchor(id = "making-a-directory-where-a-symlink-is-leaves-what-it-pointed-at-alone")]
 fn making_a_directory_where_a_symlink_is_leaves_what_it_pointed_at_alone() {
     let scratch = Scratch::new("through-a-directory");
     let target = scratch.join("target");
@@ -426,6 +434,7 @@ impl Reach for Untouchable {
 /// The os provider says how much content one operation carries, so the planner
 /// can refuse more before anything is done.
 #[test]
+#[dacc_derive::doc_anchor(id = "the-os-provider-bounds-content-at-what-one-operation-carries")]
 fn the_os_provider_bounds_content_at_what_one_operation_carries() {
     assert_eq!(
         Os::new()
@@ -439,6 +448,7 @@ fn the_os_provider_bounds_content_at_what_one_operation_carries() {
 /// every value but a secret's; this is where a secret's is caught, and where any
 /// value would be caught if planning were bypassed.
 #[test]
+#[dacc_derive::doc_anchor(id = "content-too-large-is-refused-before-the-machine-is-asked")]
 fn content_too_large_is_refused_before_the_machine_is_asked() {
     let scratch = Scratch::new("too-large");
     let mut attributes = at(&scratch.join("big"));
@@ -465,6 +475,7 @@ fn content_too_large_is_refused_before_the_machine_is_asked() {
 /// A file and a directory at one path are one thing on the machine, so the os
 /// provider names both by their path, in one namespace.
 #[test]
+#[dacc_derive::doc_anchor(id = "the-os-provider-names-files-and-directories-by-path-in-one-namespace")]
 fn the_os_provider_names_files_and_directories_by_path_in_one_namespace() {
     let schema = Os::new().schema();
     assert_eq!(

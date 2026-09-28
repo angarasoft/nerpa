@@ -96,6 +96,7 @@ fn nothing_known() -> Written {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-resource-on-a-machine-that-did-not-answer-is-not-planned")]
 fn a_resource_on_a_machine_that_did_not_answer_is_not_planned() {
     let graph = graph_of(vec![
         Resource::new(address("os:file.motd@web-01")).with("path", "/etc/motd"),
@@ -141,6 +142,7 @@ fn a_resource_on_a_machine_that_did_not_answer_is_not_planned() {
 /// complete, and apply stopped at that first stage, before touching the machines
 /// that did answer. Found by the third review of RFC 0001.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-removal-on-a-machine-that-did-not-answer-is-not-planned")]
 fn a_removal_on_a_machine_that_did_not_answer_is_not_planned() {
     let mut state = State::new();
     state.record(
@@ -181,6 +183,7 @@ fn a_removal_on_a_machine_that_did_not_answer_is_not_planned() {
 /// removed after it, so removing that first would take it away from under a
 /// resource still there.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-removal-waiting-on-one-that-cannot-be-made-is-held")]
 fn a_removal_waiting_on_one_that_cannot_be_made_is_held() {
     let mut state = State::new();
     state.record(
@@ -239,6 +242,7 @@ fn a_removal_waiting_on_one_that_cannot_be_made_is_held() {
 /// run its machine answered, took the file away from under that record. Found while
 /// ordering removals after the narrow review of RFC 0001.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-resource-naming-what-a-held-removal-takes-is-held-with-it")]
 fn a_resource_naming_what_a_held_removal_takes_is_held_with_it() {
     let schema = Schema::new().identity(
         nerpa_core::Provider::new("os").unwrap(),
@@ -315,6 +319,7 @@ fn a_resource_naming_what_a_held_removal_takes_is_held_with_it() {
 /// And a removal waits while what state recorded after it cannot be planned:
 /// whether that is still in the way is not known until its machine answers.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-removal-waits-while-what-was-recorded-after-it-cannot-be-planned")]
 fn a_removal_waits_while_what_was_recorded_after_it_cannot_be_planned() {
     let os = || nerpa_core::Provider::new("os").unwrap();
     let schema = Schema::new()
@@ -382,6 +387,7 @@ fn a_removal_waits_while_what_was_recorded_after_it_cannot_be_planned() {
 /// And a replacement waits while what state recorded after it cannot be planned:
 /// removing what was there could take it away from under something still in it.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-replacement-waits-while-what-was-recorded-inside-it-cannot-be-planned")]
 fn a_replacement_waits_while_what_was_recorded_inside_it_cannot_be_planned() {
     let os = || nerpa_core::Provider::new("os").unwrap();
     let schema = Schema::new()
@@ -458,6 +464,7 @@ fn a_replacement_waits_while_what_was_recorded_inside_it_cannot_be_planned() {
 /// this removal: each was said to wait for the other, and the machine that did not
 /// answer was named for neither. Found by the review of RFC 0001's fifth revision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-held-removal-is-said-to-wait-for-its-root")]
 fn a_held_removal_is_said_to_wait_for_its_root() {
     let os = || nerpa_core::Provider::new("os").unwrap();
     let schema = Schema::new()
@@ -520,6 +527,7 @@ fn a_held_removal_is_said_to_wait_for_its_root() {
 /// holds it there, not for the declared resource that names what it takes away and
 /// waits for it in turn. Found by the review of RFC 0001's fifth revision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-removal-held-behind-a-machine-is-said-to-wait-for-it-not-for-its-successor")]
 fn a_removal_held_behind_a_machine_is_said_to_wait_for_it_not_for_its_successor() {
     let schema = Schema::new().identity(
         nerpa_core::Provider::new("os").unwrap(),
@@ -589,6 +597,7 @@ fn a_removal_held_behind_a_machine_is_said_to_wait_for_it_not_for_its_successor(
 /// never name the machine that did not answer. Found by the narrow review of RFC
 /// 0001's sixth revision.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-held-removal-names-the-root-of-a-longer-wait")]
 fn a_held_removal_names_the_root_of_a_longer_wait() {
     let os = || nerpa_core::Provider::new("os").unwrap();
     let schema = Schema::new()
@@ -658,6 +667,7 @@ fn a_held_removal_names_the_root_of_a_longer_wait() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "nothing-at-all-is-said-about-what-could-not-be-read")]
 fn nothing_at_all_is_said_about_what_could_not_be_read() {
     let graph = graph_of(vec![
         Resource::new(address("os:file.motd@web-01")).with("content", "hello\n"),
@@ -691,6 +701,7 @@ fn nothing_at_all_is_said_about_what_could_not_be_read() {
 
 /// Unreachability travels the same way an unresolved value does.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-resource-that-reads-from-an-unreachable-one-cannot-be-planned-either")]
 fn a_resource_that_reads_from_an_unreachable_one_cannot_be_planned_either() {
     let graph = graph_of(vec![
         Resource::new(address("os:directory.data@web-01")).with("path", "/data"),
@@ -731,6 +742,7 @@ fn a_resource_that_reads_from_an_unreachable_one_cannot_be_planned_either() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "the-age-of-what-is-known-comes-from-state")]
 fn the_age_of_what_is_known_comes_from_state() {
     let graph = graph_of(vec![
         Resource::new(address("os:file.motd@web-01")).with("path", "/etc/motd"),
@@ -871,6 +883,7 @@ fn refusing(how: Refusal) -> Providers {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-machine-not-answering-lets-the-reading-continue")]
 fn a_machine_not_answering_lets_the_reading_continue() {
     let graph = graph_of(vec![
         Resource::new(address("os:file.motd@web-01")).with("path", "/etc/motd"),
@@ -891,6 +904,7 @@ fn a_machine_not_answering_lets_the_reading_continue() {
 /// The distinction the whole decision rests on. Treating this as unreachability
 /// would quietly stop managing a resource because of a typo in an access rule.
 #[test]
+#[dacc_derive::doc_anchor(id = "any-other-refusal-still-stops-the-run")]
 fn any_other_refusal_still_stops_the_run() {
     let graph = graph_of(vec![
         Resource::new(address("os:file.motd@web-01")).with("path", "/etc/motd"),

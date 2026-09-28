@@ -48,6 +48,7 @@ resource("os:file.subject@web-01", {
 
 /// Twenty idioms, written the way somebody writes them for Ansible.
 #[test]
+#[dacc_derive::doc_anchor(id = "templates-written-for-ansible-render-here")]
 fn templates_written_for_ansible_render_here() {
     let idioms: [(&str, &str); 20] = [
         ("{{ missing | default('www-data') }}", "www-data"),
@@ -86,6 +87,7 @@ fn templates_written_for_ansible_render_here() {
 /// A value that is not there is a mistake, not an empty string. For a
 /// configuration file the difference is a directive that silently disappears.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-value-that-was-not-handed-over-is-a-refusal-rather-than-a-blank")]
 fn a_value_that_was_not_handed_over_is_a_refusal_rather_than_a_blank() {
     let refusal = rendered("listen {{ port }};").expect_err("undefined is not empty");
     assert!(refusal.contains("undefined"), "{refusal}");
@@ -93,6 +95,7 @@ fn a_value_that_was_not_handed_over_is_a_refusal_rather_than_a_blank() {
 
 /// There is no ambient scope. A value declared beside the call is not in it.
 #[test]
+#[dacc_derive::doc_anchor(id = "nothing-is-in-scope-that-was-not-handed-over")]
 fn nothing_is_in_scope_that_was_not_handed_over() {
     let refusal = evaluate(
         "main.star",
@@ -110,6 +113,7 @@ resource("os:file.a@web-01", {"content": template("t.j2", {})})
 /// The filters are a list this project keeps, not whatever the library ships,
 /// because every one of them is part of what a configuration may rely on.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-filter-that-is-not-on-the-list-is-refused-by-name")]
 fn a_filter_that_is_not_on_the_list_is_refused_by_name() {
     let refusal = rendered("{{ name | urlencode }}").expect_err("not on the list");
     assert!(
@@ -121,6 +125,7 @@ fn a_filter_that_is_not_on_the_list_is_refused_by_name() {
 /// A template arriving from somebody's configuration repository is exactly where
 /// an unbounded loop should be impossible.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-template-that-would-not-stop-is-stopped")]
 fn a_template_that_would_not_stop_is_stopped() {
     let refusal =
         rendered("{% for a in range(2000) %}{% for b in range(2000) %}x{% endfor %}{% endfor %}")
@@ -167,6 +172,7 @@ fn a_template_that_is_not_there_says_so() {
 
 /// The one place a template may read from is the configuration's own directory.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-template-cannot-be-named-outside-the-configuration")]
 fn a_template_cannot_be_named_outside_the_configuration() {
     use nerpa_config::template::{Directory, Templates};
 

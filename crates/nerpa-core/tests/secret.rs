@@ -21,6 +21,7 @@ fn text(of: &str) -> Value {
 /// the same secret in another, and a table of likely passwords built against one
 /// is useless against the next.
 #[test]
+#[dacc_derive::doc_anchor(id = "the-same-value-under-two-keys-digests-differently")]
 fn the_same_value_under_two_keys_digests_differently() {
     let value = text("hunter2");
     assert_ne!(
@@ -39,6 +40,7 @@ fn the_same_value_under_two_keys_digests_differently() {
 /// that encode to the same bytes would compare equal, and a rotation between
 /// them would be reported as no change at all.
 #[test]
+#[dacc_derive::doc_anchor(id = "values-that-are-not-equal-do-not-digest-equal")]
 fn values_that_are_not_equal_do_not_digest_equal() {
     let under = key(3);
     let distinct = [
@@ -112,6 +114,7 @@ fn a_key_does_not_print_itself() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "a-recorded-secret-shows-that-it-is-one-and-nothing-more")]
 fn a_recorded_secret_shows_that_it_is_one_and_nothing_more() {
     let recorded = Recorded::Secret(Digest::of(&key(1), &text("hunter2")));
     assert_eq!(recorded.to_string(), "(secret)");
@@ -173,6 +176,7 @@ fn a_store_that_has_nothing_says_where_it_looked() {
 /// A machine's seal is its own: another machine's differs, another state file's
 /// differs, the same pair always gives the same one, and it prints as nothing.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-seal-belongs-to-one-machine-under-one-state-file")]
 fn a_seal_belongs_to_one_machine_under_one_state_file() {
     let key = Key::from_bytes([3; 32]);
     let other = Key::from_bytes([4; 32]);

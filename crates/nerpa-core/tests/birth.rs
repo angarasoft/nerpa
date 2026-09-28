@@ -76,6 +76,7 @@ fn running(image: &str, cores: i64) -> Observed {
 
 /// The whole point. In Terraform this is a plan to destroy and rebuild.
 #[test]
+#[dacc_derive::doc_anchor(id = "editing-the-image-does-not-propose-to-destroy-anything")]
 fn editing_the_image_does_not_propose_to_destroy_anything() {
     let graph = graph_of(vec![
         Resource::new(address("yandex:instance.web"))
@@ -102,6 +103,7 @@ fn editing_the_image_does_not_propose_to_destroy_anything() {
 
 /// And it is not silence either, which is the difference from `ignore_changes`.
 #[test]
+#[dacc_derive::doc_anchor(id = "but-it-is-reported-every-time")]
 fn but_it_is_reported_every_time() {
     let graph = graph_of(vec![
         Resource::new(address("yandex:instance.web")).with("image", "gentoo-2026-09"),
@@ -219,6 +221,7 @@ fn an_attribute_nobody_declared_as_a_birth_attribute_is_converged() {
 /// immutable — the more specific answer wins, and it is the one that does not
 /// destroy a running machine.
 #[test]
+#[dacc_derive::doc_anchor(id = "being-born-with-something-never-becomes-a-replacement")]
 fn being_born_with_something_never_becomes_a_replacement() {
     let schema = Schema::new()
         .at_birth(

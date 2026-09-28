@@ -40,6 +40,7 @@ fn the_last_value_written_is_the_one_that_stands() {
 }
 
 #[test]
+#[dacc_derive::doc_anchor(id = "drift-is-corrected-unless-the-resource-asks-to-be-merged")]
 fn drift_is_corrected_unless_the_resource_asks_to_be_merged() {
     let plain = Resource::new(address("os:file.motd@web-01"));
     assert_eq!(plain.protection(), Protection::Converge);
