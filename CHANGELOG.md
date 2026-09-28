@@ -23,7 +23,7 @@ without ceremony until the first stage is complete.
 - `docs/CODING_STANDARDS.md`, split into what the gate enforces and what review
   does.
 
-- Decision records in `docs/decisions/`, immutable once accepted and superseded
+- Decision records in `doc/adr/`, immutable once accepted and superseded
   rather than edited. Eight of them, including the reversal that replaced lazy
   planning with a single pass.
 - `docs/DOCUMENTATION.md`: which kind of documentation answers which question,
@@ -116,7 +116,7 @@ without ceremony until the first stage is complete.
   reported on every plan rather than ignored.
 
 - Project management, sized to this repository rather than to the one it is
-  borrowed from ([0030](docs/decisions/0030-claim-less-and-attack-what-is-claimed.md)):
+  borrowed from (`0030`):
   `docs/MAP.md` says which kind of knowledge lives where and what has to move
   with what, `RULES.md` holds the eight prohibitions a later commit cannot
   repair, `docs/WATCHLIST.md` takes an observation for the price of a row, and
@@ -228,7 +228,7 @@ without ceremony until the first stage is complete.
   of random bytes survive the proxy byte-for-byte, a templated file converges on
   both, and the second run is empty. One field in a document, no code, and one
   stage-1 item that turns out not to exist —
-  [0037](docs/decisions/0037-teleport-is-a-route-not-a-transport.md).
+  `0037`.
 
 - What a repository needs before anybody outside can look at it: `SECURITY.md`,
   `CODE_OF_CONDUCT.md`, and issue forms that ask for the one thing each kind of
@@ -446,7 +446,7 @@ without ceremony until the first stage is complete.
   together in any order. The first plan after upgrading reorders, once, every
   resource whose dependency already existed when it was made, because state kept
   no edge for those. See
-  [0043](docs/decisions/0043-what-a-resource-comes-after-is-recorded-when-that-changes.md).
+  `0043`.
 
 - A resource that already matches its declaration and is not in state is
   adopted: the plan shows it as `[adopt    ]`, nothing is sent to the machine,
@@ -457,7 +457,7 @@ without ceremony until the first stage is complete.
   which the plan says under every adoption. Adoptions are written to state once
   for the run. A first run over configured machines lists every declared
   resource, and plans that adopt have new numbers. Found by the review of RFC
-  0001; see [0042](docs/decisions/0042-a-resource-found-as-declared-is-adopted.md).
+  0001; see `0042`.
 
 - State remembers every edge a resource came after, so removals run in the right
   order however the dependency was written. It kept only references still
@@ -511,7 +511,7 @@ without ceremony until the first stage is complete.
   version 4, which is a reinstall, and it also carries a sealed observation — an
   answer that is the sealed digest of a thing and never the thing — for password
   hashes and secret files later. See
-  [0041](docs/decisions/0041-a-premise-is-sealed-for-the-machine-it-describes.md).
+  `0041`.
 
 - A template's last newline is kept. Jinja drops it by default and nerpa had
   inherited that, so every rendered file lost the newline its template ended with
@@ -537,7 +537,7 @@ without ceremony until the first stage is complete.
   rather than as a version, measured, because it decoded the frame before reading
   the stamp. Frames are read stamp first now, so the next bump is refused as what
   it is. Machines are opened side by side, since opening waits for the handshake. See
-  [0040](docs/decisions/0040-an-executor-says-which-build-it-is.md).
+  `0040`.
 
 - Reading fans out over a bounded pool, one machine per thread, sixteen at once,
   answers kept in the order the work was built. Measured, and worth nothing yet
@@ -589,7 +589,7 @@ without ceremony until the first stage is complete.
   reading it in a year would see it. Escalation now requires an executor root
   installed where that user cannot write, which is one file and one sudoers line
   —
-  [0039](docs/decisions/0039-a-privileged-executor-is-one-the-machine-already-had.md).
+  `0039`.
 
 - `os:package` reads. Two families, `rpm` with `dnf` and `portage` with
   `emerge`, chosen to stand as far apart as the space allows; a machine calling
@@ -598,7 +598,7 @@ without ceremony until the first stage is complete.
   machine before it was written down — `qlist` was rejected as the wrong
   instrument, because it matches by substring and answers `dev-lang/python-exec`
   when asked about `dev-lang/python`. See
-  [0038](docs/decisions/0038-two-package-families-and-a-refusal-for-the-rest.md).
+  `0038`.
 
 - `os-release` values in single quotes were read with the quotes attached, so a
   Gentoo machine reported a family called `'gentoo'` and was refused as unknown.

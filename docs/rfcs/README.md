@@ -23,7 +23,7 @@ whether it is solved, bounded or accepted.
 | --- | --- |
 | `draft` | Being written. |
 | `in review` | Reviewers are working through it, and their findings go in its review log. |
-| `accepted` | Settled. Its decisions are recorded in `docs/decisions/`, and the RFC points to them. |
+| `accepted` | Settled. Its decisions are recorded in `doc/adr/`, and the RFC points to them. |
 | `withdrawn` | Not pursued, with the reason. Never deleted. |
 
 ## Review

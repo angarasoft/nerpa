@@ -1,6 +1,6 @@
 # Roadmap
 
-Stages, not sprints — [0014](docs/decisions/0014-ship-by-stage-not-by-sprint.md).
+Stages, not sprints — `0014`.
 Each carries an exit criterion that can be **executed rather than judged**, and
 the risk it retires. A stage ends when its criterion passes on real hardware, not
 when its description feels satisfied.
@@ -9,7 +9,7 @@ Releases are tags at these boundaries. Versions stay `0.x` until stage 6, where 
 minor bump may break anything.
 
 > Reordered on 2026-09-05 by
-> [0024](docs/decisions/0024-plan-for-what-they-do-well.md). Going through sixty
+> `0024`. Going through sixty
 > properties of Terraform and Ansible showed nineteen answers of thirty against
 > their mistakes and nine of thirty against their virtues — every stage here was
 > about the engine, and none about the part somebody would drive. The missing work
@@ -34,14 +34,14 @@ typed schema, and branching on a handle fails evaluation naming the line.
 
 The executor, the `ssh` transport — through which Teleport turned out to be a
 route rather than a transport of its own
-([0037](docs/decisions/0037-teleport-is-a-route-not-a-transport.md)) — batch
+(`0037`) — batch
 introspection, fingerprints.
 Packages, services, users and sysctls.
 
 And the three things that make the executor worth having, which used not to be
 here at all:
 
-* **Templates** ([0023](docs/decisions/0023-templates-that-look-like-the-file.md))
+* **Templates** (`0023`)
   — Jinja rendered in a sandbox, from values handed over rather than ambient,
   early enough that the plan shows what a file will contain.
 * **Inventory groups** — a hundred machines cannot be a hundred declarations, and
@@ -135,10 +135,10 @@ migration once anybody's state file exists.
   configuration would land in state in clear text, which is the thing Terraform is
   criticised for here.
 * **Renaming a resource.** Addresses are frozen by
-  [0002](docs/decisions/0002-addresses-carry-a-slot-and-no-index.md) and there is
+  `0002` and there is
   no path from one name to another but destroy and recreate. Terraform learned
   this painfully and added `moved` blocks afterwards.
-* **Facts as values.** [0006](docs/decisions/0006-static-plan-staged-execution.md)
+* **Facts as values.** `0006`
   refused facts deciding which resources exist, and was right. A path that differs
   by distribution is a *value*, and there is no mechanism. The boundary needs a
   decision before an implementation, or in six months nobody will remember why one
@@ -215,7 +215,7 @@ gaps; neither blocks anything above, and the second matters more for adoption th
 its size suggests.
 
 Keeping an installed executor current without anybody logging in. Since
-[0040](docs/decisions/0040-an-executor-says-which-build-it-is.md) a new build is a
+`0040` a new build is a
 reinstall on every machine with an installed executor, and doing that by hand on
 two machines was already called tedious. Both ways are wanted and neither is now:
 nerpa replacing an executor of another build through that executor, shown in the

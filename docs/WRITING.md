@@ -91,7 +91,7 @@ noted in the record; the reasoning is superseded, never rewritten. That is rule 
 and it outranks everything on this page — including the voice rules, which is why
 two records still say "we" and will go on saying it.
 
-Short. `docs/decisions/README.md` puts it best: if it does not fit on a page, it
+Short. `doc/adr/` puts it best: if it does not fit on a page, it
 is probably two decisions. Name the cost, or the record is advocacy.
 
 ## Language
@@ -130,6 +130,6 @@ and saying so is better than pretending otherwise.
 
 A rule belongs here if it is about how a sentence is written. Where a document
 goes is `MAP.md`; what it must contain to be a decision record is
-`docs/decisions/README.md`; how the code is written is `CODING_STANDARDS.md`.
+`doc/adr/`; how the code is written is `CODING_STANDARDS.md`.
 If a rule cannot be stated in a sentence and defended in two, it is a preference
 rather than a rule.

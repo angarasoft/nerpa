@@ -46,7 +46,7 @@ build and an otherwise idle machine, so they run nightly.
 Where anything goes: [docs/MAP.md](docs/MAP.md). What each rule is and why it
 exists: [docs/CODING_STANDARDS.md](docs/CODING_STANDARDS.md). Which documentation
 a change has to bring with it: [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md).
-Why anything is the way it is: [docs/decisions/](docs/decisions/).
+Why anything is the way it is: [doc/adr/](doc/adr/).
 
 Something noticed that is not yet a decision goes in
 [docs/WATCHLIST.md](docs/WATCHLIST.md); a question nobody has to answer yet goes

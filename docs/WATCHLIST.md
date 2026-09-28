@@ -57,5 +57,5 @@ the second table.
 
 Give it the next number, say what was seen and why it might matter, and stop.
 An entry that already knows its own answer is not an observation; it is a
-decision, and it belongs in `docs/decisions/`. An entry with a date by which
+decision, and it belongs in `doc/adr/`. An entry with a date by which
 somebody has to answer is a question, and it belongs in `OPEN_QUESTIONS.md`.

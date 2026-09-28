@@ -1093,7 +1093,7 @@ These are true today, whatever becomes of this RFC.
 
 | From | How verified | Defect | Fixed |
 | --- | --- | --- | --- |
-| S-2 | E | A resource that already matches its declaration is never recorded. Plan and apply say "nothing to do", no state file is written, and when the declaration is removed later nothing is planned: the file stays. | `6f70c8a`: adopted and recorded, [0042](../decisions/0042-a-resource-found-as-declared-is-adopted.md) |
+| S-2 | E | A resource that already matches its declaration is never recorded. Plan and apply say "nothing to do", no state file is written, and when the declaration is removed later nothing is planned: the file stays. | `6f70c8a`: adopted and recorded, `0042` |
 | S-2 | R | State records only references still unresolved at plan time (`run.rs:411-421`). `after` edges and resolved references are lost, so removal order taken from state is incomplete. | `85200af`: every edge, carried by the change |
 | S-3 | E | Two addresses with one path are accepted. Both are created, the last write wins, and every later plan proposes the other again. | `7aed616`: refused while planning |
 | S-4 | R | A reaction's debt is written only when the reacting resource's own stage runs (`run.rs:348`). A run stopped between the cause's stage and that one leaves the new file recorded and the reaction lost. | `a8f55b6`: owed before the cause is sent |
@@ -1110,7 +1110,7 @@ commit of its own.
 
 | Defect | Fixed |
 | --- | --- |
-| A resource that already matched and was recorded kept the edges it was made with. An `after` written in later never reached state, so a file and its directory were still removed together in any order, and state from before `85200af` stayed short of edges. | `e1f0d1a`: planned as a reorder, [0043](../decisions/0043-what-a-resource-comes-after-is-recorded-when-that-changes.md) |
+| A resource that already matched and was recorded kept the edges it was made with. An `after` written in later never reached state, so a file and its directory were still removed together in any order, and state from before `85200af` stayed short of edges. | `e1f0d1a`: planned as a reorder, `0043` |
 | Adoption and reorder counted as changing, so a service reacting to an adopted file was planned to restart on every machine a first run adopted. Never released. | `715858c` |
 
 Two resolutions were built differently from what the tables below say. S-2:

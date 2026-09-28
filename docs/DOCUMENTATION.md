@@ -8,7 +8,7 @@ one place.
 | Question | Where | Checked by |
 | --- | --- | --- |
 | How do I use this thing? | rustdoc, in the code | `missing_docs`, `# Errors` and `# Panics` sections, no broken links |
-| Why is it like this? | `doc/adr/` — the registry, written as code; `docs/decisions/` until wave 1 moves them | the gate, `cargo xtask ci` |
+| Why is it like this? | `doc/adr/` — the registry, written as code | the gate, `cargo xtask ci` |
 | What are we about to decide, and has it been attacked? | `docs/rfcs/` | review, logged in the document |
 | What must never break? | `docs/invariants.toml` | `cargo xtask invariants` |
 | What shape is it in now? | `docs/ARCHITECTURE.md` | `cargo xtask docs` |
@@ -49,7 +49,7 @@ first again.
 ## What a change has to bring with it
 
 - Changes behaviour → an entry in `CHANGELOG.md`.
-- Changes a decision, or makes one → a record in `docs/decisions/`.
+- Changes a decision, or makes one → a record in `doc/adr/`.
 - Adds a guarantee the tool must hold → an entry in `docs/invariants.toml` with
   the `bypass` it could suffer, an `// ENFORCES:` anchor, and a test the entry
   names. It is `claimed` until an `adversarial` test carries that bypass out.

@@ -28,7 +28,7 @@ fact** — a miscount, a dead link, a renamed file — is corrected in place and
 noted in the record, because superseding a whole record over a wrong number
 would bury the reasoning under bookkeeping and teach everybody to ignore the
 rule. If you cannot tell which of the two you are doing, it is reasoning.
-Depth: [docs/decisions/README.md](docs/decisions/README.md).
+Depth: [doc/adr/](doc/adr/).
 
 **2. The release profile never sets `panic = "abort"`.**
 
@@ -70,7 +70,7 @@ planned. Reporting failure as absence makes the next plan propose creating what
 already exists, and the apply overwrites it. This is the exact class of quiet
 wrongness the project exists to remove, so it may not be reintroduced by a
 provider.
-Depth: [docs/decisions/0020-a-machine-that-cannot-be-reached.md](docs/decisions/0020-a-machine-that-cannot-be-reached.md).
+Depth: `0020`.
 
 **7. No `unwrap()` outside tests.**
 

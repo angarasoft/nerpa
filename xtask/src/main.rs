@@ -44,7 +44,6 @@ use std::process::ExitCode;
 mod book;
 mod budget;
 mod commit;
-mod convert;
 mod docs;
 mod invariants;
 mod lint;
@@ -60,7 +59,6 @@ tasks:
   test        the suites, with and without contracts
   invariants  docs/invariants.toml against the code, in both directions
   docs        decision records, then rustdoc with warnings denied
-  convert     decision records round-trip Markdown↔registry without loss (H8)
   deny        dependency licences and advisories
   mutants     mutation testing (minutes; not part of ci)
   book        assemble the book's index from what is already written
@@ -78,13 +76,6 @@ fn main() -> ExitCode {
         Some("test") => test(),
         Some("invariants") => invariants::check(),
         Some("docs") => docs::check(),
-        Some("convert") => {
-            if std::env::args().nth(2).as_deref() == Some("--write") {
-                convert::write()
-            } else {
-                convert::check()
-            }
-        }
         Some("deny") => deny(),
         Some("book") => book::check(),
         Some("budget") => budget::check(),
@@ -111,7 +102,6 @@ fn ci() -> Result<(), String> {
     invariants::check()?;
     book::check()?;
     docs::check()?;
-    convert::check()?;
     deny()
 }
 
