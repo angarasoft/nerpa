@@ -6,7 +6,7 @@
 //!
 //! # Why this needs a fact at all
 //!
-//! Provider logic runs where the engine runs ([0032]), so the question has to be
+//! Provider logic runs where the engine runs (`0032`), so the question has to be
 //! formed before anything is sent — which means knowing the init system in
 //! advance. Every predecessor avoids the problem by running its own code on the
 //! machine: Ansible's module, Puppet's `confine`, Salt's `virtual()` all decide
@@ -16,8 +16,6 @@
 //!
 //! What is bought by asking first is that the plan can name the command before
 //! it runs. A tool that decides on the machine cannot show you that.
-//!
-//! [0032]: ../../../docs/decisions/0032-provider-logic-stays-on-the-control-machine.md
 //!
 //! # Measured, not assumed
 //!

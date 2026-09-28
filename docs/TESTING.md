@@ -1,8 +1,8 @@
 # Testing
 
 Why the suite is shaped the way it is:
-[0015](decisions/0015-test-by-guarantee-and-converge-twice.md) and
-[0016](decisions/0016-prove-the-gate-can-fail.md). This is how to work in it.
+`0015` and
+`0016`. This is how to work in it.
 
 ## The suite is indexed by guarantee, not by module
 

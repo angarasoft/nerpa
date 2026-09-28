@@ -22,7 +22,7 @@ slipway_knowledge::adr!(
         together.
     ",
     trade_offs: &[
-        "Pinning a count to a commit makes it un-live by design; that is the point, not a defect.",
+        "Pinning a count to a commit makes it un-live by design, and the cost is re-measuring when the count moves; that is the point, not a defect.",
     ],
     constraints: &[
         "A baseline figure names the commit it was measured on.",

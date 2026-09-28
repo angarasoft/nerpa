@@ -1,13 +1,11 @@
 //! Speaking to several machines at once, and to no more than a few.
 //!
-//! Decision [0031] chose threads over `async` and required the fan-out to be
+//! Decision `0031` chose threads over `async` and required the fan-out to be
 //! **bounded**: two hundred machines must not mean two hundred of anything. The
 //! bound is doing more work than that record says, and `W-014` records why —
 //! one machine is one `ssh` child on this machine, with its own key exchange and
 //! its own memory, so the ceiling is process-shaped and `async` would not have
 //! saved a single one of them.
-//!
-//! [0031]: ../../../docs/decisions/0031-parallelism-is-threads-and-providers-are-sync.md
 //!
 //! # What it is worth, measured
 //!

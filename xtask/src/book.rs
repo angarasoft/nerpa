@@ -71,9 +71,8 @@ fn chapters(text: &str) -> Vec<Chapter> {
     for line in text.lines() {
         if let Some(heading) = line.strip_prefix("## ") {
             let record = heading
-                .split_once("](")
-                .and_then(|(before, _)| before.rsplit('[').next())
-                .filter(|digits| digits.len() == 4 && digits.chars().all(|ch| ch.is_ascii_digit()))
+                .split('`')
+                .find(|part| part.len() == 4 && part.chars().all(|ch| ch.is_ascii_digit()))
                 .unwrap_or_default()
                 .to_owned();
 
@@ -326,16 +325,7 @@ pub(crate) fn check() -> Result<(), String> {
         .map_err(|error| format!("docs/ARCHITECTURE.md: {error}"))?;
     let chapters = chapters(&architecture);
 
-    let records: Vec<String> = fs::read_dir(root.join("docs/decisions"))
-        .map_err(|error| format!("docs/decisions: {error}"))?
-        .flatten()
-        .filter_map(|entry| {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            name.split_once('-')
-                .map(|(digits, _)| digits.to_owned())
-                .filter(|digits| digits.len() == 4)
-        })
-        .collect();
+    let records = crate::docs::decision_numbers()?;
 
     let modules: Vec<Module> = lint::library_sources()
         .into_iter()
@@ -381,11 +371,11 @@ mod tests {
 
 Some preamble.
 
-## A single planning pass — [0006](decisions/0006-a.md) · built
+## A single planning pass — `0006` · built
 
 Planning happens once.
 
-## Renaming — [0028](decisions/0028-b.md) · planned
+## Renaming — `0028` · planned
 
 Not built.
 ";
@@ -403,7 +393,7 @@ Not built.
 
     #[test]
     fn partly_built_is_not_shortened_to_built() {
-        let found = chapters("## A thing — [0011](decisions/0011-a.md) · partly built\n");
+        let found = chapters("## A thing — `0011` · partly built\n");
         assert_eq!(found[0].status, "partly built");
         assert_eq!(found[0].title, "A thing");
     }

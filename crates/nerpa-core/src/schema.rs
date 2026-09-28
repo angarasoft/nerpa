@@ -16,7 +16,7 @@
 //! A birth attribute is not an ignored one. The difference is reported on every
 //! plan, so that a fleet running on something no longer declared is a fact
 //! somebody is told rather than one they find out. See
-//! [0021](../../../docs/decisions).
+//! `0021`.
 //!
 //! Which attribute is which is the provider's knowledge, not the model's. Until
 //! providers exist this carries it as data, in the shape their schemas will

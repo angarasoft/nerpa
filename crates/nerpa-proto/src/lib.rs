@@ -4,7 +4,7 @@
 //!
 //! Everything the engine wants done on a node crosses this, and nothing else
 //! does. The transport underneath carries bytes and knows nothing about their
-//! meaning ([0010](../../../docs/decisions)); this crate is that meaning, and
+//! meaning (`0010`); this crate is that meaning, and
 //! the executor at the far end is the only thing that acts on it.
 //!
 //! # How the pieces fit

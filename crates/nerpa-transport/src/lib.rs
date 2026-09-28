@@ -1,7 +1,7 @@
 //! Carrying the wire to a machine, and knowing nothing about what it says.
 //!
 //! The executor at the far end is a filter: bytes in, bytes out, no socket of
-//! its own ([0032](../../../docs/decisions)). So a transport is a *command that
+//! its own (`0032`). So a transport is a *command that
 //! produces a pipe*, and the difference between running it here and running it
 //! on a machine two continents away is which command.
 //!

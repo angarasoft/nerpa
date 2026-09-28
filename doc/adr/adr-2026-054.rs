@@ -22,7 +22,7 @@ slipway_knowledge::adr!(
     ",
     trade_offs: &[
         "Slipway's tool is used for making commits, so one gate holds the rules instead of two.",
-        "Slipway refuses revert/fixup/merge subjects; nerpa has never used them, and Slipway learns to accept a revert of an accepted subject before the first one is needed.",
+        "Slipway refuses revert, fixup and merge subjects, and the cost is that git's own tools stop fitting; nerpa has never used them, and Slipway learns to accept a revert of an accepted subject before the first one is needed.",
     ],
     constraints: &[
         "A commit after the switch carries a basis; a commit without one is refused.",

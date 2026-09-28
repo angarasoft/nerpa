@@ -4,7 +4,7 @@
 //! it does not touch a disk or run a program itself.
 //!
 //! Provider logic runs where the engine runs and the work happens where the
-//! resource is ([0032](../../../docs/decisions)), so this is a **translator**:
+//! resource is (`0032`), so this is a **translator**:
 //! it turns readings into things to look at, turns a change into things to do,
 //! and turns the answers back into attributes. What actually opens a file is the
 //! executor at the other end of a [`Reach`], and that is true whether the far

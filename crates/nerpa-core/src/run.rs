@@ -2,7 +2,7 @@
 //!
 //! Two walks, and they are not symmetrical. Reading happens once, before
 //! anything else, so that the plan is complete before the first action
-//! ([0006](../../../docs/decisions)). Applying walks the plan in the order the
+//! (`0006`). Applying walks the plan in the order the
 //! plan already fixed, and resolves as it goes: a value that was unknown at plan
 //! time is read out of what an earlier stage produced.
 //!

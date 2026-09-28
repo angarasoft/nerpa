@@ -2,7 +2,7 @@
 //!
 //! Expands: 0005
 //!
-//! Configuration is a Starlark program ([0005](../../docs/decisions)). It is
+//! Configuration is a Starlark program (`0005`). It is
 //! evaluated with no I/O, no clock and no network, so the same source always
 //! produces the same graph — which is what makes a plan worth signing.
 //!

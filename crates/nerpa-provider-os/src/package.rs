@@ -8,7 +8,7 @@
 //!
 //! Two families, chosen to stand as far apart as the space allows, and a refusal
 //! by name for anything else — see
-//! [0038](../../../docs/decisions/0038-two-package-families-and-a-refusal-for-the-rest.md).
+//! `0038`.
 //!
 //! # Measured, not assumed
 //!

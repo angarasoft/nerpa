@@ -1,7 +1,7 @@
 //! Printing a plan so that somebody can read it at three in the morning.
 //!
 //! The shape is taken from `emerge -pv`, for the reasons in
-//! [0013](../../../docs/decisions): a fixed action column so a long plan can be
+//! `0013`: a fixed action column so a long plan can be
 //! scanned rather than parsed, deltas rather than values so the eye goes to what
 //! moves, the summary before the detail so the first question — how bad is this
 //! — is answered without scrolling, and the cause of a replacement marked where

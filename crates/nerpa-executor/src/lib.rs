@@ -2,7 +2,7 @@
 //!
 //! Everything the engine decided has already been decided by the time it gets
 //! here. Provider logic lives on the control machine
-//! ([0032](../../../docs/decisions)); this reads what it is told to read, does
+//! (`0032`); this reads what it is told to read, does
 //! what it is told to do, and reports back. It holds no opinion about packages,
 //! services or files — only about paths and programs.
 //!

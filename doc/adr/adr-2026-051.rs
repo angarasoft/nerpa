@@ -27,7 +27,7 @@ slipway_knowledge::adr!(
     ",
     trade_offs: &[
         "The prefix is one letter, so it is terse rather than spelled out; the full name is a projection's job, not the file name's.",
-        "Local types are a second carrier until Slipway catches up; each is fenced by the failure that needed it, so the debt stays visible.",
+        "Local types are a second carrier until Slipway catches up, and the cost is keeping two carriers in step; each is fenced by the failure that needed it, so the debt stays visible.",
     ],
     constraints: &[
         "A prefix names exactly one kind; two kinds never share a prefix.",

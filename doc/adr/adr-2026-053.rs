@@ -30,7 +30,7 @@ slipway_knowledge::adr!(
     trade_offs: &[
         "gate_command duplicates fmt, clippy and the build the gate's own steps also run; the duplication is a finding for Slipway, accepted rather than left unstated.",
         "doctest_floor 0 records honestly that nothing is attack-tested yet; the floor rises only when the local invariant type lands in wave 3.",
-        "A git dependency without a version is a wildcard to cargo-deny; the version field is the price of the pin.",
+        "A git dependency without a version is a wildcard to cargo-deny; the version field is the cost of the pin.",
     ],
     constraints: &[
         "The documentation venv stays outside the tree; the gate walks everything except target/ and .git/.",

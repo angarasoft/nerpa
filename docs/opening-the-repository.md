@@ -107,7 +107,7 @@ Public is a one-way door. Private is not.
 
 ## 6. crates.io is a separate door, also one-way
 
-Publishing a crate is what actually guards the name — [0019](decisions/0019-name-the-tool-nerpa.md)
+Publishing a crate is what actually guards the name — `0019`
 says so and flags that the name is unguarded until then. A published version can
 be yanked but never deleted, and `Cargo.toml` pins `=0.0.1` path dependencies
 that have to be published in order. Not part of opening the repository; do not

@@ -18,7 +18,7 @@
 //! [`Provider::fake`] is on the trait, so a provider without one does not
 //! compile. Making providers testable by construction rather than by discipline
 //! matters more here than usual, because most of them will be written by people
-//! who are not reading this ([0015](../../../docs/decisions)).
+//! who are not reading this (`0015`).
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -479,7 +479,7 @@ impl Providers {
 /// A way to reach the machine a batch is about.
 ///
 /// Provider logic runs here and the work happens there
-/// ([0032](../../../docs/decisions)); this is the seam. A provider composes what
+/// (`0032`); this is the seam. A provider composes what
 /// it wants looked at or done, hands it over, and reads the answers — it does
 /// not know whether the far end was reached by a pipe, by `ssh`, or by an
 /// identity-aware proxy, and it must not care.

@@ -5,7 +5,7 @@
 //! `nginx.conf.j2` and sees nginx.conf with holes in it. Building the same file
 //! by concatenating strings loses that, and with it most of the reason a person
 //! can read the configuration at all. So this is Jinja, by way of `minijinja` —
-//! see [0023](../../../docs/decisions).
+//! see `0023`.
 //!
 //! # What it will not do
 //!

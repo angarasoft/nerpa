@@ -3,7 +3,7 @@
 //! Expands: 0011
 //!
 //! Deliberately a plain record rather than a live view. Everything is read
-//! before planning starts ([0006](../../../docs/decisions)), so by the time the
+//! before planning starts (`0006`), so by the time the
 //! planner runs there is nothing left to ask anybody — which is what lets a plan
 //! be complete before the first action.
 //!

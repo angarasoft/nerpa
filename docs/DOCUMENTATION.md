@@ -39,7 +39,7 @@ makes. An **observation** costs a row in the watchlist and commits nothing. A
 obligation that narrows what may be built later, and undoing it costs a second
 record. Writing a decision when an observation would do is how twenty-nine
 records came to exist before the program reached a second machine — see
-[0030](decisions/0030-claim-less-and-attack-what-is-claimed.md).
+`0030`.
 
 A decision record is never edited after it is accepted. It is superseded, and
 the old one stays with a pointer forward. `0003` chose lazy planning and `0006`
@@ -75,7 +75,7 @@ noticing.
 
 Not built yet, and deliberately last. When it is: **Sphinx**, assembled from
 sources that already exist and are already checked —
-[0036](decisions/0036-assemble-the-book-and-let-prose-explain-not-promise.md).
+`0036`.
 
 * **Order** comes from `ARCHITECTURE.md`. Its sections are a sequence somebody
   curated and a gate keeps honest; the book does not need a second one.

@@ -18,7 +18,7 @@ The markers exist because a document written entirely in the present tense canno
 be told apart from a working system, and this one describes rather more than has
 been built. `cargo xtask docs` fails if a heading loses its marker.
 
-## Configuration is a Starlark program — [0005](decisions/0005-starlark-not-hcl.md) · built
+## Configuration is a Starlark program — `0005` · built
 
 Evaluated with no I/O, no clock and no network, so the same source always yields
 the same graph. Unresolved values are opaque handles: they can be passed around
@@ -31,9 +31,9 @@ that is what gets reviewed, hashed and signed.
 
 An unresolved value is refused three different ways, because the language allows
 only some of them to be precise — see
-[0018](decisions/0018-what-starlark-will-not-refuse.md).
+`0018`.
 
-## Execution domains — [0001](decisions/0001-one-graph-two-execution-domains.md) · built
+## Execution domains — `0001` · built
 
 | Domain | Read and changed | Examples |
 | --- | --- | --- |
@@ -43,7 +43,7 @@ only some of them to be precise — see
 The distinction that lets a VM and the packages on it sit in one graph, and the
 one neither Terraform nor Ansible expresses.
 
-## Addresses — [0002](decisions/0002-addresses-carry-a-slot-and-no-index.md) · built
+## Addresses — `0002` · built
 
 ```text
 provider ":" kind "." name [ ":" slot ] [ "@" target ]
@@ -59,9 +59,9 @@ a package is `category/name`, three of them are called `nginx`, and a subslot is
 `0/3` — while a machine is named here. An address that could not hold the
 separator could not name the thing, and two declarations would collide over a
 name neither of them owns
-([0038](decisions/0038-two-package-families-and-a-refusal-for-the-rest.md)).
+(`0038`).
 
-## The inventory — [0025](decisions/0025-the-inventory-is-known-facts-are-not.md) · partly built
+## The inventory — `0025` · partly built
 
 The inventory is data, settled before the configuration is evaluated, and it may
 be iterated: `for node in group("web")` builds a graph for a fleet without
@@ -84,7 +84,7 @@ a run that touches three open two hundred connections.
 Not built: the dynamic half. Nothing asks a cloud who exists, so nothing is
 materialised yet.
 
-## Renaming — [0028](decisions/0028-a-rename-is-a-migration-that-can-be-deleted.md) · planned
+## Renaming — `0028` · planned
 
 Because the address is the identity, a rename needs a declaration:
 `moved(from, to)`, identified by its endpoints. State records the migrations it
@@ -98,7 +98,7 @@ address — is a removal and a creation after it, and the plan shows both. The
 creation is not read from the machine, because what is there is what the removal
 is about to take away.
 
-## A single planning pass — [0006](decisions/0006-static-plan-staged-execution.md) · built
+## A single planning pass — `0006` · built
 
 Planning happens once, over the whole graph. Stages exist but belong to
 execution. This works because the set of resources is always known after
@@ -123,7 +123,7 @@ is looked for where state left it, not where the declaration now points —
 otherwise moving one reads as making a second and abandoning the first.
 
 A resource found as declared that state does not record is adopted —
-[0042](decisions/0042-a-resource-found-as-declared-is-adopted.md). Nothing is
+`0042`. Nothing is
 sent; it is recorded with what was read, so taking its declaration away later
 removes it the same as something Nerpa made, and the plan says that where it
 shows the adoption:
@@ -158,11 +158,11 @@ so and stops there, by name.
 
 A recorded resource whose edges changed since — an `after` written in, a
 reference added — is reordered the same way,
-[0043](decisions/0043-what-a-resource-comes-after-is-recorded-when-that-changes.md):
+`0043`:
 shown with what it comes after, sent nowhere, and recorded again, so its removal
 is ordered by the edges it has now rather than the ones it was made with.
 
-## Facts as values — [0029](decisions/0029-a-fact-is-a-value-not-a-branch.md) · built
+## Facts as values — `0029` · built
 
 A fact may decide what an attribute says and never whether a resource exists.
 `node.fact(...)` is an unresolved value in that node's `target` domain, refused
@@ -179,7 +179,7 @@ answers is what each leaves under `/run`. Reading it off the distribution's name
 would be wrong exactly where it matters: Gentoo ships both, and the Gentoo this
 was written against runs systemd.
 
-## A machine that will not answer — [0020](decisions/0020-a-machine-that-cannot-be-reached.md) · built
+## A machine that will not answer — `0020` · built
 
 The unit of refusal is the resource, not the run. Everything readable is planned;
 what could not be read appears saying so, carrying the machine and the age of the
@@ -218,7 +218,7 @@ have made can be removed if its declaration goes. Releasing an *entry* is the
 stronger statement — you looked, and there is nothing there — so it is refused
 for a change still in flight, which has a smaller step to take first.
 
-## Observed state — [0011](decisions/0011-observed-state-in-three-tiers.md) · partly built
+## Observed state — `0011` · partly built
 
 The interface is a batch: the engine groups by machine before asking, and a
 provider is handed everything on one node at once. That shape is what makes the
@@ -230,7 +230,7 @@ whole, batch introspection that returns every host resource in one round trip,
 and optional pushed reports that let planning happen without touching the node.
 Load-bearing rather than an optimisation, because the plan is single-pass.
 
-## The executor and transports — [0010](decisions/0010-static-executor-pluggable-transport.md) · partly built
+## The executor and transports — `0010` · partly built
 
 A static Rust binary — 864 960 bytes, built for `x86_64-unknown-linux-musl` —
 speaking framed CBOR over stdin and stdout: four bytes of length, then the body.
@@ -244,7 +244,7 @@ produces a pipe: the executor here, or `ssh` to run it there. One connection
 carries a whole run.
 
 There are two ways to run, and they are not interchangeable
-([0039](decisions/0039-a-privileged-executor-is-one-the-machine-already-had.md)).
+(`0039`).
 **Delivered** needs no preparation and is for unprivileged work: the executor
 arrives in the connecting user's own directory. **Installed** is what escalation
 requires, because an executor that user can write is one they can swap for
@@ -257,7 +257,7 @@ cannot change which binary that is.
 Every machine reached over `ssh` is asked which build its executor is before
 anything else, and the answer is a digest of the binary that is running, compared
 with the one this nerpa carries
-([0040](decisions/0040-an-executor-says-which-build-it-is.md)). The protocol
+(`0040`). The protocol
 version cannot do this: a fix inside the executor changes no frame, and three
 machines ran a build from before three such fixes through every stage-1 run
 without anything saying so. A machine that names another build is left out and
@@ -276,7 +276,7 @@ An identity-aware proxy is not a second transport. Teleport's `tbot` writes an
 OpenSSH configuration holding a `ProxyCommand` and a certificate that renews
 itself, so a machine behind it is reached by the `ssh` transport being told what
 file describes the way — one field in the fleet document, and no code
-([0037](decisions/0037-teleport-is-a-route-not-a-transport.md)).
+(`0037`).
 
 Built and shown against two machines reached through a bastion, and against the
 same two through Teleport as a bot identity: delivery, read, plan, write, and a
@@ -290,7 +290,7 @@ who made it, and a machine takes whatever the transport hands it. For a binary
 that runs privileged that is a gap worth naming rather than leaving to be
 inferred from a section marker.
 
-## Where provider logic runs — [0032](decisions/0032-provider-logic-stays-on-the-control-machine.md) · built
+## Where provider logic runs — `0032` · built
 
 Providers run where the engine runs. The executor performs a small closed set of
 operations and contains no provider code, so a provider is a translator: readings
@@ -318,7 +318,7 @@ daemon to keep alive, no key to rotate on two hundred machines. The cost is that
 this machine has to know `emerge` from `apt`, that parsing output has no local
 give, and that a value which only exists after an operation costs a round trip.
 
-## What the wire may be asked — [0033](decisions/0033-process-is-a-providers-word-not-an-authors.md) · partly built
+## What the wire may be asked — `0033` · partly built
 
 The operation set is small enough to freeze because it is general, and general
 means it includes running a program: installing a package *is* running `emerge`.
@@ -345,7 +345,7 @@ stopped: before anything, at a premise, at an operation, or at an observation.
 And a frame is read to its end, refusing a key nobody defined, because bytes
 nobody looks at are bytes a peer has somewhere to put.
 
-## A plan carries its premise — [0034](decisions/0034-a-plan-carries-its-premise.md) · partly built
+## A plan carries its premise — `0034` · partly built
 
 Between looking and acting the machine can change, and reading everything once
 makes that window the whole run where Ansible's is one task. So a batch carries
@@ -364,7 +364,7 @@ found and what it looked at to find it; the plan carries that, and the batch
 carries it back.
 
 The premise is sealed for the machine it describes
-([0041](decisions/0041-a-premise-is-sealed-for-the-machine-it-describes.md)).
+(`0041`).
 What was read is sometimes a secret, and an unkeyed digest of a short one in a
 plan's JSON is a lookup. So the planner seals each digest under a key derived from
 the state file's and the machine's name, the engine puts that seal on the batch as
@@ -375,7 +375,7 @@ What bounds this is how much a provider admits to having read. The check is
 exactly as wide as that and no wider, which is a limit on the guarantee rather
 than a way through it.
 
-## Privilege — [0035](decisions/0035-privilege-belongs-to-the-transport.md) · built
+## Privilege — `0035` · built
 
 Escalation is the transport's business, because the executor is a filter that
 knows nothing about how it was reached:
@@ -401,7 +401,7 @@ become = "sudo -n"
 Demonstrated on a machine through a bastion: a file written as root with mode
 `0600`, no password anywhere, no pty and no prompt to match.
 
-## Configuration files — [0023](decisions/0023-templates-that-look-like-the-file.md) · partly built
+## Configuration files — `0023` · partly built
 
 Files come from Jinja templates rendered by `minijinja`, because a template that
 looks like the file it produces is the reason anyone can read a configuration.
@@ -425,7 +425,7 @@ template renders during apply from what the earlier stage produced; today a valu
 a template cannot be shown is refused where it is written, which is loud rather
 than silent but is not the whole of what was decided.
 
-## Reacting to change — [0026](decisions/0026-a-reaction-is-an-edge-and-can-be-owed.md) · partly built
+## Reacting to change — `0026` · partly built
 
 ```python
 resource("os:service.nginx@web-01", {"name": "nginx"}, reacts_to = [conf])
@@ -480,7 +480,7 @@ running: a provider is told whether a change was roused, whatever its kind. A
 package cannot react, since there is nothing a change elsewhere could ask it to do
 again, and `reacts_to` on one is refused at the line that says it.
 
-## Parallelism — [0031](decisions/0031-parallelism-is-threads-and-providers-are-sync.md) · partly built
+## Parallelism — `0031` · partly built
 
 Opening and reading fan out over a bounded pool of sixteen: opening each
 machine, the fact journey and the resource batches, one machine per thread,
@@ -497,7 +497,7 @@ time were the same wall clock, measured both ways on one fleet. What the pool is
 for is machines that work rather than wait, which is the apply half.
 
 That stopped being true when opening began asking each executor which build it
-is ([0040](decisions/0040-an-executor-says-which-build-it-is.md)): the question
+is (`0040`): the question
 waits for the handshake, so machines opened one after another would pay for their
 handshakes one after another. Opening fans out for that reason. A plan across
 three machines — two behind the proxy, one behind the bastion — takes 5.81 s,
@@ -518,7 +518,7 @@ The bound is there and nothing is parallel yet, which is the risk the invariant
 names: it is load-bearing only at stage 3, so until then it looks like something
 nobody needs.
 
-## Providers — [0004](decisions/0004-providers-in-tree-and-wasm.md) · partly built
+## Providers — `0004` · partly built
 
 | Tier | What it is | Isolation |
 | --- | --- | --- |
@@ -530,7 +530,7 @@ A WASM provider receives credentials as a handle rather than a value and can
 reach only the hosts its manifest declares. Provider schemas are harvested from
 Terraform as data at build time; the binaries they came from are never shipped.
 
-## Zero trust — [0009](decisions/0009-carry-identity-not-keys.md) · planned
+## Zero trust — `0009` · planned
 
 A run carries an actor identity; static keys are not a mode. A grant limits it to
 named kinds, targets and operations, with an expiry, checked by the engine. Where
@@ -540,12 +540,12 @@ provider versions, state version and a digest of observed state, so it cannot be
 replayed against a changed world. State holds references and digests, never
 secret values. The log is an append-only hash chain.
 
-## Secrets — [0027](decisions/0027-secrets-are-tainted-and-masked-by-span.md) · partly built
+## Secrets — `0027` · partly built
 
 `secret("lockbox", "prod/db/password")` names a value without reading it. What
 comes back can be given to a resource and nothing else — comparison, indexing,
 iteration and truthiness are all refused, by the same three mechanisms
-[0018](decisions/0018-what-starlark-will-not-refuse.md) needed for handles and for
+`0018` needed for handles and for
 the same reasons.
 
 An attribute holding one is `Attribute::Secret`, and it answers `None` to
@@ -566,14 +566,14 @@ Two parts of `0027` arrive with templating, because they have nothing to act on
 until a template exists: taint propagating through derivation, and masking a
 rendered file by span rather than suppressing it.
 
-## The machine-facing surface — [0012](decisions/0012-machine-facing-surface-is-first-class.md) · partly built
+## The machine-facing surface — `0012` · partly built
 
 One core, three equal front ends: CLI, MCP server, HTTP/JSON. The plan is a typed
 document carrying blast radius and confidence per change; errors are typed with a
 remediation; `apply` takes an idempotency key; dry run shares the code path with
 apply and declares what it could not check.
 
-## What a resource is born with — [0021](decisions/0021-attributes-a-resource-is-born-with.md) · built
+## What a resource is born with — `0021` · built
 
 Three kinds of attribute, not two. Converged ones are corrected in place;
 immutable ones are corrected by replacement; and ones a resource was **born
@@ -585,7 +585,7 @@ on something no longer declared is a fact somebody is handed rather than one the
 discover. Moving onto a new image is a deliberate act: replacement on demand, or
 two slots side by side until the new one has shown itself.
 
-## Packages — [0038](decisions/0038-two-package-families-and-a-refusal-for-the-rest.md) · partly built
+## Packages — `0038` · partly built
 
 Two families and a refusal by name for the rest. `rpm` with `dnf` installs
 prebuilt packages inside a transaction; `portage` with `emerge` builds from
@@ -607,7 +607,7 @@ what `W-010` describes.
 Installing and removing are built and shown on a real machine: `app-misc/jq`
 installed, read back, a second run empty, then the declaration removed and the
 package gone. The executor there is one root installed, per
-[0039](decisions/0039-a-privileged-executor-is-one-the-machine-already-had.md).
+`0039`.
 
 `--oneshot` keeps a package out of portage's `world` set on purpose: the
 declaration is the only record of what was asked for, and a second record that
@@ -619,7 +619,7 @@ What a plan cannot know is whether the version it names can be installed at all 
 on a machine taking only binary packages, the binhost holds what it holds. See
 `W-019` and `W-020`.
 
-## Services — [0032](decisions/0032-provider-logic-stays-on-the-control-machine.md) · partly built
+## Services — `0032` · partly built
 
 Two init systems, `systemd` and OpenRC, and a refusal by name for anything else.
 Which one a machine runs is the fact `init`, read before any provider is asked —
@@ -646,7 +646,7 @@ purpose, and asking the same question two different ways in two places would be
 two guesses that have to agree. Drift there is caught by the next plan's read,
 like drift in anything else.
 
-## Drift, and the rest from Portage — [0013](decisions/0013-borrow-from-portage.md) · partly built
+## Drift, and the rest from Portage — `0013` · partly built
 
 A resource may be marked so that drift stops the stage and produces a three-way
 merge rather than being silently corrected. A `pretend` phase runs during
