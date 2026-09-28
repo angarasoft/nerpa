@@ -42,6 +42,10 @@ mod tests {
             !invariant::ALL_INVARIANTS.is_empty(),
             "invariant registry is empty"
         );
+        assert!(
+            !proposal::ALL_PROPOSALS.is_empty(),
+            "proposal registry is empty"
+        );
         for (_, d) in ALL {
             assert!(!d.title.trim().is_empty(), "decision without a title");
         }

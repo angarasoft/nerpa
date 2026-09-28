@@ -47,3 +47,18 @@ macro_rules! proposal {
         };
     };
 }
+
+/// Applying machines in parallel, with state in shards. Accepted.
+#[path = "p0001.rs"]
+pub mod p0001;
+
+/// Replacing an installed executor through itself. Draft.
+#[path = "p0002.rs"]
+pub mod p0002;
+
+/// Streamed batches. Draft.
+#[path = "p0003.rs"]
+pub mod p0003;
+
+/// Every proposal, in order. Kept by hand until the scan learns the local type.
+pub static ALL_PROPOSALS: &[&Proposal] = &[&p0001::PROPOSAL, &p0002::PROPOSAL, &p0003::PROPOSAL];
