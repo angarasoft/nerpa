@@ -42,9 +42,22 @@ fn main() {
     ));
     fs::write(out.join("journal.rs"), journal).unwrap();
 
+    // Code anchors: a decision names a code fragment, and the scan turns the
+    // marker in the product's source into a reference constant.
+    let anchors = unwrap_scan(slipway_scan::anchors::scan_anchors(&[&manifest
+        .parent()
+        .unwrap()
+        .join("crates")]));
+    fs::write(
+        out.join("anchor.rs"),
+        slipway_scan::anchors::emit_anchor_refs(&anchors),
+    )
+    .unwrap();
+
     for dir in ["adr", "rfc", "thrust", "slice", "work", "journal"] {
         println!("cargo::rerun-if-changed={dir}");
     }
+    println!("cargo::rerun-if-changed=../crates");
 }
 
 fn unwrap_scan<T>(r: Result<T, ScanError>) -> T {

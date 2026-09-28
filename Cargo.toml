@@ -49,6 +49,7 @@ slipway-core = { git = "https://github.com/anishukserg/slipway", rev = "40e9905"
 slipway-knowledge = { git = "https://github.com/anishukserg/slipway", rev = "40e9905", version = "0.1.0" }
 slipway-work = { git = "https://github.com/anishukserg/slipway", rev = "40e9905", version = "0.1.0" }
 slipway-scan = { git = "https://github.com/anishukserg/slipway", rev = "40e9905", version = "0.1.0" }
+slipway-derive = { git = "https://github.com/anishukserg/slipway", rev = "40e9905", version = "0.1.0" }
 # Dates for decision records. Arrives with Slipway; named here so the tree sees
 # one version of it rather than two.
 chrono = { version = "0.4.32", default-features = false, features = ["std"] }

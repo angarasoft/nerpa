@@ -42,6 +42,6 @@ it works.
     authors: nonempty_str!["Anishchuk Sergei"],
     decided_at: slipway_core::date!(2026, 9, 17),
     breaking: Breaking::No,
-    code_refs: &[],
+    code_refs: &[crate::anchor::operation],
     related_rfcs: &[],
 );

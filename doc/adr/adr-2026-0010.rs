@@ -47,6 +47,6 @@ protocol is now a compatibility surface that has to be versioned.
     authors: nonempty_str!["Anishchuk Sergei"],
     decided_at: slipway_core::date!(2026, 9, 4),
     breaking: Breaking::No,
-    code_refs: &[],
+    code_refs: &[crate::anchor::wire_protocol],
     related_rfcs: &[],
 );

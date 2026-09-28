@@ -19,6 +19,7 @@ include!(concat!(env!("OUT_DIR"), "/adr.rs"));
 include!(concat!(env!("OUT_DIR"), "/rfc.rs"));
 include!(concat!(env!("OUT_DIR"), "/plan.rs"));
 include!(concat!(env!("OUT_DIR"), "/journal.rs"));
+include!(concat!(env!("OUT_DIR"), "/anchor.rs"));
 
 #[cfg(test)]
 mod tests {

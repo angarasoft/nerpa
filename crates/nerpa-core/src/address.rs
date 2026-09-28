@@ -207,6 +207,7 @@ segment!(
 // ENFORCES: INV-ADDR-001
 /// The identity of one resource.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[slipway_derive::doc_anchor(id = "address")]
 pub struct Address {
     provider: Provider,
     kind: Kind,

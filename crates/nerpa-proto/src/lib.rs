@@ -48,6 +48,7 @@ use serde::{Deserialize, Serialize};
 /// Four since a premise travels sealed for the machine it describes, and an
 /// observation can be asked for as a seal rather than as the thing. See decision
 /// 0041.
+#[slipway_derive::doc_anchor(id = "wire-protocol")]
 pub const PROTOCOL_VERSION: u32 = 5;
 
 /// The largest frame either end will read.
@@ -307,6 +308,7 @@ pub struct Premise {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 #[non_exhaustive]
+#[slipway_derive::doc_anchor(id = "operation")]
 pub enum Operation {
     /// A directory, with these permissions.
     Directory {

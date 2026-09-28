@@ -50,6 +50,7 @@ use crate::state::{Record, Recording, State, Written};
 ///
 /// Read back and refused if it is not understood. A state file from a later
 /// version is not something to guess at.
+#[slipway_derive::doc_anchor(id = "state-format")]
 pub const FORMAT_VERSION: u32 = 4;
 
 /// Why state could not be read or written.

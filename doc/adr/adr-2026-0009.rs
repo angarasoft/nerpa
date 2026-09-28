@@ -48,6 +48,6 @@ correct, but it will feel obstructive until people see why.
     authors: nonempty_str!["Anishchuk Sergei"],
     decided_at: slipway_core::date!(2026, 9, 4),
     breaking: Breaking::No,
-    code_refs: &[],
+    code_refs: &[crate::anchor::state_format],
     related_rfcs: &[],
 );
