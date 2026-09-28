@@ -9,12 +9,13 @@ members = [
   "crates/nerpa-proto",
   "crates/nerpa-provider-os",
   "xtask",
+  "doc",
 ]
 
 [workspace.package]
 version = "0.0.1"
 edition = "2024"
-rust-version = "1.98"
+rust-version = "1.98.1"
 license = "Apache-2.0"
 authors = ["Anishchuk Sergei <anishukserg@gmail.com>"]
 # The public home, under the project's own organisation rather than a personal
@@ -39,6 +40,18 @@ nerpa-executor = { path = "crates/nerpa-executor", version = "=0.0.1" }
 nerpa-proto = { path = "crates/nerpa-proto", version = "=0.0.1" }
 nerpa-transport = { path = "crates/nerpa-transport", version = "=0.0.1" }
 nerpa-provider-os = { path = "crates/nerpa-provider-os", version = "=0.0.1" }
+
+# Slipway: the methodology the registry runs on, and the pilot that tests it as
+# the first project outside Slipway itself. Pinned to one revision; moving to a
+# newer one is a single commit with a work item of its own. The version field is
+# what deny.toml reads: a git dependency without it is a wildcard under `deny`.
+slipway-core = { git = "https://github.com/anishukserg/slipway", rev = "40e9905", version = "0.1.0" }
+slipway-knowledge = { git = "https://github.com/anishukserg/slipway", rev = "40e9905", version = "0.1.0" }
+slipway-work = { git = "https://github.com/anishukserg/slipway", rev = "40e9905", version = "0.1.0" }
+slipway-scan = { git = "https://github.com/anishukserg/slipway", rev = "40e9905", version = "0.1.0" }
+# Dates for decision records. Arrives with Slipway; named here so the tree sees
+# one version of it rather than two.
+chrono = { version = "0.4.32", default-features = false, features = ["std"] }
 
 thiserror = "2.0"
 # The Starlark implementation from Meta, the one Buck2 runs on. Chosen in 0005;

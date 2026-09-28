@@ -1,0 +1,28 @@
+[package]
+name = "nerpa-doc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+description = "The registry of nerpa: decisions, specifications, plan and journal, written as code"
+
+# Documents sit at the crate root, without a src/ directory, so a record is read
+# where it is referenced: doc/adr/adr-2026-050.rs.
+[lib]
+path = "lib.rs"
+
+# The registry takes the workspace's lint profile, restriction group included.
+# Every allowance it needs is a finding, never a quiet allow.
+[lints]
+workspace = true
+
+[dependencies]
+slipway-core = { workspace = true }
+slipway-knowledge = { workspace = true }
+slipway-work = { workspace = true }
+chrono = { workspace = true }
+
+[build-dependencies]
+slipway-scan = { workspace = true }

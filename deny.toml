@@ -37,3 +37,8 @@ wildcards = "deny"
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
+# Slipway arrives as a git dependency pinned to one revision until the pilot's
+# verdict. One exact entry, nothing wider.
+allow-git = [
+  "https://github.com/anishukserg/slipway",
+]
