@@ -1,7 +1,11 @@
 # nerpa
 
 One binary that holds cloud resources and the contents of the machines they run
-on in a single graph.
+on in a single graph — and plans both together, in one pass.
+
+[![CI](https://github.com/nerpa-run/nerpa/actions/workflows/ci.yml/badge.svg)](https://github.com/nerpa-run/nerpa/actions/workflows/ci.yml)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.98.1-orange.svg)](rust-toolchain.toml)
 
 `nerpa` plans infrastructure and configuration together, in one pass, and
 applies the result over a transport that carries an identity rather than a
@@ -15,6 +19,8 @@ made to require a signature from somebody other than whoever proposed it.
 > switched off is reported by name rather than stopping the run. No cloud, no
 > packages, no services, and nothing here is worth depending on yet — see the
 > [roadmap](ROADMAP.md).
+
+## Quick start
 
 ```console
 $ cat main.star
@@ -102,6 +108,19 @@ known before anything happens, even when individual values are not.
 Planning is therefore a single pass over the whole graph. Stages exist, but they
 belong to execution: a VM is created before it is configured because the graph
 says so, not because the planner had to go back and think again.
+
+## Documentation
+
+| What you want | Where it lives |
+| --- | --- |
+| The roadmap, and what is done | [ROADMAP.md](ROADMAP.md) |
+| What the system is, as contracts | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Which document answers which question | [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md) |
+| Where each kind of knowledge lives | [docs/MAP.md](docs/MAP.md) |
+| How a commit is written | [docs/COMMITS.md](docs/COMMITS.md) |
+| What a released version changed | [CHANGELOG.md](CHANGELOG.md) |
+| How to report a vulnerability | [SECURITY.md](SECURITY.md) |
+| How to contribute | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ## Building
 
