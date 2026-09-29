@@ -813,10 +813,16 @@ struct Refusing {
     how: Refusal,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 enum Refusal {
     Unreachable,
     Broken,
+    /// The machine answered its facts and then the conversation broke on the
+    /// resource read — lost after it was opened. Its resource is refused, and
+    /// the machines that stayed up are read.
+    LostAfterOpen {
+        lost: Target,
+    },
 }
 
 impl Provider for Refusing {
@@ -834,21 +840,42 @@ impl Provider for Refusing {
         _facts: nerpa_core::observed::Facts<'_>,
         _reach: &dyn Reach,
     ) -> Result<Read, ProviderError> {
-        let address = batch
-            .first()
-            .map(Reading::address)
-            .cloned()
-            .unwrap_or_else(|| address("os:file.nothing@nowhere"));
-
-        match self.how {
-            Refusal::Unreachable => Err(ProviderError::Unreachable {
-                node: address.target().cloned().unwrap_or_else(|| node("nowhere")),
-                problem: "no route to host".to_owned(),
-            }),
-            Refusal::Broken => Err(ProviderError::World {
-                address,
-                problem: "permission denied".to_owned(),
-            }),
+        match &self.how {
+            Refusal::LostAfterOpen { lost } => {
+                if batch.first().and_then(|reading| reading.address().target()) == Some(lost) {
+                    return Err(ProviderError::Unreachable {
+                        node: lost.clone(),
+                        problem: "the conversation broke after it opened".to_owned(),
+                    });
+                }
+                let mut read = Read::new();
+                for reading in batch {
+                    read = read.with(reading.address().clone(), Attributes::new(), Vec::new());
+                }
+                Ok(read)
+            }
+            Refusal::Unreachable => {
+                let address = batch
+                    .first()
+                    .map(Reading::address)
+                    .cloned()
+                    .unwrap_or_else(|| address("os:file.nothing@nowhere"));
+                Err(ProviderError::Unreachable {
+                    node: address.target().cloned().unwrap_or_else(|| node("nowhere")),
+                    problem: "no route to host".to_owned(),
+                })
+            }
+            Refusal::Broken => {
+                let address = batch
+                    .first()
+                    .map(Reading::address)
+                    .cloned()
+                    .unwrap_or_else(|| address("os:file.nothing@nowhere"));
+                Err(ProviderError::World {
+                    address,
+                    problem: "permission denied".to_owned(),
+                })
+            }
         }
     }
 
@@ -907,6 +934,45 @@ fn a_machine_not_answering_lets_the_reading_continue() {
 
     assert!(!observed.reached(&node("web-01")));
     assert_eq!(observed.unreachable_nodes().len(), 1);
+}
+
+/// A machine that answered its facts and then dropped on the resource read is
+/// lost after it was opened. Its resource is refused, and the machines that
+/// stayed up are still read — the same per-resource refusal as a machine that
+/// never answered, not a reason to stop the whole read.
+#[test]
+#[dacc_derive::doc_anchor(
+    id = "a-machine-lost-after-it-was-opened-fails-that-resource-and-the-rest-is-read"
+)]
+fn a_machine_lost_after_it_was_opened_fails_that_resource_and_the_rest_is_read() {
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.lost@web-01")).with("path", "/etc/lost"),
+        Resource::new(address("os:file.fine@web-02")).with("path", "/etc/fine"),
+    ]);
+
+    let observed = observe(
+        &graph,
+        &refusing(Refusal::LostAfterOpen {
+            lost: node("web-01"),
+        }),
+        &machines(),
+        &State::new(),
+    )
+    .expect("one machine dropping mid-read is not a reason to stop the read");
+
+    assert!(
+        !observed.reached(&node("web-01")),
+        "the lost machine is not reached"
+    );
+    assert!(
+        observed.reached(&node("web-02")),
+        "the machine that stayed up is still read"
+    );
+    assert_eq!(observed.unreachable_nodes().len(), 1);
+    assert!(
+        observed.contains(&address("os:file.fine@web-02")),
+        "the resource on the machine that stayed up was read"
+    );
 }
 
 /// The distinction the whole decision rests on. Treating this as unreachability

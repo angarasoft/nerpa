@@ -252,15 +252,19 @@ impl Lock {
     }
 
     fn exactly(path: &Path, how: rustix::fs::FlockOperation) -> Result<Self, StoreError> {
+        use std::os::unix::fs::OpenOptionsExt as _;
+
         let trouble = |problem: String| StoreError::File {
             path: path.display().to_string(),
             problem,
         };
+        // Readable only by its owner, like the state it guards (`w0014`).
         let file = fs::OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .truncate(false)
+            .mode(0o600)
             .open(path)
             .map_err(|error| trouble(error.to_string()))?;
 
@@ -469,8 +473,16 @@ pub fn save(path: &Path, state: &State, key: &Key) -> Result<(), StoreError> {
 #[dacc_derive::doc_anchor(id = "inv-state-004-3")]
 pub(crate) fn durably(temporary: &Path, path: &Path, bytes: &[u8]) -> Result<(), std::io::Error> {
     use std::io::Write as _;
+    use std::os::unix::fs::OpenOptionsExt as _;
 
-    let mut file = fs::File::create(temporary)?;
+    // Readable only by its owner: the file holds the digest key and the digests
+    // of every secret, so `0o600` is the widest a state file may be (`w0014`).
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(temporary)?;
     file.write_all(bytes)?;
     // The bytes.
     file.sync_all()?;

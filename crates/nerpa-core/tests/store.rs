@@ -109,6 +109,27 @@ fn the_file_is_readable_by_a_person() {
     assert!(text.contains('\n'), "and it is not one long line");
 }
 
+/// The file holds the digest key and the digests of every secret, so it is
+/// written readable only by its owner. Readable by everybody, it would leak the
+/// references to secrets even though it never holds the values themselves.
+#[test]
+fn the_state_file_is_readable_only_by_its_owner() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let scratch = Scratch::new("private");
+    store::save(&scratch.file(), &populated(), &DIGEST_KEY).expect("writes");
+
+    let mode = fs::metadata(scratch.file())
+        .expect("written")
+        .permissions()
+        .mode();
+    assert_eq!(
+        mode & 0o777,
+        0o600,
+        "the state file is readable and writable by its owner and nobody else: {mode:#o}"
+    );
+}
+
 #[test]
 fn a_first_run_has_no_state_and_that_is_not_an_error() {
     let scratch = Scratch::new("first");

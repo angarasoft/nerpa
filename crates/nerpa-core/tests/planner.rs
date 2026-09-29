@@ -778,6 +778,52 @@ fn planning_after_applying_produces_an_empty_plan() {
     );
 }
 
+/// A reference to an attribute changed in the same plan resolves to the new
+/// value, so the reader is updated in that one plan and the run after applying
+/// is empty.
+#[test]
+#[dacc_derive::doc_anchor(
+    id = "a-reference-to-an-attribute-changed-in-the-same-plan-resolves-to-the-new-value"
+)]
+fn a_reference_to_an_attribute_changed_in_the_same_plan_resolves_to_the_new_value() {
+    let graph = graph_of(vec![
+        Resource::new(address("yandex:instance.db")).with("cores", 8),
+        Resource::new(address("yandex:instance.web")).with(
+            "upstream",
+            Reference::to(address("yandex:instance.db"), "cores"),
+        ),
+    ]);
+
+    // The world before the plan: four cores, and the reader holds that.
+    let observed = observed_with(&[
+        ("yandex:instance.db", &[("cores", Value::Integer(4))]),
+        ("yandex:instance.web", &[("upstream", Value::Integer(4))]),
+    ]);
+    let state = recorded(&graph, &["yandex:instance.db", "yandex:instance.web"]);
+
+    let first = plan(&graph, &observed, &state, &Schema::new(), secrets()).expect("plannable");
+
+    let changed = first
+        .changes()
+        .map(|change| change.address().to_string())
+        .collect::<Vec<_>>();
+    assert!(
+        changed.contains(&"yandex:instance.web".to_owned()),
+        "the reader is updated in the same plan that changes the source: {first:?}"
+    );
+
+    // What the world looks like once that plan has been carried out.
+    let applied = observed_with(&[
+        ("yandex:instance.db", &[("cores", Value::Integer(8))]),
+        ("yandex:instance.web", &[("upstream", Value::Integer(8))]),
+    ]);
+    let second = plan(&graph, &applied, &state, &Schema::new(), secrets()).expect("plannable");
+    assert!(
+        second.is_empty(),
+        "the run after applying is empty: {second:?}"
+    );
+}
+
 #[test]
 fn the_blast_radius_names_every_machine_and_counts_what_cannot_be_undone() {
     let graph = graph_of(vec![

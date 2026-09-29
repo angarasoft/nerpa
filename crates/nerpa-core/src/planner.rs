@@ -408,8 +408,16 @@ impl Planning<'_> {
     /// One walk of the graph, in the order the work will happen, knowing what the
     /// walks before it found held.
     #[dacc_derive::doc_anchor(id = "planner-walk")]
+    #[allow(
+        clippy::too_many_lines,
+        reason = "one pass over the graph; splitting the per-resource step out would scatter what one pass must keep together"
+    )]
     fn walk(&self, held: &Held) -> Result<Walk, PlanError> {
         let mut walk = Walk::default();
+        // What each already-planned resource will be, so that a reference to an
+        // attribute changed in this same plan resolves to the new value rather
+        // than the old one.
+        let mut desired: BTreeMap<Address, BTreeMap<String, Confidence>> = BTreeMap::new();
         // What this plan is changing, so that a resource reacting to one of them
         // knows. Filled stage by stage, and a stage is only reached after every
         // stage its members depend on.
@@ -527,6 +535,7 @@ impl Planning<'_> {
                 if let Some(change) = change_for(
                     resource,
                     self.observed,
+                    &desired,
                     self.schema,
                     self.secrets,
                     &mut walk.outdated,
@@ -555,6 +564,7 @@ impl Planning<'_> {
                     if change.kind().sends_anything() {
                         changing.insert(address.clone());
                     }
+                    desired.insert(address.clone(), change.desired().iter().cloned().collect());
                     walk.changes.push(change);
                 }
             }
@@ -1258,15 +1268,16 @@ fn differences(
     resource: &Resource,
     existing: Option<&BTreeMap<String, Value>>,
     observed: &Observed,
+    desired: &BTreeMap<Address, BTreeMap<String, Confidence>>,
     schema: &Schema,
     secrets: Secrets<'_>,
     outdated: &mut Vec<Outdated>,
 ) -> Result<Differences, PlanError> {
     let address = resource.address();
     let mut deltas = Vec::new();
-    let mut desired = Vec::new();
+    let mut wanted = Vec::new();
     for (name, declared) in resource.attributes() {
-        let after = resolve(declared, observed, secrets)?;
+        let after = resolve(declared, observed, desired, secrets)?;
 
         // Refused while planning, so nothing is done on the strength of a plan
         // whose batch cannot be written. A secret is sealed before this point and
@@ -1303,7 +1314,7 @@ fn differences(
                 },
             });
         }
-        desired.push((name.clone(), after.clone()));
+        wanted.push((name.clone(), after.clone()));
 
         // Reduced here, at the edge: a secret attribute's observed value is a
         // real credential read back off a machine, and this is the last place it
@@ -1342,7 +1353,7 @@ fn differences(
             forces_replacement,
         ));
     }
-    Ok((deltas, desired))
+    Ok((deltas, wanted))
 }
 
 /// What is known about one address besides its declaration and what was read
@@ -1367,6 +1378,7 @@ struct Bearings<'a> {
 fn change_for(
     resource: &Resource,
     observed: &Observed,
+    desired: &BTreeMap<Address, BTreeMap<String, Confidence>>,
     schema: &Schema,
     secrets: Secrets<'_>,
     outdated: &mut Vec<Outdated>,
@@ -1389,7 +1401,9 @@ fn change_for(
         observed.get(address)
     };
 
-    let (deltas, desired) = differences(resource, existing, observed, schema, secrets, outdated)?;
+    let (deltas, wanted) = differences(
+        resource, existing, observed, desired, schema, secrets, outdated,
+    )?;
 
     // What an entry would send again. Worked out before the kind, and used only
     // where the declaration's own change would send nothing: a declaration that
@@ -1451,7 +1465,7 @@ fn change_for(
         address.clone(),
         kind,
         deltas,
-        desired,
+        wanted,
         premise,
         roused_by,
         owed,
@@ -1496,13 +1510,25 @@ fn sealed_for_its_machine(
 fn resolve(
     declared: &Attribute,
     observed: &Observed,
+    desired: &BTreeMap<Address, BTreeMap<String, Confidence>>,
     secrets: Secrets<'_>,
 ) -> Result<Confidence, PlanError> {
     Ok(match declared {
         Attribute::Known(value) => Confidence::Known(value.clone()),
         Attribute::Unresolved(reference) => {
             match observed.attribute(reference.source(), reference.attribute()) {
-                Some(value) => Confidence::Known(value.clone()),
+                // The source exists. If it is changing in this same plan, read
+                // the new value rather than the old one; otherwise the old value
+                // is also the new one, and reading it is the same thing.
+                Some(old) => match desired
+                    .get(reference.source())
+                    .and_then(|attributes| attributes.get(reference.attribute()))
+                {
+                    Some(Confidence::Known(new)) => Confidence::Known(new.clone()),
+                    _ => Confidence::Known(old.clone()),
+                },
+                // The source does not exist yet: its value is settled once it is
+                // made, and is not known while planning.
                 None => Confidence::Unknown(reference.clone()),
             }
         }
