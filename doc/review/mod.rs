@@ -67,6 +67,10 @@ pub mod v0008;
 #[path = "v0009.rs"]
 pub mod v0009;
 
+/// Wave 3, read after it happened.
+#[path = "v0010.rs"]
+pub mod v0010;
+
 /// Every review, in order. Kept by hand until the scan learns the local type.
 pub static ALL_REVIEWS: &[&Review] = &[
     &v0001::REVIEW,
@@ -78,4 +82,5 @@ pub static ALL_REVIEWS: &[&Review] = &[
     &v0007::REVIEW,
     &v0008::REVIEW,
     &v0009::REVIEW,
+    &v0010::REVIEW,
 ];
