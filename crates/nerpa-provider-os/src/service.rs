@@ -149,7 +149,15 @@ impl Init {
     /// Both halves in one batch: a service that should be running and starting
     /// at boot is two changes to a machine, and a batch that made one of them
     /// and stopped would leave a state nobody asked for.
-    pub(crate) fn settle(self, name: &str, running: bool, enabled: bool) -> Vec<Operation> {
+    ///
+    /// `None` leaves that half alone. An attribute the declaration does not name
+    /// is unmanaged, and neither disabling nor stopping it is asked for (`w0009`).
+    pub(crate) fn settle(
+        self,
+        name: &str,
+        running: Option<bool>,
+        enabled: Option<bool>,
+    ) -> Vec<Operation> {
         let run = |program: &str, arguments: Vec<String>| Operation::Process {
             program: program.to_owned(),
             arguments,
@@ -157,41 +165,51 @@ impl Init {
             private: false,
             expect: vec![0],
         };
+        let mut operations = Vec::with_capacity(2);
         match self {
-            Self::Systemd => vec![
-                run(
-                    "systemctl",
-                    vec![
-                        if enabled { "enable" } else { "disable" }.to_owned(),
-                        name.to_owned(),
-                    ],
-                ),
-                run(
-                    "systemctl",
-                    vec![
-                        if running { "start" } else { "stop" }.to_owned(),
-                        name.to_owned(),
-                    ],
-                ),
-            ],
-            Self::OpenRc => vec![
-                run(
-                    "rc-update",
-                    vec![
-                        if enabled { "add" } else { "del" }.to_owned(),
-                        name.to_owned(),
-                        RUNLEVEL.to_owned(),
-                    ],
-                ),
-                run(
-                    "rc-service",
-                    vec![
-                        name.to_owned(),
-                        if running { "start" } else { "stop" }.to_owned(),
-                    ],
-                ),
-            ],
+            Self::Systemd => {
+                if let Some(enabled) = enabled {
+                    operations.push(run(
+                        "systemctl",
+                        vec![
+                            if enabled { "enable" } else { "disable" }.to_owned(),
+                            name.to_owned(),
+                        ],
+                    ));
+                }
+                if let Some(running) = running {
+                    operations.push(run(
+                        "systemctl",
+                        vec![
+                            if running { "start" } else { "stop" }.to_owned(),
+                            name.to_owned(),
+                        ],
+                    ));
+                }
+            }
+            Self::OpenRc => {
+                if let Some(enabled) = enabled {
+                    operations.push(run(
+                        "rc-update",
+                        vec![
+                            if enabled { "add" } else { "del" }.to_owned(),
+                            name.to_owned(),
+                            RUNLEVEL.to_owned(),
+                        ],
+                    ));
+                }
+                if let Some(running) = running {
+                    operations.push(run(
+                        "rc-service",
+                        vec![
+                            name.to_owned(),
+                            if running { "start" } else { "stop" }.to_owned(),
+                        ],
+                    ));
+                }
+            }
         }
+        operations
     }
 
     #[dacc_derive::doc_anchor(id = "inv-react-003")]

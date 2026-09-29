@@ -111,6 +111,34 @@ impl Machine {
         self
     }
 
+    /// A unit that exists on the machine, in a given running and enabled state.
+    ///
+    /// For `OpenRC`, being enabled is a symlink into the runlevel, so that is
+    /// made as well: the unit's `enabled` field alone is invisible to the read.
+    fn with_unit_in(self, name: &str, running: bool, enabled: bool) -> Self {
+        let init = self.init;
+        {
+            let mut inside = self.inside.lock().unwrap();
+            inside.units.insert(
+                name.to_owned(),
+                Unit {
+                    running,
+                    enabled,
+                    roused: 0,
+                },
+            );
+            if init == Init::OpenRc && enabled {
+                inside.paths.insert(
+                    format!("/etc/runlevels/default/{name}"),
+                    Entry::Symlink {
+                        target: format!("/etc/init.d/{name}"),
+                    },
+                );
+            }
+        }
+        self
+    }
+
     fn installed(&self, atom: &str) -> Option<String> {
         self.inside.lock().unwrap().installed.get(atom).cloned()
     }
@@ -647,6 +675,85 @@ fn a_running_service_takes_a_changed_file_once() {
             2,
             "{init:?}: nobody is restarted twice for one change: {:?}",
             machine.ran()
+        );
+    }
+}
+
+/// A service declared without `enabled` or `running` is not disabled or stopped.
+///
+/// The half that is declared is settled; the other, never named, is left exactly
+/// as the machine had it. Declaring only `running` used to disable the service on
+/// its way to starting it.
+#[test]
+fn a_service_declared_without_enabled_or_running_is_not_disabled_or_stopped() {
+    for (family, init) in [
+        (Family::Rhel, Init::Systemd),
+        (Family::Portage, Init::OpenRc),
+    ] {
+        // Stopped but enabled, then declared only as running: `enabled` is never
+        // named and must stay as it was.
+        let machine = Machine::new(family, init).with_unit_in("nginx", false, true);
+        let graph = graph_of(vec![
+            Resource::new(address("os:service.nginx@web-01")).with("running", Value::Boolean(true)),
+        ]);
+        let mut state = State::new();
+
+        assert_eq!(run_once(&graph, &mut state, &machine), 1, "{init:?}");
+        let unit = machine.unit("nginx");
+        assert!(unit.running, "{init:?}: it was started");
+        assert!(
+            unit.enabled,
+            "{init:?}: `enabled` was never declared and is not disabled: {:?}",
+            machine.ran()
+        );
+
+        assert_eq!(
+            run_once(&graph, &mut state, &machine),
+            0,
+            "{init:?}: and the run after that has nothing to do"
+        );
+    }
+}
+
+/// A service whose declaration is removed is left running and enabled.
+///
+/// Removing the declaration removes the declaration, not the unit: the unit came
+/// from a package and stays, so nothing is stopped or disabled. It used to settle
+/// the unit to stopped and disabled on the way out.
+#[test]
+fn a_removed_service_declaration_stops_or_disables_nothing() {
+    for (family, init) in [
+        (Family::Rhel, Init::Systemd),
+        (Family::Portage, Init::OpenRc),
+    ] {
+        let machine = Machine::new(family, init).with_unit("nginx");
+        let declared = graph_of(vec![
+            Resource::new(address("os:service.nginx@web-01"))
+                .with("running", Value::Boolean(true))
+                .with("enabled", Value::Boolean(true)),
+        ]);
+        let mut state = State::new();
+        assert_eq!(run_once(&declared, &mut state, &machine), 1, "{init:?}");
+
+        // The declaration goes; the unit stays running and enabled.
+        assert_eq!(
+            run_once(&graph_of(Vec::new()), &mut state, &machine),
+            1,
+            "{init:?}"
+        );
+        let unit = machine.unit("nginx");
+        assert!(
+            unit.running && unit.enabled,
+            "{init:?}: the unit is neither stopped nor disabled: {:?}",
+            machine.ran()
+        );
+        assert!(
+            state.is_empty(),
+            "{init:?}: and the declaration is gone from state: {:?}",
+            state
+                .addresses()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
         );
     }
 }

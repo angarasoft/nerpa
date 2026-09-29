@@ -611,14 +611,20 @@ fn prepare_service(change: &Prepared<'_>) -> Result<Planned, ProviderError> {
     let address = change.address;
     let init = init(address, change.facts)?;
     let name = address.name().as_str();
-    let wanted = |what: &str| matches!(change.desired.get(what), Some(Value::Boolean(true)));
+    // `None` leaves the attribute alone: a service whose declaration does not
+    // name `enabled` or `running` is not disabled or stopped for that omission,
+    // and a value that is not a boolean is not this provider's to guess.
+    let wanted = |what: &str| match change.desired.get(what) {
+        Some(Value::Boolean(wanted)) => Some(*wanted),
+        _ => None,
+    };
 
     let mut operations = match change.kind {
         Sending::React => vec![init.rouse(name)],
-        // No longer declared means no longer wanted running. The unit itself
-        // came from a package and stays: removing it is that package's
-        // business, not this one's.
-        Sending::Delete => init.settle(name, false, false),
+        // Removing a declaration removes the declaration, not the unit: the unit
+        // itself came from a package and stays, so nothing is stopped or disabled
+        // (`w0010`). `conclude` says the resource is gone.
+        Sending::Delete => Vec::new(),
         _ => {
             let mut settling = init.settle(name, wanted("running"), wanted("enabled"));
             // Roused as well as changed: settled first, then restarted if it is
@@ -646,19 +652,24 @@ fn prepare_service(change: &Prepared<'_>) -> Result<Planned, ProviderError> {
 /// What a service became, from what it was doing after it was settled.
 fn conclude_service(change: &Concluding<'_>, became: &Seen) -> Result<Concluded, ProviderError> {
     let address = change.address;
-    let init = init(address, change.facts)?;
     let name = address.name().as_str();
+    // A removal sent nothing to the unit and is concluded from the declaration
+    // alone: the unit is left where it was, and as far as state is concerned the
+    // resource is gone (`w0010`).
+    if change.kind == Sending::Delete {
+        return Ok(Concluded::Gone);
+    }
+    let init = init(address, change.facts)?;
     match init.running(name, became) {
-        // Stopped and disabled, with the unit left where it was: as far as state
-        // is concerned the resource is gone.
-        Ok(Some(_)) if change.kind == Sending::Delete => Ok(Concluded::Gone),
         Ok(Some(running)) => {
-            let enabled = matches!(change.plain.get("enabled"), Some(Value::Boolean(true)));
-            Ok(Concluded::Became(
-                service::as_attributes(running, enabled)
-                    .into_iter()
-                    .collect(),
-            ))
+            // `running` is read back. `enabled` is reported only when it was
+            // declared: a service that never said `enabled` left it alone, and a
+            // provider may not claim an attribute it was not given (`w0009`).
+            let mut attributes = vec![("running".to_owned(), Value::Boolean(running))];
+            if let Some(Value::Boolean(enabled)) = change.plain.get("enabled") {
+                attributes.push(("enabled".to_owned(), Value::Boolean(*enabled)));
+            }
+            Ok(Concluded::Became(attributes.into_iter().collect()))
         }
         Ok(None) => Err(ProviderError::World {
             address: address.clone(),
