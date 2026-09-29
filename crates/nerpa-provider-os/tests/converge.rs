@@ -738,9 +738,6 @@ fn a_kind_this_provider_does_not_own_is_refused() {
     let _ = Target::new("localhost").expect("a valid target");
 }
 
-/// Read against whatever this actually runs on. Only reading: nothing here
-/// installs or removes anything, and the machine a test runs on is not a machine
-/// anybody agreed to have changed.
 /// The name `bash` is called on this machine, or `None` where the family is not
 /// one this provider manages. Read from `/etc/os-release` rather than guessed
 /// from which package manager happens to be installed: a machine can carry `rpm`
@@ -766,6 +763,9 @@ fn family_atom() -> Option<&'static str> {
     }
 }
 
+/// Read against whatever this actually runs on. Only reading: nothing here
+/// installs or removes anything, and the machine a test runs on is not a machine
+/// anybody agreed to have changed.
 #[test]
 fn a_package_that_is_installed_is_read_back_with_its_version() {
     let providers = providers();
