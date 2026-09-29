@@ -16,16 +16,15 @@ What this adds:
     record with ``//! Expands: NNNN``.
 
 ``nerpa:invariant``
-    Renders one entry of ``docs/invariants.toml``: what is guaranteed, how it
-    could be bypassed, and whether anybody has attacked it. A page may assert a
-    guarantee only through this directive, which is what keeps the book's
-    promises and the registry's promises the same set.
+    Renders one invariant of the registry: what is guaranteed, how it could be
+    bypassed, and whether anybody has attacked it. A page may assert a guarantee
+    only through this directive, which is what keeps the book's promises and the
+    registry's promises the same set.
 """
 
 from __future__ import annotations
 
 import json
-import tomllib
 from pathlib import Path
 
 from docutils import nodes
@@ -35,7 +34,6 @@ from sphinx.util.docutils import SphinxDirective
 # The book sits at docs/book, so the repository is two levels up.
 ROOT = Path(__file__).resolve().parents[3]
 INDEX = ROOT / "target" / "book" / "index.json"
-REGISTRY = ROOT / "docs" / "invariants.toml"
 
 #: How a section's build marker is said to a reader who is not reading the
 #: source. The words are the same ones the architecture uses, because a second
@@ -63,8 +61,7 @@ def _index() -> dict:
 
 
 def _registry() -> dict[str, dict]:
-    entries = tomllib.loads(REGISTRY.read_text(encoding="utf-8"))["invariant"]
-    return {entry["id"]: entry for entry in entries}
+    return {entry["id"]: entry for entry in _index()["invariants"]}
 
 
 def _slug(title: str) -> str:
@@ -178,7 +175,7 @@ class Invariant(SphinxDirective):
         registry = _registry()
         if wanted not in registry:
             raise self.error(
-                f"{wanted} is not in docs/invariants.toml — the book may not "
+                f"{wanted} is not in the registry — the book may not "
                 f"promise what the registry does not"
             )
 
@@ -198,7 +195,7 @@ class Invariant(SphinxDirective):
             "",
             entry.get("rationale", "").strip(),
         ]
-        if "bypass" in entry and entry["bypass"] != "unrepresentable":
+        if entry.get("bypass") and entry["bypass"] != "unrepresentable":
             lines += ["", f"**How it could fail.** {entry['bypass']}"]
         elif entry.get("bypass") == "unrepresentable":
             lines += [

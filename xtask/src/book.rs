@@ -37,6 +37,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 use std::fs;
+use std::path::Path;
 
 use crate::{lint, shell};
 
@@ -253,8 +254,105 @@ fn audit(chapters: &[Chapter], modules: &[Module], records: &[String]) -> Vec<St
     complaints
 }
 
+/// One invariant, as the book's `nerpa:invariant` directive needs it.
+struct InvariantSummary {
+    id: String,
+    statement: String,
+    status: String,
+    rationale: String,
+    bypass: String,
+    adversarial: Vec<String>,
+}
+
+/// Reads the `"..."` string that follows `prefix`, which names a field.
+fn field(text: &str, prefix: &str) -> Option<String> {
+    let at = text.find(prefix)? + prefix.len();
+    let rest = text.get(at..)?;
+    let body = rest.strip_prefix('"')?;
+    let end = body.find('"')?;
+    Some(body.get(..end).unwrap_or_default().to_owned())
+}
+
+/// Reads the raw string after `rationale: `, with or without hashes.
+fn rationale(text: &str) -> Option<String> {
+    let at = text.find("rationale: r")? + "rationale: r".len();
+    let rest = text.get(at..)?;
+    let hashes = rest.chars().take_while(|ch| *ch == '#').count();
+    let rest = rest.get(hashes..)?;
+    let body = rest.strip_prefix('"')?;
+    let end = body.find(&format!("\"{}", "#".repeat(hashes)))?;
+    Some(body.get(..end).unwrap_or_default().to_owned())
+}
+
+/// The status, its bypass, and the adversarial test names.
+fn status(text: &str) -> (String, String, Vec<String>) {
+    if text.contains("Status::Planned") {
+        return ("planned".to_owned(), String::new(), Vec::new());
+    }
+    if text.contains("Status::Claimed") {
+        let bypass = field(text, "bypass: NonEmptyStr::new(").unwrap_or_default();
+        return ("claimed".to_owned(), bypass, Vec::new());
+    }
+    if text.contains("Enforced::Unrepresentable") {
+        return (
+            "enforced".to_owned(),
+            "unrepresentable".to_owned(),
+            Vec::new(),
+        );
+    }
+    let bypass = field(text, "bypass: NonEmptyStr::new(").unwrap_or_default();
+    let adversarial = anchor_list(text, "tests: &[");
+    ("enforced".to_owned(), bypass, adversarial)
+}
+
+/// Reads the anchor idents from `tests: &[crate::anchor::a, crate::anchor::b]`.
+fn anchor_list(text: &str, prefix: &str) -> Vec<String> {
+    let Some(at) = text.find(prefix) else {
+        return Vec::new();
+    };
+    let rest = text.get(at + prefix.len()..).unwrap_or_default();
+    let Some(end) = rest.find(']') else {
+        return Vec::new();
+    };
+    let body = rest.get(..end).unwrap_or_default();
+    body.split(',')
+        .filter_map(|part| part.trim().strip_prefix("crate::anchor::"))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Reads every invariant record.
+fn invariants(root: &Path) -> Result<Vec<InvariantSummary>, String> {
+    let dir = root.join("doc/invariant");
+    let mut files: Vec<_> = fs::read_dir(&dir)
+        .map_err(|error| format!("{}: {error}", dir.display()))?
+        .filter_map(|entry| entry.ok().map(|entry| entry.path()))
+        .filter(|path| {
+            path.extension().and_then(|ext| ext.to_str()) == Some("rs")
+                && path.file_name().and_then(|name| name.to_str()) != Some("mod.rs")
+        })
+        .collect();
+    files.sort();
+
+    let mut out = Vec::new();
+    for path in files {
+        let text =
+            fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        let (status, bypass, adversarial) = status(&text);
+        out.push(InvariantSummary {
+            id: field(&text, "id: NonEmptyStr::new(").unwrap_or_default(),
+            statement: field(&text, "statement: NonEmptyStr::new(").unwrap_or_default(),
+            status,
+            rationale: rationale(&text).unwrap_or_default(),
+            bypass,
+            adversarial,
+        });
+    }
+    Ok(out)
+}
+
 /// The book as one document, for something that is not this program to render.
-fn index(chapters: &[Chapter], modules: &[Module]) -> String {
+fn index(chapters: &[Chapter], modules: &[Module], invariants: &[InvariantSummary]) -> String {
     let mut by_record: BTreeMap<&str, Vec<&Module>> = BTreeMap::new();
     for module in modules {
         by_record.entry(&module.record).or_default().push(module);
@@ -287,6 +385,27 @@ fn index(chapters: &[Chapter], modules: &[Module]) -> String {
             );
         }
         out.push_str("\n      ]\n    }");
+    }
+    out.push_str("\n  ],\n  \"invariants\": [\n");
+    for (position, invariant) in invariants.iter().enumerate() {
+        if position > 0 {
+            out.push_str(",\n");
+        }
+        let adversarial: Vec<String> = invariant
+            .adversarial
+            .iter()
+            .map(|name| quoted(name))
+            .collect();
+        let _ = write!(
+            out,
+            "    {{\"id\": {}, \"statement\": {}, \"status\": {}, \"rationale\": {}, \"bypass\": {}, \"adversarial\": [{}]}}",
+            quoted(&invariant.id),
+            quoted(&invariant.statement),
+            quoted(&invariant.status),
+            quoted(&invariant.rationale),
+            quoted(&invariant.bypass),
+            adversarial.join(", "),
+        );
     }
     out.push_str("\n  ]\n}\n");
     out
@@ -340,7 +459,8 @@ pub(crate) fn check() -> Result<(), String> {
     let destination = root.join("target/book");
     fs::create_dir_all(&destination).map_err(|error| format!("target/book: {error}"))?;
     let written = destination.join("index.json");
-    fs::write(&written, index(&chapters, &modules))
+    let invariants = invariants(&root)?;
+    fs::write(&written, index(&chapters, &modules, &invariants))
         .map_err(|error| format!("{}: {error}", written.display()))?;
 
     let placed = chapters
