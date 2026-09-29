@@ -17,12 +17,11 @@ static key. It is built for a world where the operator is often not a person:
 the plan is a typed document before it is a page of text, and a change can be
 made to require a signature from somebody other than whoever proposed it.
 
-> **Status: stage 0 complete, stage 1 under way.** `nerpa apply` converges
-> templated files across a fleet of machines reached over `ssh`, delivering its
-> own executor to each; a second run has nothing to do, and a machine that is
-> switched off is reported by name rather than stopping the run. No cloud, no
-> packages, no services, and nothing here is worth depending on yet — see the
-> [roadmap](ROADMAP.md).
+> **Status: stages 0 and 1 complete, stage 2 next.** `nerpa apply` converges
+> templated files, packages and services across a fleet of machines reached over
+> `ssh` (Alpine, Gentoo, Rocky), delivering its own executor to each; a second
+> run has nothing to do, and a machine that is switched off is reported by name
+> rather than stopping the run. No cloud yet — see the [roadmap](ROADMAP.md).
 
 ## Quick start
 
