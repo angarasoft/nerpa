@@ -1,0 +1,5 @@
+event = "landed"
+work = "w-pilot-verdict"
+at = "2026-09-29T17:52:29Z"
+commit = "3bfc90a13754daccad8fe35e7f346aa1deef0e7a"
+tree = "fd9f2e3abe677f14401b0fba32787775497d51e3"
