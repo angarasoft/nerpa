@@ -32,12 +32,50 @@ macro_rules! review {
 }
 
 /// The first review: the conversion, read after it happened.
-#[path = "review-2026-001.rs"]
-pub mod review_2026_001;
+#[path = "v0001.rs"]
+pub mod v0001;
 
 /// The second review: wave 2, measured after it happened.
-#[path = "review-2026-002.rs"]
-pub mod review_2026_002;
+#[path = "v0002.rs"]
+pub mod v0002;
+
+/// RFC 0001's first review round.
+#[path = "v0003.rs"]
+pub mod v0003;
+
+/// RFC 0001's second review round.
+#[path = "v0004.rs"]
+pub mod v0004;
+
+/// RFC 0001's third review round.
+#[path = "v0005.rs"]
+pub mod v0005;
+
+/// RFC 0001's narrow review.
+#[path = "v0006.rs"]
+pub mod v0006;
+
+/// RFC 0001's fifth review round.
+#[path = "v0007.rs"]
+pub mod v0007;
+
+/// RFC 0001's sixth review round.
+#[path = "v0008.rs"]
+pub mod v0008;
+
+/// RFC 0001's narrow round.
+#[path = "v0009.rs"]
+pub mod v0009;
 
 /// Every review, in order. Kept by hand until the scan learns the local type.
-pub static ALL_REVIEWS: &[&Review] = &[&review_2026_001::REVIEW, &review_2026_002::REVIEW];
+pub static ALL_REVIEWS: &[&Review] = &[
+    &v0001::REVIEW,
+    &v0002::REVIEW,
+    &v0003::REVIEW,
+    &v0004::REVIEW,
+    &v0005::REVIEW,
+    &v0006::REVIEW,
+    &v0007::REVIEW,
+    &v0008::REVIEW,
+    &v0009::REVIEW,
+];
