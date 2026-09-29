@@ -36,9 +36,12 @@ jobs:
       - uses: taiki-e/install-action@cargo-deny
 
       # The same revision Cargo.toml pins; a second copy of the revision would
-      # drift from the first.
+      # drift from the first. The CLI is installed at exactly that revision, not
+      # at the latest on crates.io, which would leap ahead of the tree.
       - name: Install cargo-dacc
-        run: cargo install --locked dacc-cli
+        run: |
+          DACC_VERSION="$(sed -n 's/^dacc-core = "\([0-9.]*\)".*/\1/p' Cargo.toml)"
+          cargo install --locked dacc-cli --version "$DACC_VERSION"
 
       # One entry point, and the same one a developer runs before pushing. A CI
       # file that grows its own list of steps ends up checking something subtly
