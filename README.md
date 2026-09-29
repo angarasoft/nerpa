@@ -1,5 +1,9 @@
 # nerpa
 
+<p align="center">
+  <img src="assets/logo.png" alt="nerpa" width="360">
+</p>
+
 One binary that holds cloud resources and the contents of the machines they run
 on in a single graph — and plans both together, in one pass.
 
