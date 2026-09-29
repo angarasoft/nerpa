@@ -16,6 +16,11 @@ dacc_knowledge::rfc!(
         secret into a plaintext reading. Checkable: a frame of another version is
         refused as a version, a frame over the bound is refused before allocation,
         and a secret premise travels sealed and is refused when it arrives bare.
+
+        Only the wire is a compatibility surface that RFC 0001 changes; the
+        invariants it introduces live in the invariant registry, and the rest of
+        the applying mechanism — shards, the recorder, parallelism — is internal
+        design, not contract.
     ",
     input_contract: r"
         The engine's request and the executor's response, framed as a length prefix
@@ -37,5 +42,9 @@ dacc_knowledge::rfc!(
     ],
     authors: nonempty_str!["Anishchuk Sergei"],
     decided_at: dacc_core::date!(2026, 9, 17),
-    decided_by: &[crate::adr::adr_2026_0041],
+    decided_by: &[
+        crate::adr::adr_2026_0010,
+        crate::adr::adr_2026_0040,
+        crate::adr::adr_2026_0041,
+    ],
 );

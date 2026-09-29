@@ -39,6 +39,7 @@ use std::collections::BTreeMap;
 use nerpa_core::secret::{Digest, Key};
 use nerpa_core::value::Value;
 use proptest::prelude::*;
+use proptest::test_runner::TestRunner;
 
 /// Keys: the reserved one, one that resembles it, and two ordinary ones that can
 /// run together.
@@ -88,68 +89,88 @@ fn key_for_digests() -> Key {
     Key::from_bytes([7; 32])
 }
 
-#[dacc_derive::doc_anchor(id = "canonical-proptests")]
-proptest! {
-    // More than the default, because the universe these draw from is deliberately
-    // small: the properties want to land on the same shape twice, and cases are
-    // cheap here — the whole file is a fraction of a second.
-    #![proptest_config(ProptestConfig::with_cases(2048))]
-
-    /// Written down and read back is the same value, or it was refused — never
-    /// something else. The refusal has exactly one cause and the message says so,
-    /// which is what lets a reader decide without guessing.
-    #[test]
-    fn a_value_either_survives_the_state_file_or_is_refused_by_name(value in value()) {
-        match serde_json::to_string(&value) {
-            Ok(written) => {
-                let read: Value = serde_json::from_str(&written).unwrap();
-                prop_assert_eq!(read, value);
+/// Written down and read back is the same value, or it was refused — never
+/// something else. The refusal has exactly one cause and the message says so,
+/// which is what lets a reader decide without guessing.
+#[test]
+#[dacc_derive::doc_anchor(id = "a-value-either-survives-the-state-file-or-is-refused-by-name")]
+fn a_value_either_survives_the_state_file_or_is_refused_by_name() {
+    let mut runner = TestRunner::new(ProptestConfig::with_cases(2048));
+    runner
+        .run(&value(), |value| {
+            match serde_json::to_string(&value) {
+                Ok(written) => {
+                    let read: Value = serde_json::from_str(&written).unwrap();
+                    prop_assert_eq!(read, value);
+                }
+                Err(refusal) => prop_assert!(
+                    refusal.to_string().contains("__bytes__"),
+                    "the only shape that may be refused is the reserved one: {refusal}"
+                ),
             }
-            Err(refusal) => prop_assert!(
-                refusal.to_string().contains("__bytes__"),
-                "the only shape that may be refused is the reserved one: {refusal}"
-            ),
-        }
-    }
+            Ok(())
+        })
+        .unwrap();
+}
 
-    /// The wire keeps the kinds apart. CBOR was chosen over JSON precisely
-    /// because it can say "these are bytes", so bytes that came back as a list of
-    /// integers would be the choice not paying for itself.
-    #[test]
-    fn a_value_survives_the_wire_as_the_kind_it_was(value in value()) {
-        let mut written = Vec::new();
-        ciborium::into_writer(&value, &mut written).unwrap();
-        let read: Value = ciborium::from_reader(written.as_slice()).unwrap();
-        prop_assert_eq!(read, value);
-    }
+/// The wire keeps the kinds apart. CBOR was chosen over JSON precisely
+/// because it can say "these are bytes", so bytes that came back as a list of
+/// integers would be the choice not paying for itself.
+#[test]
+#[dacc_derive::doc_anchor(id = "a-value-survives-the-wire-as-the-kind-it-was")]
+fn a_value_survives_the_wire_as_the_kind_it_was() {
+    let mut runner = TestRunner::new(ProptestConfig::with_cases(2048));
+    runner
+        .run(&value(), |value| {
+            let mut written = Vec::new();
+            ciborium::into_writer(&value, &mut written).unwrap();
+            let read: Value = ciborium::from_reader(written.as_slice()).unwrap();
+            prop_assert_eq!(read, value);
+            Ok(())
+        })
+        .unwrap();
+}
 
-    /// The claim in `value.rs`, stated as a test. Two values that differ in any
-    /// way at all get different numbers; if they did not, two different worlds
-    /// would carry one signature.
-    #[test]
-    fn two_values_that_differ_never_get_the_same_number(left in value(), right in value()) {
-        prop_assume!(left != right);
-        prop_assert_ne!(
-            Digest::of(&key_for_digests(), &left),
-            Digest::of(&key_for_digests(), &right)
-        );
-    }
+/// The claim in `value.rs`, stated as a test. Two values that differ in any
+/// way at all get different numbers; if they did not, two different worlds
+/// would carry one signature.
+#[test]
+#[dacc_derive::doc_anchor(id = "two-values-that-differ-never-get-the-same-number")]
+fn two_values_that_differ_never_get_the_same_number() {
+    let mut runner = TestRunner::new(ProptestConfig::with_cases(2048));
+    runner
+        .run(&(value(), value()), |(left, right)| {
+            prop_assume!(left != right);
+            prop_assert_ne!(
+                Digest::of(&key_for_digests(), &left),
+                Digest::of(&key_for_digests(), &right)
+            );
+            Ok(())
+        })
+        .unwrap();
+}
 
-    /// A value that has been through the state file has the number it had. This
-    /// is the two properties above tied together, and it is the one that decides
-    /// whether a converged world stays converged: a value that changes shape on
-    /// the way to disk re-plans for ever, and nothing says why.
-    #[test]
-    fn a_value_read_back_from_the_state_file_keeps_its_number(value in value()) {
-        let Ok(written) = serde_json::to_string(&value) else {
-            return Ok(());
-        };
-        let read: Value = serde_json::from_str(&written).unwrap();
-        prop_assert_eq!(
-            Digest::of(&key_for_digests(), &read),
-            Digest::of(&key_for_digests(), &value)
-        );
-    }
+/// A value that has been through the state file has the number it had. This
+/// is the two properties above tied together, and it is the one that decides
+/// whether a converged world stays converged: a value that changes shape on
+/// the way to disk re-plans for ever, and nothing says why.
+#[test]
+#[dacc_derive::doc_anchor(id = "a-value-read-back-from-the-state-file-keeps-its-number")]
+fn a_value_read_back_from_the_state_file_keeps_its_number() {
+    let mut runner = TestRunner::new(ProptestConfig::with_cases(2048));
+    runner
+        .run(&value(), |value| {
+            let Ok(written) = serde_json::to_string(&value) else {
+                return Ok(());
+            };
+            let read: Value = serde_json::from_str(&written).unwrap();
+            prop_assert_eq!(
+                Digest::of(&key_for_digests(), &read),
+                Digest::of(&key_for_digests(), &value)
+            );
+            Ok(())
+        })
+        .unwrap();
 }
 
 /// A container holding nothing is still a value, and the two empty ones are not

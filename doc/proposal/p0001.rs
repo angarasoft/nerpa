@@ -8,10 +8,8 @@ crate::proposal!(
     decided: &[
         crate::adr::adr_2026_0006,
         crate::adr::adr_2026_0015,
-        crate::adr::adr_2026_0020,
         crate::adr::adr_2026_0026,
         crate::adr::adr_2026_0027,
-        crate::adr::adr_2026_0028,
         crate::adr::adr_2026_0031,
         crate::adr::adr_2026_0033,
         crate::adr::adr_2026_0034,

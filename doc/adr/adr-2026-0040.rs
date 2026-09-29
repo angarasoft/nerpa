@@ -112,5 +112,5 @@ builds a nerpa accepts rather than which one it carries — a list, not a name.
     decided_at: dacc_core::date!(2026, 9, 10),
     breaking: Breaking::No,
     code_refs: &[],
-    related_rfcs: &[],
+    related_rfcs: &[crate::rfc::rfc_2026_003],
 );

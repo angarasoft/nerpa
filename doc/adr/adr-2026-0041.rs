@@ -75,5 +75,5 @@ trusting that.
     decided_at: dacc_core::date!(2026, 9, 10),
     breaking: Breaking::No,
     code_refs: &[],
-    related_rfcs: &[],
+    related_rfcs: &[crate::rfc::rfc_2026_003],
 );
