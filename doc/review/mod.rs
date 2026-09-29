@@ -71,6 +71,10 @@ pub mod v0009;
 #[path = "v0010.rs"]
 pub mod v0010;
 
+/// Wave 4 and the L2 completion, measured after it happened.
+#[path = "v0011.rs"]
+pub mod v0011;
+
 /// Every review, in order. Kept by hand until the scan learns the local type.
 pub static ALL_REVIEWS: &[&Review] = &[
     &v0001::REVIEW,
@@ -83,4 +87,5 @@ pub static ALL_REVIEWS: &[&Review] = &[
     &v0008::REVIEW,
     &v0009::REVIEW,
     &v0010::REVIEW,
+    &v0011::REVIEW,
 ];
