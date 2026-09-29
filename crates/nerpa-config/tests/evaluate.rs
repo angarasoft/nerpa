@@ -159,6 +159,38 @@ if same(web.os_family):
     );
 }
 
+/// A configuration names the nerpa build it was written against, and this
+/// build satisfies it.
+#[test]
+#[dacc_derive::doc_anchor(id = "a-configuration-that-asks-for-this-build-runs")]
+fn a_configuration_that_asks_for_this_build_runs() {
+    let source = format!(
+        "requires(\"{}\")\nresource(\"os:file.a@web-01\", {{\"path\": \"/tmp/a\"}})\n",
+        env!("CARGO_PKG_VERSION")
+    );
+    let graph = evaluate("main.star", &source, Box::new(Held::new()), Fleet::empty())
+        .expect("this build satisfies what the configuration asked for");
+    assert_eq!(graph.len(), 1);
+}
+
+/// A configuration that asks for another build is refused before anything is
+/// touched, rather than behaving differently (decision 0022).
+#[test]
+#[dacc_derive::doc_anchor(id = "a-configuration-that-asks-for-another-build-is-refused")]
+fn a_configuration_that_asks_for_another_build_is_refused() {
+    let refusal = evaluate(
+        "main.star",
+        "requires(\"0.0.0\")\nresource(\"os:file.a@web-01\", {\"path\": \"/tmp/a\"})\n",
+        Box::new(Held::new()),
+        Fleet::empty(),
+    )
+    .expect_err("a different build must refuse");
+    assert!(
+        matches!(refusal, ConfigError::VersionMismatch(_, _)),
+        "{refusal}"
+    );
+}
+
 /// The rule is coarse on purpose, but not indiscriminate: a method call and an
 /// item lookup are not bare attribute access, and neither is touched.
 #[test]

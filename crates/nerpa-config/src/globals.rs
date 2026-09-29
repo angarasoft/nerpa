@@ -217,6 +217,17 @@ pub(crate) fn nerpa(builder: &mut GlobalsBuilder) {
         }))
     }
 
+    /// Declares which nerpa build this configuration expects; a different build
+    /// refuses rather than behaving differently (decision 0022).
+    #[dacc_derive::doc_anchor(id = "config-requires-version")]
+    fn requires<'v>(
+        #[starlark(require = pos)] version: &str,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<NoneType> {
+        declarations(eval)?.require_version(version);
+        Ok(NoneType)
+    }
+
     /// Renders a template from the configuration's own directory.
     ///
     /// The values it may see are the ones handed to it here and nothing else.

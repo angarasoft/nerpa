@@ -81,6 +81,9 @@ pub enum ConfigError {
          Which resources exist cannot depend on something that has not happened yet"
     )]
     BranchedOnUnresolved(String),
+    /// The configuration asked for a different nerpa build than this one.
+    #[error("this configuration requires nerpa {0}, and this build is {1}")]
+    VersionMismatch(String, String),
     /// The declarations did not form a usable graph.
     #[error(transparent)]
     Graph(#[from] nerpa_core::GraphError),
@@ -94,6 +97,7 @@ pub(crate) struct Declarations {
     resources: RefCell<Vec<Resource>>,
     nodes: RefCell<Vec<(Target, Option<Address>)>>,
     problems: RefCell<Vec<String>>,
+    required_version: RefCell<Option<String>>,
     schema: nerpa_core::Schema,
 }
 
@@ -110,6 +114,7 @@ impl Declarations {
             resources: RefCell::new(Vec::new()),
             nodes: RefCell::new(Vec::new()),
             problems: RefCell::new(Vec::new()),
+            required_version: RefCell::new(None),
             schema,
         }
     }
@@ -140,6 +145,18 @@ impl Declarations {
 
     pub(crate) fn add_problem(&self, problem: String) {
         self.problems.borrow_mut().push(problem);
+    }
+
+    /// Records which nerpa version the configuration declared it expects.
+    pub(crate) fn require_version(&self, version: &str) {
+        self.required_version
+            .borrow_mut()
+            .replace(version.to_owned());
+    }
+
+    /// What the configuration said it expects, if it said anything.
+    pub(crate) fn required_version(&self) -> Option<String> {
+        self.required_version.borrow().clone()
     }
 }
 
@@ -225,6 +242,15 @@ pub fn evaluate_with(
 
     if let Some(problem) = declarations.problems.borrow().first() {
         return Err(ConfigError::Declaration(problem.clone()));
+    }
+
+    // The configuration names the nerpa build it was written against; a
+    // different one refuses before anything is touched (decision 0022).
+    if let Some(required) = declarations.required_version() {
+        let current = env!("CARGO_PKG_VERSION");
+        if required != current {
+            return Err(ConfigError::VersionMismatch(required, current.to_owned()));
+        }
     }
 
     let mut graph = Graph::new();
