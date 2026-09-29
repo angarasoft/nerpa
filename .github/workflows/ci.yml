@@ -23,9 +23,9 @@ env:
 jobs:
   gate:
     name: gate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           # The pushed range, for `cargo dacc msg-check --range`.
           fetch-depth: 0
@@ -71,9 +71,9 @@ jobs:
   mutants:
     name: mutants
     if: github.event_name == 'schedule'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-mutants
 
@@ -87,7 +87,7 @@ jobs:
 
       # The surviving mutants are the whole point of the run, so keep them even
       # when — especially when — the job fails.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: mutants
