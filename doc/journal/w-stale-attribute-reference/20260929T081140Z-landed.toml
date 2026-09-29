@@ -1,0 +1,5 @@
+event = "landed"
+work = "w-stale-attribute-reference"
+at = "2026-09-29T08:11:40Z"
+commit = "aaa521200e1b8228fcfbd7893a6a57fa2189b491"
+tree = "bed0d6795609e10a3dadf8f0ff4be6133f947aff"
