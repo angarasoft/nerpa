@@ -75,6 +75,10 @@ pub mod v0010;
 #[path = "v0011.rs"]
 pub mod v0011;
 
+/// The verdict, read independently against the criteria written before the start.
+#[path = "v0012.rs"]
+pub mod v0012;
+
 /// Every review, in order. Kept by hand until the scan learns the local type.
 pub static ALL_REVIEWS: &[&Review] = &[
     &v0001::REVIEW,
@@ -88,4 +92,5 @@ pub static ALL_REVIEWS: &[&Review] = &[
     &v0009::REVIEW,
     &v0010::REVIEW,
     &v0011::REVIEW,
+    &v0012::REVIEW,
 ];
