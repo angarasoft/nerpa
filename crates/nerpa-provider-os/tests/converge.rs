@@ -119,6 +119,29 @@ fn next_plan(graph: &Graph, state: &State) -> nerpa_core::Plan {
     plan(graph, &observed, state, &providers.schema(), secrets()).expect("plannable")
 }
 
+/// A declared attribute the provider does not own is refused at apply rather
+/// than silently never reported back — reported, it would make every run
+/// propose the same change and no run ever be empty. INV-PLAN-003.
+#[test]
+#[dacc_derive::doc_anchor(id = "a-declared-attribute-the-provider-does-not-own-is-refused")]
+fn a_declared_attribute_the_provider_does_not_own_is_refused() {
+    let scratch = Scratch::new("bogus");
+    let path = scratch.join("motd");
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.motd@localhost"))
+            .with("path", path.clone())
+            .with("content", "hello\n")
+            .with("bogus", "nonsense"),
+    ]);
+    let mut state = State::new();
+
+    let refusal = run_once(&graph, &mut state).expect_err("the apply is refused");
+    assert!(
+        refusal.contains("bogus") && refusal.contains("owns"),
+        "the refusal names the attribute and the reason: {refusal}"
+    );
+}
+
 #[test]
 #[dacc_derive::doc_anchor(id = "a-file-is-written-and-the-second-run-has-nothing-to-do")]
 fn a_file_is_written_and_the_second_run_has_nothing_to_do() {

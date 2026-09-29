@@ -439,6 +439,29 @@ fn prepare_path(change: &Prepared<'_>, provider: &ProviderName) -> Result<Planne
         });
     }
 
+    // A declared attribute this provider does not own is refused rather than
+    // silently never reported back: reported, it would make every run propose
+    // the same change and no run ever be empty. INV-PLAN-003.
+    let known: &[&str] = match address.kind().as_str() {
+        "directory" => &["path", "mode"],
+        "file" => &["path", "content", "mode"],
+        _ => &[],
+    };
+    if let Some(unknown) = change
+        .desired
+        .keys()
+        .find(|name| !known.contains(&name.as_str()))
+    {
+        return Err(ProviderError::Declaration {
+            address: address.clone(),
+            problem: format!(
+                "{unknown} is not an attribute {kind} owns, and one never reported \
+                 back would make every plan propose the same change",
+                kind = address.kind()
+            ),
+        });
+    }
+
     let mut operations = Vec::new();
     let mut forget_after = None;
     // Destroy before create, and only for a replacement: what is there is in the
