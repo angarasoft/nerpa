@@ -20,7 +20,7 @@ crate::proposal!(
         crate::adr::adr_2026_0042,
         crate::adr::adr_2026_0043,
     ],
-    specification: crate::rfc::rfc_2026_002,
+    specification: crate::rfc::rfc_2026_003,
     authors: nonempty_str!["Anishchuk Sergei"],
     decided_at: dacc_core::date!(2026, 9, 17),
 );
