@@ -1,0 +1,5 @@
+event = "landed"
+work = "w-pin-dacc-cli"
+at = "2026-09-29T10:20:49Z"
+commit = "6dbc06599abdaa7847079c59c699fe1afe80cf03"
+tree = "917ab58722be889fa94ad41405e5b70ca77ca639"
