@@ -6,6 +6,6 @@ crate::review!(
     findings: nonempty_str![
         "P2-5, P2-11, P2-15, P2-16, P2-17 and P2-18 resolved, the rest partly; S2-2 and S2-10 resolved, the rest partly.",
     ],
-    authors: nonempty_str!["Opus", "Sonnet"],
+    authors: nonempty_str!["Reviewer A", "Reviewer B"],
     decided_at: dacc_core::date!(2026, 9, 11),
 );

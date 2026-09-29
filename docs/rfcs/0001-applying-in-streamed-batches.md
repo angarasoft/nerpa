@@ -1076,8 +1076,8 @@ from `<state>.v4`, which is why nothing of a run since the migration is lost; th
 Five reviewers, one angle each, on 2026-09-11:
 
 - **P** protocol and failures, **S** state and invariants, **X** security of
-  self-replacement: Opus.
-- **B** performance, **C** the provider contract: Sonnet.
+  self-replacement: reviewer A.
+- **B** performance, **C** the provider contract: reviewer B.
 
 Every finding was checked before it was answered, in one of three ways:
 
@@ -1657,7 +1657,7 @@ The narrow review follows.
 ## Narrow review, 2026-09-11
 
 Four of the five angles, on revision 3 (`6f5a6ed`) and step 1 only: P and S by
-Opus, B and C by Sonnet. X was not repeated, because what it reviewed moved to RFC
+reviewer A, B and C by reviewer B. X was not repeated, because what it reviewed moved to RFC
 0002. Every finding was checked before it was logged. The reviewer for P ran
 experiments of its own against the executor through pipes. The reviewer for B ran
 none and cites the runs logged for the second and third reviews.
@@ -1815,7 +1815,7 @@ The fifth review follows.
 
 ## Fifth review, 2026-09-11
 
-P and S, both by Opus, on revision 4 (`d11060f`) and step 1 only. Every finding
+P and S, both by reviewer A, on revision 4 (`d11060f`) and step 1 only. Every finding
 was checked before it was logged. The reviewer for P ran experiments against the
 executor through pipes, a harness built outside the tree, and `ssh -G`. The
 reviewer for S ran the planner on copies of `d11060f` and `1e04f62`.
@@ -1937,7 +1937,7 @@ The sixth review follows.
 
 ## Sixth review, 2026-09-17
 
-P and S, both by Opus, on revision 5 (`28ab691`) and step 1 only. Every finding
+P and S, both by reviewer A, on revision 5 (`28ab691`) and step 1 only. Every finding
 was checked before it was logged. The reviewer for P ran experiments against the
 executor through pipes, a copy of the tree, and `ssh -G`; the reviewer for S ran
 the planner on copies of `28ab691` and `d11060f`.
@@ -2039,7 +2039,7 @@ The narrow round follows.
 
 ## Narrow round, 2026-09-17
 
-P and S, both by Opus, on revision 6 (`6aa163b`), over §5.5 to §5.8 and §5.13, and
+P and S, both by reviewer A, on revision 6 (`6aa163b`), over §5.5 to §5.8 and §5.13, and
 the code built since the fifth review. Every finding was checked before it was
 logged. The reviewer for P ran experiments against the executor and against the
 delivery script; the reviewer for S ran the planner and the provider on a copy.

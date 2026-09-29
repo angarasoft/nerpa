@@ -113,10 +113,21 @@ Planning is therefore a single pass over the whole graph. Stages exist, but they
 belong to execution: a VM is created before it is configured because the graph
 says so, not because the planner had to go back and think again.
 
+## How it is governed
+
+nerpa's decisions, specifications, invariants and work plan are compiled Rust
+code in [`doc/`](doc/) — decisions as `adr!`, specifications as `rfc!`,
+invariants as typed records whose code anchors are checked both ways. A reference
+to a record that no longer exists does not compile, so the trail that explains
+*why* a change was made cannot rot silently. The honest surface of what is proven
+versus what is believed lives in [SECURITY.md](SECURITY.md); the commit rules in
+[CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Documentation
 
 | What you want | Where it lives |
 | --- | --- |
+| Decisions, specs, invariants and work | [doc/](doc/) — the compiled registry |
 | The roadmap, and what is done | [ROADMAP.md](ROADMAP.md) |
 | What the system is, as contracts | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
 | Which document answers which question | [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md) |
