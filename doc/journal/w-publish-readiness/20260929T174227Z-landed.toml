@@ -1,0 +1,5 @@
+event = "landed"
+work = "w-publish-readiness"
+at = "2026-09-29T17:42:27Z"
+commit = "aee1f85fa07e6f616fb0e9268fde1e24cc6c3c88"
+tree = "0fcf4a6feaedd109de5dc430d67eeda47cca219d"
