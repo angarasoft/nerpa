@@ -12,4 +12,3 @@ crate::invariant!(
     enforced_by: &[crate::anchor::inv_secret_003],
     tests: &[crate::anchor::a_password_reaches_the_file_and_nothing_else, crate::anchor::a_recorded_secret_shows_that_it_is_one_and_nothing_more],
 );
-
