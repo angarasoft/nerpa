@@ -5,8 +5,9 @@
 //! is sound and every supersession points both ways — otherwise the trail that
 //! explains a reversal breaks, and the reversal looks like an accident.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
+use std::path::Path;
 
 use crate::shell;
 
@@ -57,6 +58,116 @@ fn cost_is_named(numbers: &[String]) -> Vec<String> {
         }
     }
     complaints
+}
+
+/// The numbers in a `field: &[crate::kind::ref_NNNN, ...]` list, without the
+/// prefix, so that a decision and a specification can name each other.
+fn refs(text: &str, field: &str, prefix: &str) -> Vec<String> {
+    let Some(at) = text.find(field) else {
+        return Vec::new();
+    };
+    let rest = text.get(at + field.len()..).unwrap_or_default();
+    let Some(end) = rest.find(']') else {
+        return Vec::new();
+    };
+    rest.get(..end)
+        .unwrap_or_default()
+        .split(',')
+        .filter_map(|part| part.trim().strip_prefix(prefix))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The decisions a specification was decided by, read from its record.
+fn spec_decided_by(text: &str) -> Vec<String> {
+    refs(text, "decided_by: &[", "crate::adr::adr_2026_")
+}
+
+/// The specifications a decision names, read from its record.
+fn decision_related_rfcs(text: &str) -> Vec<String> {
+    refs(text, "related_rfcs: &[", "crate::rfc::rfc_2026_")
+}
+
+/// The numbers in a directory of `prefix-2026-NNNN.rs` records.
+fn numbers(directory: &Path, prefix: &str) -> Result<Vec<String>, String> {
+    let entries =
+        fs::read_dir(directory).map_err(|error| format!("{}: {error}", directory.display()))?;
+    let mut out = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy().into_owned();
+        let Some(stem) = name.strip_suffix(".rs") else {
+            continue;
+        };
+        let Some(rest) = stem.strip_prefix(prefix) else {
+            continue;
+        };
+        if let Some((_, number)) = rest.split_once('-') {
+            out.push(number.to_owned());
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
+/// Both directions of a specification's deciding decisions, held so a reader
+/// can follow the trail either way: a spec names the decisions that decided it,
+/// and each of those decisions names the spec back.
+fn audit_links(
+    decided_by: &BTreeMap<String, Vec<String>>,
+    related: &BTreeMap<String, Vec<String>>,
+) -> Vec<String> {
+    let mut complaints = Vec::new();
+
+    for (spec, decisions) in decided_by {
+        for number in decisions {
+            if !related
+                .get(number)
+                .is_some_and(|specs| specs.contains(spec))
+            {
+                complaints.push(format!(
+                    "rfc-2026-{spec} is decided by {number}, but that decision does not name it in related_rfcs"
+                ));
+            }
+        }
+    }
+    for (number, specs) in related {
+        for spec in specs {
+            if !decided_by
+                .get(spec)
+                .is_some_and(|decisions| decisions.contains(number))
+            {
+                complaints.push(format!(
+                    "{number} names rfc-2026-{spec} in related_rfcs, but that specification is not decided by it"
+                ));
+            }
+        }
+    }
+
+    complaints
+}
+
+/// Reads the specifications and decisions, and checks the links both ways.
+fn spec_decision_links() -> Result<Vec<String>, String> {
+    let root = shell::root();
+
+    let mut decided_by: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for number in numbers(&root.join("doc/rfc"), "rfc-2026-")? {
+        let path = root.join(format!("doc/rfc/rfc-2026-{number}.rs"));
+        let text =
+            fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        decided_by.insert(number, spec_decided_by(&text));
+    }
+
+    let mut related: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for number in numbers(&root.join("doc/adr"), "adr-2026-")? {
+        let path = root.join(format!("doc/adr/adr-2026-{number}.rs"));
+        let text =
+            fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        related.insert(number, decision_related_rfcs(&text));
+    }
+
+    Ok(audit_links(&decided_by, &related))
 }
 
 /// The three words a section of the architecture may use about itself.
@@ -289,6 +400,12 @@ pub(crate) fn check() -> Result<(), String> {
     }
     eprintln!("  decisions: {} records, every cost named", numbers.len());
 
+    let complaints = spec_decision_links()?;
+    if !complaints.is_empty() {
+        return Err(complaints.join("\n"));
+    }
+    eprintln!("  specifications: every deciding decision points both ways");
+
     let architecture_path = shell::root().join("docs/ARCHITECTURE.md");
     let text = fs::read_to_string(&architecture_path)
         .map_err(|error| format!("{}: {error}", architecture_path.display()))?;
@@ -319,8 +436,10 @@ pub(crate) fn check() -> Result<(), String> {
     reason = "tests may be blunt: an unwrap is an expectation and an index is a claim about shape"
 )]
 mod tests {
-    use super::{architecture, resolve, routes, skipped};
-    use std::collections::BTreeSet;
+    use super::{
+        architecture, audit_links, decision_related_rfcs, resolve, routes, skipped, spec_decided_by,
+    };
+    use std::collections::{BTreeMap, BTreeSet};
 
     #[test]
     fn a_section_that_does_not_say_whether_it_is_built_is_reported() {
@@ -500,5 +619,45 @@ mod tests {
         }
         assert!(!skipped("docs"), "docs must still be walked");
         assert!(!skipped("crates"), "crates must still be walked");
+    }
+
+    #[test]
+    fn a_spec_and_its_decision_hold_each_other_both_ways() {
+        let decided_by = BTreeMap::from([("003".to_owned(), vec!["0010".to_owned()])]);
+        let related = BTreeMap::from([("0010".to_owned(), vec!["003".to_owned()])]);
+        assert_eq!(audit_links(&decided_by, &related), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_spec_naming_a_decision_that_does_not_point_back_is_reported() {
+        let decided_by = BTreeMap::from([("003".to_owned(), vec!["0010".to_owned()])]);
+        let related = BTreeMap::new();
+        let complaints = audit_links(&decided_by, &related);
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(complaints[0].contains("does not name it"), "{complaints:?}");
+    }
+
+    #[test]
+    fn a_decision_naming_a_spec_that_does_not_point_back_is_reported() {
+        let decided_by = BTreeMap::new();
+        let related = BTreeMap::from([("0010".to_owned(), vec!["003".to_owned()])]);
+        let complaints = audit_links(&decided_by, &related);
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(
+            complaints[0].contains("not decided by it"),
+            "{complaints:?}"
+        );
+    }
+
+    #[test]
+    fn the_reference_lists_are_read_without_the_prefix() {
+        assert_eq!(
+            spec_decided_by("decided_by: &[crate::adr::adr_2026_0010, crate::adr::adr_2026_0041]"),
+            vec!["0010", "0041"]
+        );
+        assert_eq!(
+            decision_related_rfcs("related_rfcs: &[crate::rfc::rfc_2026_003]"),
+            vec!["003"]
+        );
     }
 }
