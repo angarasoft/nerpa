@@ -36,5 +36,8 @@ html_title = "nerpa"
 html_logo = "_static/logo.png"
 html_favicon = "_static/favicon.ico"
 html_static_path = ["_static"]
-templates_path = []
+# The apple/android/og tags live in _templates/base.html, added to <head> through
+# the theme's `extrahead` block; Sphinx serves _static verbatim, so the linked
+# files resolve to the copies it copies across.
+templates_path = ["_templates"]
 exclude_patterns = ["_build", "requirements.txt", "_ext"]
