@@ -1,0 +1,5 @@
+event = "landed"
+work = "w-plan-idempotent"
+at = "2026-09-29T19:06:57Z"
+commit = "7028f8571c9ed19a642cfd22c7542a0d26bb979f"
+tree = "a01d49a66ff90684fb226f201dc70059cff24751"
