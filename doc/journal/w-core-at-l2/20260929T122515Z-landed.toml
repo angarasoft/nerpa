@@ -1,0 +1,5 @@
+event = "landed"
+work = "w-core-at-l2"
+at = "2026-09-29T12:25:15Z"
+commit = "6aaf568754fd97892e64926bc0d02a112e4f2be2"
+tree = "5e16077c5be8dab0870129780729a77ecce59118"
