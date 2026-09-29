@@ -1,0 +1,5 @@
+event = "landed"
+work = "w-provider-reads-only"
+at = "2026-09-29T18:58:27Z"
+commit = "3dad9ef1651679d0db63e7bb9fa1c453389f8e50"
+tree = "edb08aaff408ae88e388b23fd86919d4211618a5"
