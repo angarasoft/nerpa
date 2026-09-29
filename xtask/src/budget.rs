@@ -144,7 +144,14 @@ fn configuration(resources: usize, root: &str) -> String {
 
 /// Builds the release binary and times one plan over a generated configuration.
 fn measure(resources: usize) -> Result<f64, String> {
-    shell::cargo(&["build", "--release", "--bin", "nerpa"])?;
+    shell::cargo(&[
+        "build",
+        "--release",
+        "--bin",
+        "nerpa",
+        "--bin",
+        "nerpa-executor",
+    ])?;
 
     let directory = shell::root().join("target/tmp/budget");
     fs::create_dir_all(&directory).map_err(|error| format!("{}: {error}", directory.display()))?;
