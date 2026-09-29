@@ -741,17 +741,36 @@ fn a_kind_this_provider_does_not_own_is_refused() {
 /// Read against whatever this actually runs on. Only reading: nothing here
 /// installs or removes anything, and the machine a test runs on is not a machine
 /// anybody agreed to have changed.
+/// The name `bash` is called on this machine, or `None` where the family is not
+/// one this provider manages. Read from `/etc/os-release` rather than guessed
+/// from which package manager happens to be installed: a machine can carry `rpm`
+/// without being rhel-like, and guessing from the binary read a debian machine
+/// as rhel and was refused.
+fn family_atom() -> Option<&'static str> {
+    let release = fs::read_to_string("/etc/os-release").ok()?;
+    let field = |key: &str| {
+        release
+            .lines()
+            .filter_map(|line| line.strip_prefix(key))
+            .map(|value| value.trim().trim_matches(['"', '\'']).trim().to_owned())
+            .next()
+    };
+    let family = field("ID_LIKE=")
+        .and_then(|likes| likes.split_whitespace().next().map(ToOwned::to_owned))
+        .or_else(|| field("ID="))
+        .filter(|found| !found.is_empty())?;
+    match family.as_str() {
+        "rhel" | "fedora" | "centos" => Some("bash"),
+        "gentoo" => Some("app-shells/bash"),
+        _ => None,
+    }
+}
+
 #[test]
 fn a_package_that_is_installed_is_read_back_with_its_version() {
     let providers = providers();
     let state = State::new();
-    // `bash` under two names, because the two families spell it differently and
-    // only one of them will be the family of the machine this runs on.
-    let atom = if std::path::Path::new("/usr/bin/portageq").exists() {
-        "app-shells/bash"
-    } else if std::path::Path::new("/usr/bin/rpm").exists() {
-        "bash"
-    } else {
+    let Some(atom) = family_atom() else {
         return;
     };
     let graph = graph_of(vec![
