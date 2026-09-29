@@ -1,0 +1,5 @@
+event = "landed"
+work = "w-build-executor-for-budget"
+at = "2026-09-29T10:31:41Z"
+commit = "026e616234d2f5bc9fe1a56fcc95ce1475c68749"
+tree = "917ab58722be889fa94ad41405e5b70ca77ca639"
