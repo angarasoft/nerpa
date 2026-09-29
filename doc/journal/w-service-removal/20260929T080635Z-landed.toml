@@ -1,0 +1,5 @@
+event = "landed"
+work = "w-service-removal"
+at = "2026-09-29T08:06:35Z"
+commit = "97cfc23e284e49178029f8e51d88f1cc5f570de4"
+tree = "bed0d6795609e10a3dadf8f0ff4be6133f947aff"
