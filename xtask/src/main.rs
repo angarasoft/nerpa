@@ -47,6 +47,7 @@ mod commit;
 mod docs;
 mod invariants;
 mod lint;
+mod live;
 mod shell;
 
 const USAGE: &str = "\
@@ -63,6 +64,7 @@ tasks:
   mutants     mutation testing (minutes; not part of ci)
   book        assemble the book's index from what is already written
   budget      what a plan costs, against docs/budgets.toml (not part of ci)
+  live        build, install and exercise the system against a real fleet
   commit-msg  the shape of a commit subject; takes a file, or judges HEAD
   hooks       point git at .githooks, so commit-msg runs where it is written
 ";
@@ -73,6 +75,7 @@ fn main() -> ExitCode {
         Some("ci") => ci(),
         Some("fmt") => fmt(),
         Some("lint") => lint(),
+        Some("live") => live::run(),
         Some("test") => test(),
         Some("invariants") => invariants::check(),
         Some("docs") => docs::check(),
