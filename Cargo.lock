@@ -472,30 +472,30 @@ dependencies = [
 
 [[package]]
 name = "dacc-core"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "208a0e6e799da9fad361684ab751a65b158a0067ed338a0d7a564a64f63948a3"
+checksum = "2433ef45e7440d424c2a7229e9973a3f419c1631aaaea4ba25a12717685d4830"
 
 [[package]]
 name = "dacc-derive"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "80dae7cda5b9c86ea10bb5d80bae6fd79ea46967f7ded569819412ed8e700da8"
+checksum = "0532f31bac2aa2a7710c609859c63468fdf99b7bb09861c8ae77812f167f1008"
 dependencies = [
  "dacc-core",
 ]
 
 [[package]]
 name = "dacc-journal"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b0bab96e4f05d6d58535e31a30c1e0dd43276742956450d70d1417b85c3f0e46"
+checksum = "3ede40bb8f8208c86e483a66065fea555775fe5a33112d781132dbceae7eddfc"
 
 [[package]]
 name = "dacc-knowledge"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "131dfe1859d8b41f2b81debc5a8b10177cbb6aaab14180e43890fbba355ac135"
+checksum = "e69c9e9a8259b8b03efb0b712190f293c2e8bfd441b627d08a6a977e95d9c4b2"
 dependencies = [
  "chrono",
  "dacc-core",
@@ -503,9 +503,9 @@ dependencies = [
 
 [[package]]
 name = "dacc-scan"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ad2a61fdf52958a1d9a4cd702d749dcd1cde33271ed9d28c9dad43d515124b7"
+checksum = "e414690d67c5c265b76bf9fdd2046f2f192199102b0a331ab740c683bda9026c"
 dependencies = [
  "dacc-core",
  "dacc-journal",
@@ -516,9 +516,9 @@ dependencies = [
 
 [[package]]
 name = "dacc-work"
-version = "0.1.1"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "794fd954e202cbea623725d49b9d662eb011220e881b986aa0cd6a7438d5aa4f"
+checksum = "400fbaf75100eaba95b920968a7ad4b224ee20524eea1889bd7500e927ce5c96"
 dependencies = [
  "dacc-core",
 ]

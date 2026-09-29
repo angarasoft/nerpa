@@ -5,7 +5,7 @@
 
 The body, after a blank line, saying why.
 
-Dacc-Work: w0001
+Dacc-Work: w-registry-skeleton
 ```
 
 The scope in parentheses names a subsystem of the registry's taxonomy, and every
