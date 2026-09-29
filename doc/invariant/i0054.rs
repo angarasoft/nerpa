@@ -1,9 +1,12 @@
-use crate::invariant::Status;
+use crate::invariant::{Enforced, Status};
 use dacc_core::NonEmptyStr;
 
 crate::invariant!(
     id: NonEmptyStr::new("INV-FACT-001"),
-    status: Status::Claimed { bypass: NonEmptyStr::new("A fact reaching a condition. Comparison, ordering, indexing and iteration are refused by the value, truthiness poisons the run, and the syntax pass catches the comparisons Starlark answers without consulting a value — but that pass does not follow a function parameter, so a fact handed into a function and compared inside it is silently false there, exactly as `INV-PLAN-001` describes for a handle.") },
+    status: Status::Enforced(Enforced::Adversarial {
+        bypass: NonEmptyStr::new("A fact handed into a function's positional parameter and compared with a constant inside the body, which Starlark answers silently. A named argument is still not followed."),
+        tests: &[crate::anchor::a_fact_passed_into_a_function_still_cannot_decide_resources],
+    }),
     statement: NonEmptyStr::new("Something read from a machine may decide what an attribute says and never whether a resource exists."),
     rationale: r#"A single planning pass is possible because the set of resources is known before anything runs. A fact is not known then — it is what the machine turned out to be — so letting one decide which resources exist would take the property the whole design rests on.
 

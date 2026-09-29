@@ -87,6 +87,78 @@ fn comparing_a_value_that_does_not_exist_yet_is_refused_before_anything_runs() {
     }
 }
 
+/// The taint is followed into a function's body: a handle handed into a
+/// parameter and compared with a constant there is refused, not silently false.
+#[test]
+#[dacc_derive::doc_anchor(id = "a-handle-passed-into-a-function-still-refuses-to-be-compared")]
+fn a_handle_passed_into_a_function_still_refuses_to_be_compared() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+def same(value):
+    return value == "10.0.0.1"
+
+db = resource("yandex:instance.db")
+if same(db.ip):
+    resource("os:file.a@web-01", {})
+"#,
+        Box::new(Held::new()),
+        Fleet::empty(),
+    )
+    .expect_err("a handle cannot be laundered through a function parameter")
+    .to_string();
+    assert!(refusal.contains("will not exist until apply"), "{refusal}");
+}
+
+/// The same shape for a secret: handed into a parameter and compared with a
+/// constant, which is the one side Starlark answers silently.
+#[test]
+#[dacc_derive::doc_anchor(
+    id = "a-secret-passed-into-a-function-refuses-comparison-with-a-constant"
+)]
+fn a_secret_passed_into_a_function_refuses_comparison_with_a_constant() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+def same(value):
+    return value == "constant"
+
+if same(secret("lockbox", "prod/db/password")):
+    resource("os:file.a@web-01", {})
+"#,
+        Box::new(Held::new()),
+        Fleet::empty(),
+    )
+    .expect_err("a secret cannot be laundered through a function parameter")
+    .to_string();
+    assert!(refusal.contains("secret"), "{refusal}");
+}
+
+/// A fact read from a machine, handed into a parameter and compared with a
+/// constant there, still cannot decide which resources exist.
+#[test]
+#[dacc_derive::doc_anchor(id = "a-fact-passed-into-a-function-still-cannot-decide-resources")]
+fn a_fact_passed_into_a_function_still_cannot_decide_resources() {
+    let refusal = evaluate(
+        "main.star",
+        r#"
+def same(value):
+    return value == "debian"
+
+web = node("web-01")
+if same(web.os_family):
+    resource("os:file.a@web-01", {})
+"#,
+        Box::new(Held::new()),
+        Fleet::empty(),
+    )
+    .expect_err("a fact cannot be laundered through a function parameter");
+    assert!(
+        matches!(refusal, ConfigError::ComparedUnresolved(_)),
+        "{refusal}"
+    );
+}
+
 /// The rule is coarse on purpose, but not indiscriminate: a method call and an
 /// item lookup are not bare attribute access, and neither is touched.
 #[test]
@@ -254,12 +326,11 @@ for i in range(3):
     assert!(graph.get(&address("yandex:instance.web:2")).is_some());
 }
 
-/// Two mechanisms, and it takes both. Starlark folds `x == <literal>` into a
-/// type check that never consults the value, so the direct form is caught before
-/// evaluation. Behind a function parameter the literal is no longer constant, the
-/// general path runs, and the handle refuses it with a traceback.
+/// The taint is followed into a function's body, so the direct form and the one
+/// hidden behind a parameter are both refused before evaluation, with a file and
+/// a line.
 #[test]
-fn a_comparison_hidden_behind_a_function_is_refused_by_the_value_itself() {
+fn a_comparison_hidden_behind_a_function_is_refused_before_evaluation() {
     for arguments in ["db.ip, db.port", r#"db.ip, "10.0.0.1""#] {
         let source = format!(
             "def same(a, b):\n    return a == b\n\n\
@@ -271,12 +342,12 @@ fn a_comparison_hidden_behind_a_function_is_refused_by_the_value_itself() {
             .expect_err("a comparison the syntax pass cannot see must still be refused");
         let message = refusal.to_string();
         assert!(
-            message.contains("cannot be used with =="),
+            message.contains("will not exist until apply") && message.contains("=="),
             "{arguments}: {message}"
         );
         assert!(
-            message.contains("main.star") && message.contains("a == b"),
-            "the traceback should point at the comparison: {message}"
+            message.contains("main.star"),
+            "the refusal names the place: {message}"
         );
     }
 }
@@ -488,8 +559,8 @@ if same(secret("lockbox", "prod/db/password"), secret("lockbox", "other")):
     .expect_err("comparing two secrets is not a configuration")
     .to_string();
     assert!(
-        refusal.contains("secret from lockbox:prod/db/password") && refusal.contains("=="),
-        "the value itself should refuse, naming the operation: {refusal}"
+        refusal.contains("is a secret") && refusal.contains("=="),
+        "the syntax pass should refuse, naming the operation: {refusal}"
     );
 }
 

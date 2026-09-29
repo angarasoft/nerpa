@@ -1,9 +1,12 @@
-use crate::invariant::Status;
+use crate::invariant::{Enforced, Status};
 use dacc_core::NonEmptyStr;
 
 crate::invariant!(
     id: NonEmptyStr::new("INV-PLAN-001"),
-    status: Status::Claimed { bypass: NonEmptyStr::new("An opaque value reaching a comparison through a function *parameter*, including a function that hands it straight back. The analysis follows names, containers, indexing, iteration, method calls, the arguments handed to one, lambda bodies and returns — but not a parameter into the body that receives it, which needs the call sites of every function and a single walk of one module does not have them. Inside such a function the value still refuses when both sides are its own type, and Starlark still answers silently when one side is a constant. Twice this list has grown after somebody found a shape that was not on it.") },
+    status: Status::Enforced(Enforced::Adversarial {
+        bypass: NonEmptyStr::new("A handle handed into a function's positional parameter and compared with a constant inside the body, which Starlark answers silently. A named argument is still not followed."),
+        tests: &[crate::anchor::a_handle_passed_into_a_function_still_refuses_to_be_compared],
+    }),
     statement: NonEmptyStr::new("An unresolved value never determines which resources exist."),
     rationale: r"This is what makes a single planning pass possible at all. Held by three mechanisms rather than one, because the toolchain allows only some of them to be precise: ordering, indexing and iteration are refused by the value itself; equality and containment are refused by a pass over the syntax tree, because Starlark answers them without consulting the value; and truthiness is recorded and the whole run refused, because `to_bool` has no error channel. See 0018.
 

@@ -43,12 +43,11 @@
 //!
 //! # What it still does not catch
 //!
-//! This is a static over-approximation, not a proof. An opaque value that
-//! reaches a comparison through a function *parameter* is not followed, because
-//! that needs the call sites of every function and this does not have them —
-//! including the case where the function is an identity that hands the value
-//! back into the module. The guarantee is worth exactly what the analysis is
-//! worth, and saying so is the point of saying it here.
+//! This is a static over-approximation, not a proof. A positional parameter
+//! that a call hands an opaque value into is followed; a **named** argument is
+//! not, because the parameter it names is not matched back to a position. The
+//! guarantee is worth exactly what the analysis is worth, and saying so is the
+//! point of saying it here.
 
 use std::collections::BTreeMap;
 
@@ -79,13 +78,14 @@ type Tainted = BTreeMap<String, Opaque>;
 /// Returns one message per offending comparison, in source order.
 #[dacc_derive::doc_anchor(id = "config-comparisons")]
 pub(crate) fn comparisons(module: &AstModule) -> Vec<String> {
+    let parameters = parameters(module);
     let mut tainted = Tainted::new();
     // A name can be bound after it is read and a function can call one defined
     // below it, so one pass is not enough. Taint only ever grows and names are
     // finite, so this settles.
     loop {
         let before = tainted.len();
-        spread(&Visit::Stmt(module.statement()), &mut tainted);
+        spread(&Visit::Stmt(module.statement()), &mut tainted, &parameters);
         if tainted.len() == before {
             break;
         }
@@ -102,7 +102,11 @@ pub(crate) fn comparisons(module: &AstModule) -> Vec<String> {
 }
 
 /// Follows opacity from the expressions that produce it into the names that hold it.
-fn spread(node: &Visit<'_, AstNoPayload>, tainted: &mut Tainted) {
+fn spread(
+    node: &Visit<'_, AstNoPayload>,
+    tainted: &mut Tainted,
+    parameters: &BTreeMap<String, Vec<String>>,
+) {
     if let Visit::Stmt(statement) = node {
         match &statement.node {
             StmtP::Assign(assignment) => {
@@ -134,6 +138,29 @@ fn spread(node: &Visit<'_, AstNoPayload>, tainted: &mut Tainted) {
     // an adversarial test rather than by reasoning.
     if let Visit::Expr(expression) = node {
         match &expression.node {
+            // A function called with an opaque positional argument hands it
+            // into its parameter, so the parameter's name is tainted for the
+            // body. Coarse, like the rest of this pass: the name is tainted
+            // everywhere, not only inside that one body, and a named argument
+            // is not followed.
+            ExprP::Call(callee, arguments) => {
+                if let ExprP::Identifier(name) = &callee.node
+                    && let Some(names) = parameters.get(&name.node.ident)
+                {
+                    let mut positional = 0;
+                    for argument in &arguments.args {
+                        let ArgumentP::Positional(expression) = &argument.node else {
+                            continue;
+                        };
+                        if let Some(kind) = taint(expression, tainted)
+                            && let Some(parameter) = names.get(positional)
+                        {
+                            tainted.entry(parameter.clone()).or_insert(kind);
+                        }
+                        positional += 1;
+                    }
+                }
+            }
             ExprP::ListComprehension(_, clause, rest)
             | ExprP::DictComprehension(_, clause, rest) => {
                 bind(&clause.var.node, taint(&clause.over, tainted), tainted);
@@ -147,7 +174,33 @@ fn spread(node: &Visit<'_, AstNoPayload>, tainted: &mut Tainted) {
         }
     }
 
-    node.visit_children(|child| spread(&child, tainted));
+    node.visit_children(|child| spread(&child, tainted, parameters));
+}
+
+/// The parameter names of every function, in declaration order.
+///
+/// Collected once rather than per call: a call passes an opaque positional
+/// argument into a parameter by position, and the name is what the body refers
+/// to it by.
+fn parameters(module: &AstModule) -> BTreeMap<String, Vec<String>> {
+    let mut found = BTreeMap::new();
+    collect_parameters(&Visit::Stmt(module.statement()), &mut found);
+    found
+}
+
+fn collect_parameters(node: &Visit<'_, AstNoPayload>, found: &mut BTreeMap<String, Vec<String>>) {
+    if let Visit::Stmt(statement) = node
+        && let StmtP::Def(definition) = &statement.node
+    {
+        let names: Vec<String> = definition
+            .params
+            .iter()
+            .filter_map(|parameter| parameter.node.ident())
+            .map(|name| name.ident.clone())
+            .collect();
+        found.insert(definition.name.ident.clone(), names);
+    }
+    node.visit_children(|child| collect_parameters(&child, found));
 }
 
 /// What a function body can return, if any of it is opaque.

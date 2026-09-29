@@ -1,9 +1,12 @@
-use crate::invariant::Status;
+use crate::invariant::{Enforced, Status};
 use dacc_core::NonEmptyStr;
 
 crate::invariant!(
     id: NonEmptyStr::new("INV-SECRET-004"),
-    status: Status::Claimed { bypass: NonEmptyStr::new("A secret reaching a comparison through a function *parameter*, including a function that hands it straight back, which the analysis does not follow: doing so needs the call sites of every function. Inside such a function the value refuses when both sides are secrets, and Starlark answers silently when one side is a constant. Reading it back out of a container by method rather than by index was such a shape until a review found it.") },
+    status: Status::Enforced(Enforced::Adversarial {
+        bypass: NonEmptyStr::new("A secret handed into a function's positional parameter and compared with a constant inside the body, which Starlark answers silently. A named argument is still not followed."),
+        tests: &[crate::anchor::a_secret_passed_into_a_function_refuses_comparison_with_a_constant],
+    }),
     statement: NonEmptyStr::new("A secret can be passed to a resource and nothing else: not compared, indexed, iterated or used as a condition."),
     rationale: r"A configuration that can ask questions about a credential is a configuration that can answer them, and the answers travel in whatever the graph turns out to contain. Ordering, indexing and iteration are refused by the value itself, with a line number. Equality and containment cannot be — Starlark decides a comparison across types as `False` without consulting either value — so the syntax pass refuses them before evaluation, for a name bound to a secret as well as for a direct call. Truthiness has no error channel, so it is recorded and the whole evaluation is refused afterwards. Same three mechanisms as decision 0018, same reasons.",
     enforced_by: &[crate::anchor::config_comparisons, crate::anchor::inv_secret_004_1],
