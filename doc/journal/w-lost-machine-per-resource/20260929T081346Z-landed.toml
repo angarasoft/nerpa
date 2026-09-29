@@ -1,0 +1,5 @@
+event = "landed"
+work = "w-lost-machine-per-resource"
+at = "2026-09-29T08:13:46Z"
+commit = "a622039a211a75665f6236037743222d5e66cc14"
+tree = "bed0d6795609e10a3dadf8f0ff4be6133f947aff"
