@@ -1,0 +1,28 @@
+# The machines a live run reaches, in the shape `cargo xtask live` reads.
+#
+# This is a tutorial example: the addresses below are placeholders and will not
+# resolve. Copy the file, put real machines in it, and keep the real one out of
+# the repository.
+#
+#     cargo xtask live --config <config.star> --fleet <fleet.toml>
+
+[groups.live]
+
+# A machine reached over ssh. `executor` is where the static executor is
+# installed — a path root owns — and `become` is how it runs as root. Together
+# they are root wearing a narrow rule (decisions 0039 and 0040): a delivered
+# executor under escalation is refused as root in disguise.
+[nodes.app-01]
+groups = ["live"]
+ssh = "operator@app-01.example.internal"
+executor = "/usr/local/sbin/nerpa-executor"
+become = "sudo -n"
+
+# A machine reached through an identity-aware proxy. The port, the jump host
+# and the short-lived key live in the ssh_config this names, not in this file.
+[nodes.app-02]
+groups = ["live"]
+ssh = "app-02"
+ssh_config = "/home/operator/.tsh/nerpa/ssh_config"
+executor = "/usr/local/sbin/nerpa-executor"
+become = "sudo -n"
