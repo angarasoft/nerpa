@@ -37,6 +37,7 @@ use nerpa_provider_os::Os;
 enum Family {
     Rhel,
     Portage,
+    Debian,
 }
 
 /// And which init system.
@@ -166,6 +167,7 @@ impl Machine {
                 b"NAME=\"Rocky Linux\"\nID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\n".to_vec()
             }
             Family::Portage => b"NAME=Gentoo\nID='gentoo'\n".to_vec(),
+            Family::Debian => b"NAME=\"Debian GNU/Linux\"\nID=debian\n".to_vec(),
         }
     }
 }
@@ -232,12 +234,14 @@ fn asked(inside: &Inside, program: &str, arguments: &[String]) -> Seen {
     let words: Vec<&str> = arguments.iter().map(String::as_str).collect();
     match (program, words.as_slice()) {
         ("uname", ["-m"]) => said(0, "x86_64\n"),
-        // `rpm` exits 1 for a package that is not installed, and prints the
-        // version in whatever format it was handed.
-        ("rpm", ["-q", "--queryformat", _, atom]) => match inside.installed.get(*atom) {
-            Some(version) => said(0, &format!("{version}\n")),
-            None => said(1, ""),
-        },
+        // `rpm` and `dpkg-query` both exit 1 for a package that is not
+        // installed, and print the version on stdout.
+        ("rpm", ["-q", "--queryformat", _, atom]) | ("dpkg-query", ["-W", _, atom]) => {
+            match inside.installed.get(*atom) {
+                Some(version) => said(0, &format!("{version}\n")),
+                None => said(1, ""),
+            }
+        }
         // `portageq` exits 0 either way and says nothing for a package that is
         // not there; what it prints is the atom with its version.
         ("portageq", ["match", "/", atom]) => match inside.installed.get(*atom) {
@@ -308,8 +312,18 @@ fn managed(inside: &mut Inside, program: &str, words: &[&str]) -> Option<Seen> {
                 None => said(1, "no ebuild matches"),
             }
         }
+        ("apt-get", ["install", "-y", "-qq", wanted]) => {
+            match offered(inside, &|atom, version| format!("{atom}={version}"), wanted) {
+                Some((atom, version)) => {
+                    inside.installed.insert(atom, version);
+                    said(0, "")
+                }
+                None => said(1, "no package matches"),
+            }
+        }
         ("dnf", ["--assumeyes", "--quiet", "remove", atom])
-        | ("emerge", ["--quiet", "--depclean", atom]) => {
+        | ("emerge", ["--quiet", "--depclean", atom])
+        | ("apt-get", ["remove", "-y", "-qq", atom]) => {
             inside.installed.remove(*atom);
             said(0, "")
         }
@@ -521,6 +535,7 @@ fn a_package_is_installed_and_the_second_run_has_nothing_to_do() {
     for (family, init, atom, version) in [
         (Family::Rhel, Init::Systemd, "nginx", "1.24.0-1"),
         (Family::Portage, Init::OpenRc, "www-servers/nginx", "1.24.0"),
+        (Family::Debian, Init::Systemd, "nginx", "1.24.0-1"),
     ] {
         let machine = Machine::new(family, init).offering(atom, version);
         let graph = graph_of(vec![
@@ -556,6 +571,7 @@ fn a_package_whose_declaration_goes_is_removed() {
     for (family, init, atom, version) in [
         (Family::Rhel, Init::Systemd, "nginx", "1.24.0-1"),
         (Family::Portage, Init::OpenRc, "www-servers/nginx", "1.24.0"),
+        (Family::Debian, Init::Systemd, "nginx", "1.24.0-1"),
     ] {
         let machine = Machine::new(family, init).offering(atom, version);
         let declared = graph_of(vec![
@@ -587,6 +603,7 @@ fn a_service_is_settled_and_the_second_run_has_nothing_to_do() {
     for (family, init) in [
         (Family::Rhel, Init::Systemd),
         (Family::Portage, Init::OpenRc),
+        (Family::Debian, Init::Systemd),
     ] {
         let machine = Machine::new(family, init).with_unit("nginx");
         let graph = graph_of(vec![
@@ -625,6 +642,7 @@ fn a_running_service_takes_a_changed_file_once() {
     for (family, init) in [
         (Family::Rhel, Init::Systemd),
         (Family::Portage, Init::OpenRc),
+        (Family::Debian, Init::Systemd),
     ] {
         let machine = Machine::new(family, init).with_unit("nginx");
         let declared = |content: &str| {
@@ -689,6 +707,7 @@ fn a_service_declared_without_enabled_or_running_is_not_disabled_or_stopped() {
     for (family, init) in [
         (Family::Rhel, Init::Systemd),
         (Family::Portage, Init::OpenRc),
+        (Family::Debian, Init::Systemd),
     ] {
         // Stopped but enabled, then declared only as running: `enabled` is never
         // named and must stay as it was.
@@ -725,6 +744,7 @@ fn a_removed_service_declaration_stops_or_disables_nothing() {
     for (family, init) in [
         (Family::Rhel, Init::Systemd),
         (Family::Portage, Init::OpenRc),
+        (Family::Debian, Init::Systemd),
     ] {
         let machine = Machine::new(family, init).with_unit("nginx");
         let declared = graph_of(vec![

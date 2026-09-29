@@ -6,9 +6,8 @@
 //! remotely, so the least this can do is keep them in one file where they can be
 //! read side by side.
 //!
-//! Two families, chosen to stand as far apart as the space allows, and a refusal
-//! by name for anything else — see
-//! `0038`.
+//! Three families, chosen to stand as far apart as the space allows, and a
+//! refusal by name for anything else — see `0038`.
 //!
 //! # Measured, not assumed
 //!
@@ -20,6 +19,11 @@
 //!   slot and exits 0. For a package that is not there it answers **nothing and
 //!   still exits 0** — so the two families do not agree even about how absence
 //!   is reported, and the code below does not pretend they do.
+//! * `dpkg-query -W -f='${Version}\n' bash` answers `5.2.37-2+b10` and exits 0;
+//!   for a package that is not there it exits 1 and says so, agreeing with `rpm`
+//!   rather than `portageq`.
+//! * `apt-get install -y -qq bash=5.2.37-2+b10` installs the pinned version and
+//!   exits 0, and `apt-get remove -y -qq bash` removes it and exits 0.
 //! * `qlist -ICv dev-lang/python` matches by substring and answers
 //!   `dev-lang/python-exec` as well. It is the wrong instrument and is not used.
 
@@ -34,6 +38,9 @@ pub(crate) enum Family {
     /// `portageq` to look, `emerge` to act. Built from source, and a name is
     /// `category/name`.
     Portage,
+    /// `dpkg-query` to look, `apt-get` to act. Prebuilt packages pinned with
+    /// `name=version`.
+    Debian,
 }
 
 impl Family {
@@ -46,6 +53,7 @@ impl Family {
         match said {
             "rhel" | "fedora" | "centos" => Some(Self::Rhel),
             "gentoo" => Some(Self::Portage),
+            "debian" | "ubuntu" => Some(Self::Debian),
             _ => None,
         }
     }
@@ -71,6 +79,14 @@ impl Family {
                 "portageq",
                 vec!["match".to_owned(), "/".to_owned(), atom.to_owned()],
             ),
+            Self::Debian => (
+                "dpkg-query",
+                vec![
+                    "-W".to_owned(),
+                    "-f=${Version}\n".to_owned(),
+                    atom.to_owned(),
+                ],
+            ),
         };
         Observation::Output {
             program: program.to_owned(),
@@ -93,6 +109,11 @@ impl Family {
                 0 => Ok(Some(said.trim().to_owned())),
                 1 => Ok(None),
                 other => Err(format!("{atom}: rpm exited {other}")),
+            },
+            Self::Debian => match status {
+                0 => Ok(Some(said.trim().to_owned())),
+                1 => Ok(None),
+                other => Err(format!("{atom}: dpkg-query exited {other}")),
             },
             Self::Portage => {
                 if *status != 0 {
@@ -160,6 +181,15 @@ impl Family {
                     ],
                 )
             }
+            Self::Debian => (
+                "apt-get",
+                vec![
+                    "install".to_owned(),
+                    "-y".to_owned(),
+                    "-qq".to_owned(),
+                    format!("{atom}={version}"),
+                ],
+            ),
         };
         Operation::Process {
             program: program.to_owned(),
@@ -199,6 +229,15 @@ impl Family {
                 vec![
                     "--quiet".to_owned(),
                     "--depclean".to_owned(),
+                    atom.to_owned(),
+                ],
+            ),
+            Self::Debian => (
+                "apt-get",
+                vec![
+                    "remove".to_owned(),
+                    "-y".to_owned(),
+                    "-qq".to_owned(),
                     atom.to_owned(),
                 ],
             ),

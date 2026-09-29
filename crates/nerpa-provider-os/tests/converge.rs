@@ -741,8 +741,8 @@ fn a_kind_this_provider_does_not_own_is_refused() {
 /// The name `bash` is called on this machine, or `None` where the family is not
 /// one this provider manages. Read from `/etc/os-release` rather than guessed
 /// from which package manager happens to be installed: a machine can carry `rpm`
-/// without being rhel-like, and guessing from the binary read a debian machine
-/// as rhel and was refused.
+/// without being rhel-like, and a debian machine has no package manager that
+/// betrays it to a guess.
 fn family_atom() -> Option<&'static str> {
     let release = fs::read_to_string("/etc/os-release").ok()?;
     let field = |key: &str| {
@@ -757,7 +757,7 @@ fn family_atom() -> Option<&'static str> {
         .or_else(|| field("ID="))
         .filter(|found| !found.is_empty())?;
     match family.as_str() {
-        "rhel" | "fedora" | "centos" => Some("bash"),
+        "rhel" | "fedora" | "centos" | "debian" => Some("bash"),
         "gentoo" => Some("app-shells/bash"),
         _ => None,
     }

@@ -277,8 +277,8 @@ fn family(address: &Address, facts: Facts<'_>) -> Result<Family, ProviderError> 
     Family::of(said).ok_or_else(|| ProviderError::World {
         address: address.clone(),
         problem: format!(
-            "the machine says it is {said:?}, and nerpa manages packages on rhel-like \
-             and gentoo machines only"
+            "the machine says it is {said:?}, and nerpa manages packages on rhel-like, \
+             debian-like and gentoo machines only"
         ),
     })
 }
