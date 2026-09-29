@@ -1,0 +1,5 @@
+event = "landed"
+work = "w-state-atomic"
+at = "2026-09-29T19:02:10Z"
+commit = "0f156dc624865a57bd00c9be0ec2b40425ce8637"
+tree = "46f6f862e7b8d12c47a1b274fceccfec7ac0d3bd"
