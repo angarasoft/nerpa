@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "Separate what a resource is born with from what it must remain",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Core)],
     context: r"## Context
 

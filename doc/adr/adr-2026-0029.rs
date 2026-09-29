@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "A fact is a value, not a branch",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Core)],
     context: r#"## Context
 

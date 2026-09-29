@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "An independent reading is a record of its own, not a note in somebody else's",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Pilot)],
     context: r"
         The verdict on the pilot is read first by a model other than the one

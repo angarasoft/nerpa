@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "Say what will not break, and check it mechanically",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Gate)],
     context: r"## Context
 

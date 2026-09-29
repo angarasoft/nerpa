@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "Carry an identity, and let a third party sign the plan",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Transport)],
     context: r"## Context
 

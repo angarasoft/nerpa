@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "A privileged executor is one the machine already had",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Executor)],
     context: r#"- Corrected: 2026-09-10 — the example named `/usr/local/libexec`, and `install`
   does not create a parent that is not there. A stock Gentoo has no `libexec`

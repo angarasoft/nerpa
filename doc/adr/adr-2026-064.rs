@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "The cli is declared at L2: its work lands only with a gate proof",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Cli)],
     context: r"
         Wave 4 brings each subsystem to L2 one at a time, and `Os` was first

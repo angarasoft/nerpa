@@ -5,6 +5,7 @@ use dacc_knowledge::DocStatus;
 dacc_knowledge::rfc!(
     title: "The pilot: dacc's promises under test, stated as invariants",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     target: &[taxon!(Subsystem, Pilot), taxon!(Subsystem, Gate), taxon!(Subsystem, Docs)],
     goal: r"
         A record, a plan and a proof are linked by references the compiler checks,

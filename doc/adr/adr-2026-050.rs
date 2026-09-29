@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "The pilot is judged against criteria written before it started, by the owner after an independent reading",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Pilot)],
     context: r"
         The pilot exists to test dacc, not merely to move nerpa onto it. A

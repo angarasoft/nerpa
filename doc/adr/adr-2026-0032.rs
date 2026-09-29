@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "Provider logic stays on the control machine",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Core)],
     context: r"- Corrected: 2026-09-06 — the round-trip figures were stated without saying where
   they came from, which `docs/WRITING.md` refuses. Sources added; no reasoning

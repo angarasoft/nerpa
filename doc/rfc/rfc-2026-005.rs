@@ -5,6 +5,7 @@ use dacc_knowledge::DocStatus;
 dacc_knowledge::rfc!(
     title: "The command line: two verbs, one typed plan, rendered for a person and written for a machine",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     target: &[taxon!(Subsystem, Cli)],
     goal: r"
         A command line with two verbs: `plan` says what would happen and changes

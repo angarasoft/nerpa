@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "A commit carries nerpa's meaning in dacc's form, with a basis",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Gate), taxon!(Subsystem, Pilot)],
     context: r"
         nerpa's closed list of commit types exists to keep distinctions that

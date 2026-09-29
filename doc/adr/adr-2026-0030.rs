@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "Claim less, and attack what is claimed",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Gate)],
     context: r"- Corrected: 2026-09-06 — a miscount of the architecture markers, and two
   invariants named here as promoted that had to go back. Facts only; the

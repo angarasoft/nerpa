@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "An executor says which build it is",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Executor)],
     context: r#"- Corrected: 2026-09-10 — "an executor from before this refuses the first frame
   by name" was written before it was run, and is not what happened. Against a

@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "Ship a static executor and treat the transport as a plug",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Executor)],
     context: r#"- Corrected: 2026-09-07 — "It is signed, and verification runs in both
   directions" is written below in the present tense and nothing signs anything.

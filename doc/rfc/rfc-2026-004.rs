@@ -5,6 +5,7 @@ use dacc_knowledge::DocStatus;
 dacc_knowledge::rfc!(
     title: "The configuration: a deterministic Starlark evaluation whose unresolved values never decide which resources exist",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     target: &[taxon!(Subsystem, Config)],
     goal: r"
         A configuration is a Starlark program evaluated with no I/O, no clock and

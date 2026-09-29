@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "Teleport is a route, not a transport",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Transport)],
     context: r"- Corrected: 2026-09-06 — the two machines were named by their real hostnames
   and the proxy by its real address. What was measured is what matters and whose

@@ -13,3 +13,8 @@ dacc_core::declare_taxonomy! {
     Subsystem => [Core, Config, Proto, Executor, Transport, Os, Cli, Gate, Docs, Pilot],
     Team => [Maintainers],
 }
+
+// nerpa has one publication channel: everything is public-facing.
+dacc_core::declare_channels! {
+    Public,
+}

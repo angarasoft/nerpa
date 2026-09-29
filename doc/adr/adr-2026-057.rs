@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "An invariant is a typed record whose status says how far it was carried",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Pilot), taxon!(Subsystem, Docs)],
     context: r"
         docs/invariants.toml holds 62 guarantees and, for the built ones, the

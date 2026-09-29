@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "A proposal is a change worked out, measured and attacked before its decisions",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Pilot), taxon!(Subsystem, Docs)],
     context: r"
         The three RFCs in docs/rfcs/ are more than their decided parts: each holds

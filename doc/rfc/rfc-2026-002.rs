@@ -5,6 +5,7 @@ use dacc_knowledge::DocStatus;
 dacc_knowledge::rfc!(
     title: "The baseline: the built system's invariants, the contract the first slices converge to",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     target: &[taxon!(Subsystem, Core), taxon!(Subsystem, Os)],
     goal: r"
         The seven open divergences of the external review each name the invariant

@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "The baseline: what nerpa and dacc stood at before the switch",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Pilot), taxon!(Subsystem, Gate)],
     context: r"
         Every hypothesis in the pilot is measured against a baseline written

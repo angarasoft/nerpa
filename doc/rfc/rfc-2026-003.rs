@@ -5,6 +5,7 @@ use dacc_knowledge::DocStatus;
 dacc_knowledge::rfc!(
     title: "The wire: what the engine and an installed executor say to each other",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     target: &[
         taxon!(Subsystem, Proto),
         taxon!(Subsystem, Executor),

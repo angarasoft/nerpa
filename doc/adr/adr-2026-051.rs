@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "One kind of knowledge, one typed carrier; the prefix is the type",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Pilot), taxon!(Subsystem, Docs), taxon!(Subsystem, Gate)],
     context: r"
         nerpa keeps one kind of knowledge in one place, but the carriers are

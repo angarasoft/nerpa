@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "A plan carries the premise it was computed from",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Core)],
     context: r#"- Corrected: 2026-09-11 — "the same encoding **unkeyed**" put an unkeyed digest of
   whatever was read into the plan, and for a secret already on disk that reached

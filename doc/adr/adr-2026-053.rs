@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "The gate's composition on nerpa: dacc's steps around cargo xtask ci",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Gate), taxon!(Subsystem, Pilot)],
     context: r"
         The gate is thirteen steps: external names, markdown links, the journal,

@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "Parallelism is threads, and providers are `Sync`",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Core)],
     context: r#"- Corrected: 2026-09-17 — "state is written from one place" was built as one
   writer of one file, which made every machine wait for every other machine's

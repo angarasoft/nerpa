@@ -5,6 +5,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 dacc_knowledge::adr!(
     title: "A reaction is an edge, and an unpaid one is owed",
     status: DocStatus::Active,
+    channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Core)],
     context: r#"- Corrected: 2026-09-11 — "a debt has to be written down before the action is
   attempted" was built as before the reaction, and a run that stopped between the
