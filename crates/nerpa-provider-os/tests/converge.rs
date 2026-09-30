@@ -142,6 +142,44 @@ fn a_declared_attribute_the_provider_does_not_own_is_refused() {
     );
 }
 
+/// A resource marked for merging that drifted is reported, never corrected: the
+/// plan holds it in `merges` and proposes no change for it. INV-DRIFT-001.
+#[test]
+#[dacc_derive::doc_anchor(
+    id = "a-drifting-resource-marked-for-merging-is-reported-never-corrected"
+)]
+fn a_drifting_resource_marked_for_merging_is_reported_never_corrected() {
+    let scratch = Scratch::new("merge");
+    let path = scratch.join("motd");
+    let graph = graph_of(vec![
+        Resource::new(address("os:file.motd@localhost"))
+            .with("path", path.clone())
+            .with("content", "hello\n")
+            .merge_on_drift(),
+    ]);
+    let mut state = State::new();
+    run_once(&graph, &mut state).expect("converges the first time");
+
+    // A person edits it by hand during an incident.
+    fs::write(&path, "world\n").expect("edited by hand");
+
+    let next = next_plan(&graph, &state);
+    assert!(
+        next.merges()
+            .iter()
+            .any(|merge| merge.address() == &address("os:file.motd@localhost")),
+        "the drift is reported as a merge: {:?}",
+        next.merges()
+            .iter()
+            .map(|merge| merge.address().to_string())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        next.changes().next().is_none(),
+        "and nothing is proposed to correct it"
+    );
+}
+
 #[test]
 #[dacc_derive::doc_anchor(id = "a-file-is-written-and-the-second-run-has-nothing-to-do")]
 fn a_file_is_written_and_the_second_run_has_nothing_to_do() {

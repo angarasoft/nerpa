@@ -553,6 +553,28 @@ impl Outdated {
     }
 }
 
+/// A resource that drifted and is marked for merging.
+///
+/// Never overwritten: the drift is handed to a person as a three-way merge
+/// rather than corrected in place. Reported on every plan, like an
+/// [`Outdated`], so a fleet does not drift years behind with nobody told.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Merge {
+    address: Address,
+}
+
+impl Merge {
+    pub(crate) fn new(address: Address) -> Self {
+        Self { address }
+    }
+
+    /// Which resource drifted and needs a person.
+    #[must_use]
+    pub fn address(&self) -> &Address {
+        &self.address
+    }
+}
+
 /// One topological level of the graph, and what happens in it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PlanStage {
@@ -725,6 +747,8 @@ pub struct Plan {
     #[serde(default)]
     held: Vec<Held>,
     outdated: Vec<Outdated>,
+    #[serde(default)]
+    merges: Vec<Merge>,
     blast_radius: BlastRadius,
 }
 
@@ -735,6 +759,7 @@ impl Plan {
         waiting: Vec<Waiting>,
         held: Vec<Held>,
         outdated: Vec<Outdated>,
+        merges: Vec<Merge>,
     ) -> Self {
         let mut blast_radius = BlastRadius {
             unreachable: unreachable.len(),
@@ -768,6 +793,7 @@ impl Plan {
             waiting,
             held,
             outdated,
+            merges,
             blast_radius,
         }
     }
@@ -780,6 +806,15 @@ impl Plan {
     #[must_use]
     pub fn outdated(&self) -> &[Outdated] {
         &self.outdated
+    }
+
+    /// Resources that drifted and are marked for merging, in a stable order.
+    ///
+    /// Not work, and not a reason to refuse anything: each is handed to a
+    /// person as a three-way merge rather than overwritten.
+    #[must_use]
+    pub fn merges(&self) -> &[Merge] {
+        &self.merges
     }
 
     /// The resources nothing can be said about, in a stable order.

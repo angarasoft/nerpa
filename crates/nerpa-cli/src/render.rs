@@ -14,7 +14,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use nerpa_core::plan::{Held, Outdated, Unreachable, Waiting};
+use nerpa_core::plan::{Held, Merge, Outdated, Unreachable, Waiting};
 use nerpa_core::secret::Recorded;
 use nerpa_core::state::Written;
 use nerpa_core::value::Value;
@@ -23,7 +23,11 @@ use nerpa_core::{BlastRadius, Change, ChangeKind, Confidence, Plan, StageKind, T
 /// The whole plan, as text.
 #[dacc_derive::doc_anchor(id = "inv-agent-001-1")]
 pub(crate) fn plan(plan: &Plan) -> String {
-    if plan.is_empty() && plan.is_complete() && plan.outdated().is_empty() {
+    if plan.is_empty()
+        && plan.is_complete()
+        && plan.outdated().is_empty()
+        && plan.merges().is_empty()
+    {
         return "nothing to do: the world already matches the configuration\n".to_owned();
     }
 
@@ -36,6 +40,7 @@ pub(crate) fn plan(plan: &Plan) -> String {
     out.push_str(&waits(plan.waiting()));
     out.push_str(&holds(plan.held()));
     out.push_str(&behind(plan.outdated()));
+    out.push_str(&to_merge(plan.merges()));
 
     for (number, stage) in plan.stages().iter().enumerate() {
         let _ = writeln!(out, "\nstage {} · {}", number + 1, describe(stage.kind()));
@@ -89,6 +94,26 @@ fn behind(outdated: &[Outdated]) -> String {
         "  nothing is proposed: a running machine cannot be rebuilt underneath itself.\n  \
          replace them deliberately, or run a new slot beside the old one\n",
     );
+    out
+}
+
+/// Resources that drifted and are marked for merging.
+///
+/// Never among the stages, and never corrected: each is handed to a person as
+/// a three-way merge, and printed on every plan so the drift is not forgotten.
+fn to_merge(merges: &[Merge]) -> String {
+    if merges.is_empty() {
+        return String::new();
+    }
+
+    let mut out = format!(
+        "\n  {} resources drifted and are marked for merging:\n",
+        merges.len()
+    );
+    for entry in merges {
+        let _ = writeln!(out, "    {} · hand it to a person", entry.address());
+    }
+    out.push_str("  nothing is proposed: a hand-edited file is not silently replaced.\n");
     out
 }
 

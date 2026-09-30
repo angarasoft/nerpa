@@ -26,9 +26,10 @@ use crate::attribute::Attribute;
 use crate::graph::{Graph, GraphError, Stage, StageKind};
 use crate::observed::Observed;
 use crate::plan::{
-    AttributeDelta, Change, ChangeKind, Confidence, Outdated, Plan, PlanStage, Unreachable, Waiting,
+    AttributeDelta, Change, ChangeKind, Confidence, Merge, Outdated, Plan, PlanStage, Unreachable,
+    Waiting,
 };
-use crate::resource::Resource;
+use crate::resource::{Protection, Resource};
 use crate::schema::Schema;
 use crate::secret::{FetchError, Recorded, Secrets};
 use crate::state::{Mark, Record, State, Written};
@@ -372,6 +373,7 @@ struct Walk {
     unplannable: BTreeSet<Address>,
     unreachable: Vec<Unreachable>,
     outdated: Vec<Outdated>,
+    merges: Vec<Merge>,
     /// For each removal, the declared resource naming what it takes away.
     claims: BTreeMap<Address, Address>,
     /// For each cause, the resources it rouses that cannot be planned and have a
@@ -539,6 +541,7 @@ impl Planning<'_> {
                     self.schema,
                     self.secrets,
                     &mut walk.outdated,
+                    &mut walk.merges,
                     Bearings {
                         roused_by,
                         owed,
@@ -811,7 +814,14 @@ impl Planning<'_> {
             .collect();
         let mut waiting = removals.waiting;
         waiting.extend(walk.waiting);
-        Ok(Plan::new(stages, unreachable, waiting, held, walk.outdated))
+        Ok(Plan::new(
+            stages,
+            unreachable,
+            waiting,
+            held,
+            walk.outdated,
+            walk.merges,
+        ))
     }
 
     /// Every edge between one plan's changes and removals, and why each is there.
@@ -1382,6 +1392,7 @@ fn change_for(
     schema: &Schema,
     secrets: Secrets<'_>,
     outdated: &mut Vec<Outdated>,
+    merges: &mut Vec<Merge>,
     around: Bearings<'_>,
 ) -> Result<Option<Change>, PlanError> {
     let Bearings {
@@ -1409,6 +1420,14 @@ fn change_for(
     // where the declaration's own change would send nothing: a declaration that
     // still has work of its own is the better answer to what the machine is now.
     let resending = entry.and_then(Mark::sends_again);
+
+    // Drift on a resource marked for merging is never corrected in place: it is
+    // handed to a person as a three-way merge and reported here rather than
+    // planned. INV-DRIFT-001.
+    if resource.protection() == Protection::Merge && !deltas.is_empty() {
+        merges.push(Merge::new(address.clone()));
+        return Ok(None);
+    }
 
     // The kind first, in the order it is decided — whether anything differs, then
     // why a resource that matches might still be work — and then the one change.
