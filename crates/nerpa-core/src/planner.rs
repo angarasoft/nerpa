@@ -1385,6 +1385,10 @@ struct Bearings<'a> {
 }
 
 #[dacc_derive::doc_anchor(id = "planner-change-for")]
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one pass over the graph; what one resource needs to decide is one argument each"
+)]
 fn change_for(
     resource: &Resource,
     observed: &Observed,
