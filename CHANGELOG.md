@@ -889,6 +889,12 @@ without ceremony until the first stage is complete.
   part Terraform's `moved` blocks lack: they accumulate for ever
   (`0028`).
 
+- Stages 0 through 2 are complete. What cannot be changed later is built and
+  attacked: a secret never reaches the state file or the plan, a rename
+  declared with `moved` keeps its identity, and a recorded configuration's
+  plan cannot change without a declared change. Stage 3 — the cloud — is
+  next.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

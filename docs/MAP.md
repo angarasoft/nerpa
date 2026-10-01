@@ -32,10 +32,17 @@ within a week.
 | What a released version changed | `CHANGELOG.md` |
 | What a plan is allowed to cost | `docs/budgets.toml` |
 | How the code itself works | Rustdoc, beside the code — never a Markdown file describing a module |
+| The long-form body a proposal is read as | `docs/rfcs/` — embedded into the registry as the proposal's body; its typed specification is `doc/rfc/` |
+| How the repository opens to people outside it | `docs/opening-the-repository.md` |
+| What a live run is shown with | `live/` — examples, never the source of truth |
 
 One kind of knowledge has one canonical home. Everything else links to it. A
 document that copies another is a document that will disagree with it, and the
 reader has no way to tell which half is stale.
+
+Getting around the registry itself is `cargo dacc map` and `cargo dacc where`
+from the dacc release that carries the access layer — never `grep` over
+`doc/`.
 
 Routes here name directories and stable files, never a stage number. A path with
 `stage 1` written into it is wrong the day stage 1 closes, and it goes on

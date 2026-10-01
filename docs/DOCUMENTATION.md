@@ -33,6 +33,11 @@ one place.
 when it was decided**. When the two disagree, the decisions are right and the
 architecture document is stale — it is a summary, and summaries drift.
 
+Two things are called RFC and they are not the same thing. `doc/rfc/` is a
+typed specification the registry compiles and a slice points at;
+`docs/rfcs/` is the long-form body a proposal embeds and a person reads.
+Neither replaces the other.
+
 Three weights, and choosing the wrong one is the mistake this project actually
 makes. An **observation** costs a row in the watchlist and commits nothing. A
 **question** carries the stage by which it must be answered. A **decision** is an
