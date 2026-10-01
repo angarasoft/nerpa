@@ -10,5 +10,5 @@ dacc_work::work!("w-bookkeeping",
     },
     taxon: taxon!(Subsystem, Docs),
     radius: BlastRadius::Local,
-    outcome: NonEmptyStr::new("The wave works' history is journaled and s-wave-0 to s-wave-3 are closed; README and CHANGELOG say stages 0 through 2 are complete; MAP and DOCUMENTATION name where the RFC bodies live and how the registry is navigated; W-027 is closed."),
+    outcome: NonEmptyStr::new("w-plan-stable is landed and the wave slices close on their outcomes; README and CHANGELOG say stages 0 through 2 are complete; MAP and DOCUMENTATION name where the RFC bodies live and how the registry is navigated; W-027 records what the import can and cannot restore, and the import's misreading is W-029."),
 );
