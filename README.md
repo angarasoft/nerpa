@@ -39,9 +39,10 @@ resource("os:file.app@localhost", {
     "mode": "0640",
 })
 
-$ nerpa plan
+$ nerpa plan --as alice@example.com
   2 changes: 2 to create
   touches 1 node: localhost
+as alice@example.com over run until further notice
 
 stage 1 · target: localhost
   [create   ] os:directory.etc@localhost
@@ -53,14 +54,33 @@ stage 1 · target: localhost
                ~ mode           — → "0640"
                ~ path           — → "/tmp/demo/etc/app.conf"
 
-plan d91f8cbb2c1e
+plan 4545395e0afc
 
-$ nerpa apply
+$ nerpa apply --as alice@example.com
+  2 changes: 2 to create
+  touches 1 node: localhost
+as alice@example.com over run until further notice
+
+stage 1 · target: localhost
+  [create   ] os:directory.etc@localhost
+               ~ path           — → "/tmp/demo/etc"
+  [create   ] os:file.app@localhost
+               ~ content
+                 becomes:
+                   │ listen 80;
+               ~ mode           — → "0640"
+               ~ path           — → "/tmp/demo/etc/app.conf"
+
+plan 4545395e0afc
+
 applied 2 changes
 
-$ nerpa plan
+$ nerpa plan --as alice@example.com
 nothing to do: the world already matches the configuration
 ```
+
+Every run says who is acting in it (`--as`), and every run is a line in a
+journal beside the state file for whoever reads afterwards.
 
 That number under the plan is a digest of everything the plan says and
 everything it was read from. A second run against an unchanged world produces it

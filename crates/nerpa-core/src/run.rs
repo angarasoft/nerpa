@@ -293,6 +293,15 @@ pub fn apply(
     secrets: Secrets<'_>,
     record: &mut dyn FnMut(&State) -> Result<(), String>,
 ) -> Result<Applied, RunError> {
+    // A run proceeds only with an actor identity (`INV-TRUST-001`). The CLI
+    // refuses without `--as`; this is the door for every other caller, and the
+    // panic is the safe direction for a run that would otherwise act on
+    // somebody's behalf without saying whose.
+    requires!(
+        plan.actor().is_some(),
+        "a run proceeds only with an actor identity, and this plan has none \
+         (INV-TRUST-001): attribute it with `Plan::attributed_to` first"
+    );
     let mut observed = known.clone();
     let mut changed = 0usize;
     let mut adopted = false;

@@ -895,6 +895,15 @@ without ceremony until the first stage is complete.
   plan cannot change without a declared change. Stage 3 — the cloud — is
   next.
 
+- A run carries an actor identity and refuses without one (`0009`). `--as`
+  says who acts; `--as-scope` and `--as-expiry` say over what and until when,
+  carried now for a grant to check later. The plan and its number hold all
+  three, so approving a number is approving somebody's plan, and a journal
+  beside state — `nerpa.state.json.journal` — records each run for a person
+  (RFC 0001 §5.9). A fleet document cannot name a key: the port, the jump
+  host and the key belong to `ssh`. Every plan's number moves once for this.
+  `INV-TRUST-001` moves from planned to enforced.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

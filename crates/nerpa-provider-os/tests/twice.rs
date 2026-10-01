@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 
 use nerpa_core::address::address;
-use nerpa_core::planner::plan;
+
 use nerpa_core::provider::{Machines, ProviderError, Providers, Reach};
 use nerpa_core::run::{apply, observe};
 use nerpa_core::secret::{Key, Remembered, Secrets};
@@ -31,6 +31,20 @@ use nerpa_core::state::State;
 use nerpa_core::{Graph, Resource, Target, Value};
 use nerpa_proto::{Answer, Ask, At, Entry, Observation, Operation, Seen};
 use nerpa_provider_os::Os;
+
+/// The plan a test drives, attributed to a tester: `run::apply` proceeds only
+/// with an actor identity (`INV-TRUST-001`), and a test is a run of a kind.
+fn plan(
+    graph: &Graph,
+    observed: &nerpa_core::Observed,
+    state: &State,
+    schema: &nerpa_core::Schema,
+    secrets: Secrets<'_>,
+) -> Result<nerpa_core::Plan, nerpa_core::planner::PlanError> {
+    nerpa_core::planner::plan(graph, observed, state, schema, secrets).map(|planned| {
+        planned.attributed_to(nerpa_core::Actor::new("tester", "run", None).expect("an actor"))
+    })
+}
 
 /// Which package manager a machine is managed by.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

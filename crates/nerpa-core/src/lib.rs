@@ -38,6 +38,7 @@
 //!
 //! # Layout
 //!
+//! * [`actor`] — who acts in a run, over what, and until when.
 //! * [`address`] — resource identity, and the grammar it is written in.
 //! * [`domain`] — where a resource's state can be read, and why that does not
 //!   force planning to happen in waves.
@@ -60,6 +61,7 @@
 //! * [`value`] — attribute values.
 //! * [`contract`] — the runtime assertions and the reasoning behind them.
 
+pub mod actor;
 pub mod address;
 pub mod attribute;
 pub mod contract;
@@ -81,6 +83,7 @@ pub mod state;
 pub mod store;
 pub mod value;
 
+pub use actor::{Actor, ActorError};
 pub use address::{Address, AddressError, Kind, Name, Provider, Slot, Target};
 pub use attribute::{Attribute, Reference};
 pub use domain::ExecutionDomain;

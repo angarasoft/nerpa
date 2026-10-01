@@ -10,7 +10,6 @@ use std::path::PathBuf;
 use nerpa_core::Observed;
 use nerpa_core::address::address;
 use nerpa_core::attribute::{Choice, Fact};
-use nerpa_core::planner::plan;
 use nerpa_core::provider::Machines;
 use nerpa_core::provider::{
     Answered, Attributes, Concluding, Prepared, Provider, Providers, Reach, Sending,
@@ -22,6 +21,20 @@ use nerpa_core::{ChangeKind, Graph, Reference, Resource, Target, Value};
 use nerpa_proto::{Answer, Ask};
 use nerpa_provider_os::Os;
 use nerpa_transport::Here;
+
+/// The plan a test drives, attributed to a tester: `run::apply` proceeds only
+/// with an actor identity (`INV-TRUST-001`), and a test is a run of a kind.
+fn plan(
+    graph: &Graph,
+    observed: &Observed,
+    state: &State,
+    schema: &nerpa_core::Schema,
+    secrets: Secrets<'_>,
+) -> Result<nerpa_core::Plan, nerpa_core::planner::PlanError> {
+    nerpa_core::planner::plan(graph, observed, state, schema, secrets).map(|planned| {
+        planned.attributed_to(nerpa_core::Actor::new("tester", "run", None).expect("an actor"))
+    })
+}
 
 /// Every machine is this one, reached by the executor in this process — the same
 /// code a far end runs. Where the pipe itself matters it is tested where the

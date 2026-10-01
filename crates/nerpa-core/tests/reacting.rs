@@ -12,7 +12,6 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use nerpa_core::Address;
 use nerpa_core::address::address;
-use nerpa_core::planner::plan;
 use nerpa_core::provider::{Machines, Provider, ProviderError, Providers, Reach, Read, Reading};
 use nerpa_core::run::apply;
 use nerpa_core::schema::Schema;
@@ -20,6 +19,20 @@ use nerpa_core::secret::{Key, Remembered, Secrets};
 use nerpa_core::state::{Record, State};
 use nerpa_core::store;
 use nerpa_core::{ChangeKind, Graph, Observed, Resource, Value};
+
+/// The plan a test drives, attributed to a tester: `run::apply` proceeds only
+/// with an actor identity (`INV-TRUST-001`), and a test is a run of a kind.
+fn plan(
+    graph: &Graph,
+    observed: &Observed,
+    state: &State,
+    schema: &Schema,
+    secrets: Secrets<'_>,
+) -> Result<nerpa_core::Plan, nerpa_core::planner::PlanError> {
+    nerpa_core::planner::plan(graph, observed, state, schema, secrets).map(|planned| {
+        planned.attributed_to(nerpa_core::Actor::new("tester", "run", None).expect("an actor"))
+    })
+}
 
 static DIGEST_KEY: Key = Key::from_bytes([9; 32]);
 static NO_STORE: Remembered = Remembered::EMPTY;

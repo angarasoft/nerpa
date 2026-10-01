@@ -57,10 +57,24 @@ fn record_at(address_text: &str, values: &[(&str, i64)]) -> State {
 }
 
 /// The plan for one recorded configuration, compared to its golden file.
+///
+/// `NERPA_CORPUS=write cargo test -p nerpa-core --test plan_stable` rewrites
+/// the golden files when the plan's shape changes on purpose — a change
+/// `INV-COMPAT-002` wants in the same commit as a changelog entry.
 #[dacc_derive::doc_anchor(id = "compat-check")]
-fn check(golden: &str, graph: &Graph, observed: &Observed, state: &State) {
-    let planned = plan(graph, observed, state, &Schema::new(), secrets()).expect("plannable");
+fn check(corpus: &str, golden: &str, graph: &Graph, observed: &Observed, state: &State) {
+    let planned = plan(graph, observed, state, &Schema::new(), secrets())
+        .expect("plannable")
+        // A run's plan is somebody's plan (`INV-TRUST-001`), and the corpus
+        // pins what that somebody sees.
+        .attributed_to(nerpa_core::Actor::new("tester", "run", None).expect("an actor"));
     let actual = serde_json::to_string_pretty(&planned).expect("serializes");
+    if std::env::var("NERPA_CORPUS").as_deref() == Ok("write") {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/corpus")
+            .join(corpus);
+        std::fs::write(path, format!("{actual}\n")).expect("the corpus is written");
+    }
     assert_eq!(
         actual.trim(),
         golden.trim(),
@@ -75,6 +89,7 @@ fn a_resource_that_does_not_exist_is_created() {
         Resource::new(address("yandex:instance.db")).with("cores", 8),
     ]);
     check(
+        "create.json",
         include_str!("corpus/create.json"),
         &graph,
         &Observed::new(),
@@ -89,6 +104,7 @@ fn a_resource_that_drifted_is_updated() {
         Resource::new(address("yandex:instance.db")).with("cores", 16),
     ]);
     check(
+        "update.json",
         include_str!("corpus/update.json"),
         &graph,
         &observed_with("yandex:instance.db", &[("cores", 8)]),
@@ -101,6 +117,7 @@ fn a_resource_that_drifted_is_updated() {
 fn a_resource_no_longer_declared_is_deleted() {
     let graph = graph_of(vec![]);
     check(
+        "delete.json",
         include_str!("corpus/delete.json"),
         &graph,
         &observed_with("yandex:instance.db", &[("cores", 8)]),
@@ -119,6 +136,7 @@ fn a_resource_renamed_keeps_its_identity() {
         address("yandex:instance.db"),
     );
     check(
+        "rename.json",
         include_str!("corpus/rename.json"),
         &graph,
         &observed_with("yandex:instance.db", &[("cores", 8)]),

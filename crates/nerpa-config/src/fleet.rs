@@ -122,6 +122,26 @@ impl Fleet {
 
         for (name, described) in nodes {
             let node = Target::new(name).map_err(|error| format!("{name:?}: {error}"))?;
+            // The fields of a node are a closed set. A `key` written here would
+            // be a static key in by the back door — the one thing `INV-TRUST-001`
+            // says does not exist — and silently ignoring it would leave a
+            // document that says something no run does.
+            for field in described
+                .as_table()
+                .into_iter()
+                .flatten()
+                .map(|(key, _)| key)
+            {
+                if !matches!(
+                    field.as_str(),
+                    "groups" | "values" | "ssh" | "ssh_config" | "executor" | "become"
+                ) {
+                    return Err(format!(
+                        "{name}: {field:?} is not a field of a node — the port, the jump \
+                         host and the key belong to `ssh` and are named in `ssh_config`"
+                    ));
+                }
+            }
             let belongs: Vec<String> = described
                 .get("groups")
                 .and_then(toml::Value::as_array)

@@ -41,6 +41,9 @@ fn afterwards(state: &Path) -> State {
 fn nerpa(state: &Path, arguments: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_nerpa"))
         .args(arguments)
+        // A person who looked at the machine is acting (`INV-TRUST-001`), and
+        // a run without one does not start.
+        .args(["--as", "tester@example.invalid"])
         .arg("--state")
         .arg(state)
         .output()

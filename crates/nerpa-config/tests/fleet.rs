@@ -394,3 +394,22 @@ executor = "/opt/nerpa/nerpa-executor"
     .expect("none of these is the trap");
     assert_eq!(fleet.len(), 3);
 }
+
+/// `INV-TRUST-001` names its bypass: a static key reaching the transport
+/// through the fleet document. A node's fields are a closed set, the key
+/// belongs to `ssh`, and a document that names one is refused by name rather
+/// than quietly ignored.
+#[test]
+#[dacc_derive::doc_anchor(id = "a-fleet-that-names-a-key-is-refused-naming-it")]
+fn a_fleet_that_names_a_key_is_refused_naming_it() {
+    let refused = Fleet::read(
+        r#"
+[nodes.web-01]
+ssh = "web-01"
+key = "/home/somebody/.ssh/id_ed25519"
+"#,
+    )
+    .unwrap_err();
+    assert!(refused.contains("\"key\""), "{refused}");
+    assert!(refused.contains("belong to `ssh`"), "{refused}");
+}

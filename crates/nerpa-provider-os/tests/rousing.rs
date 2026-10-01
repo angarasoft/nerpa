@@ -12,7 +12,6 @@ use std::sync::{Arc, Mutex};
 use nerpa_core::address::address;
 use nerpa_core::observed::Facts;
 use nerpa_core::plan::ChangeKind;
-use nerpa_core::planner::plan;
 use nerpa_core::provider::{
     Answered, Attributes, Concluded, Concluding, Machines, Planned, Prepared, Provider,
     ProviderError, Providers, Reach, Sending,
@@ -24,6 +23,20 @@ use nerpa_core::value::Value;
 use nerpa_core::{Address, Graph, Observed, Resource, Target};
 use nerpa_proto::{Answer, Ask, Operation, Seen};
 use nerpa_provider_os::Os;
+
+/// The plan a test drives, attributed to a tester: `run::apply` proceeds only
+/// with an actor identity (`INV-TRUST-001`), and a test is a run of a kind.
+fn plan(
+    graph: &Graph,
+    observed: &Observed,
+    state: &State,
+    schema: &nerpa_core::Schema,
+    secrets: Secrets<'_>,
+) -> Result<nerpa_core::Plan, nerpa_core::planner::PlanError> {
+    nerpa_core::planner::plan(graph, observed, state, schema, secrets).map(|planned| {
+        planned.attributed_to(nerpa_core::Actor::new("tester", "run", None).expect("an actor"))
+    })
+}
 
 /// Answers every batch as though each operation succeeded, and keeps what it
 /// was asked to do.

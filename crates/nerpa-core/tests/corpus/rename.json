@@ -1,4 +1,8 @@
 {
+  "actor": {
+    "who": "tester",
+    "scope": "run"
+  },
   "stages": [],
   "unreachable": [],
   "waiting": [],
@@ -27,5 +31,5 @@
     "outdated": 0,
     "nodes": []
   },
-  "digest": "1beb749f24c3e193589c0df8b19fbba22084a1fa0661470e335cfe1e861d12ef"
+  "digest": "35c72f6ea48cb9f8b4a64699c2a6d534bc7a4b8b2dc53f5ab6c770650e6252fe"
 }

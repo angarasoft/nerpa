@@ -532,15 +532,18 @@ A WASM provider receives credentials as a handle rather than a value and can
 reach only the hosts its manifest declares. Provider schemas are harvested from
 Terraform as data at build time; the binaries they came from are never shipped.
 
-## Zero trust — `0009` · planned
+## Zero trust — `0009` · partly built
 
-A run carries an actor identity; static keys are not a mode. A grant limits it to
-named kinds, targets and operations, with an expiry, checked by the engine. Where
-configured, `apply` requires a detached signature over the plan hash from someone
-other than the proposer — and that hash covers the configuration revision,
-provider versions, state version and a digest of observed state, so it cannot be
-replayed against a changed world. State holds references and digests, never
-secret values. The log is an append-only hash chain.
+A run carries an actor identity; static keys are not a mode. Built: `--as`
+carries who acts — with the scope and expiry a grant will check — into the
+plan, into its number, and into a run journal beside state, and a run without
+one does not start. Not built: a grant limiting a run to named kinds, targets
+and operations with an expiry, checked by the engine; `apply` requiring a
+detached signature over the plan hash from someone other than the proposer —
+and that hash covers the configuration revision, provider versions, state
+version and a digest of observed state, so it cannot be replayed against a
+changed world; the append-only log. State holds references and digests, never
+secret values.
 
 ## Secrets — `0027` · partly built
 

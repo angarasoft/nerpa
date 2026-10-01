@@ -22,6 +22,7 @@
 
 use std::collections::BTreeSet;
 
+use crate::actor::Actor;
 use crate::address::{Address, Target};
 use crate::attribute::{Choice, Reference};
 use crate::graph::{Moved, StageKind};
@@ -740,6 +741,12 @@ impl BlastRadius {
 /// Everything a run intends to do, in the order it will do it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 pub struct Plan {
+    /// Who acts in this run. Part of what the plan says, and of its number: a
+    /// third party signing the number is signing *somebody's* plan (`0009`).
+    /// [`None`] only for a plan no run has taken up: `run::apply` refuses to
+    /// proceed without one (`INV-TRUST-001`).
+    #[serde(default)]
+    actor: Option<Actor>,
     stages: Vec<PlanStage>,
     unreachable: Vec<Unreachable>,
     #[serde(default)]
@@ -801,6 +808,7 @@ impl Plan {
             stages,
             unreachable,
             waiting,
+            actor: None,
             held,
             outdated,
             merges,
@@ -808,6 +816,22 @@ impl Plan {
             spent,
             blast_radius,
         }
+    }
+
+    /// The plan, said to be somebody's: who acts in the run that takes it up.
+    ///
+    /// A run proceeds only with one (`INV-TRUST-001`), which `run::apply`
+    /// refuses rather than assumes.
+    #[must_use]
+    pub fn attributed_to(mut self, actor: Actor) -> Self {
+        self.actor = Some(actor);
+        self
+    }
+
+    /// Who acts in this run, if a run has taken this plan up.
+    #[must_use]
+    pub fn actor(&self) -> Option<&Actor> {
+        self.actor.as_ref()
     }
 
     /// Resources made from something no longer declared, in a stable order.
@@ -986,6 +1010,17 @@ impl Plan {
         }
 
         let mut out = Vec::from(PLAN_DIGEST_DOMAIN);
+        // Who acts is part of what this plan says: a number that did not cover
+        // the actor could be moved from one proposer to another, and the
+        // signature of 0009 is over the number. A plan nobody has taken up is
+        // tagged apart from one that is somebody's.
+        match &self.actor {
+            None => out.push(0),
+            Some(actor) => {
+                out.push(1);
+                encode_actor(actor, &mut out);
+            }
+        }
         out.extend_from_slice(&value::length(self.stages.len()));
         for stage in &self.stages {
             encode_stage(stage, &mut out);
@@ -1002,6 +1037,20 @@ impl Plan {
             value::text(&merge.address().to_string(), &mut out);
         }
         Ok(PlanDigest(*blake3::hash(&out).as_bytes()))
+    }
+}
+
+/// Who acts, in the number. An expiry that was not given is tagged apart from
+/// one that was, so no two actors encode to the same bytes.
+fn encode_actor(actor: &Actor, out: &mut Vec<u8>) {
+    value::text(actor.who(), out);
+    value::text(actor.scope(), out);
+    match actor.expiry() {
+        None => out.push(0),
+        Some(expiry) => {
+            out.push(1);
+            value::text(expiry, out);
+        }
     }
 }
 
@@ -1175,7 +1224,10 @@ fn encode_source(source: &Source, out: &mut Vec<u8>) {
 impl serde::Serialize for Plan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap as _;
-        let mut map = serializer.serialize_map(Some(10))?;
+        let mut map = serializer.serialize_map(Some(11))?;
+        // Always present, `null` when no run has taken the plan up: a reader
+        // that finds no key cannot tell an old document from an unclaimed one.
+        map.serialize_entry("actor", &self.actor)?;
         map.serialize_entry("stages", &self.stages)?;
         map.serialize_entry("unreachable", &self.unreachable)?;
         map.serialize_entry("waiting", &self.waiting)?;

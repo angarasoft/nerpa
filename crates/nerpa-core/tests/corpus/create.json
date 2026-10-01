@@ -1,4 +1,8 @@
 {
+  "actor": {
+    "who": "tester",
+    "scope": "run"
+  },
   "stages": [
     {
       "kind": "control",
@@ -52,5 +56,5 @@
     "outdated": 0,
     "nodes": []
   },
-  "digest": "7c6e0543c6848443cb46c9871a79cfb3049b29fb4fd3e7194805a5be8a37775a"
+  "digest": "72d0c656ab4dbb7561aaae75fbb56f406561d4ac4ca34ea21e3b0c5910b40ac6"
 }

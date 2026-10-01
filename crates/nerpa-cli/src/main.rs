@@ -22,6 +22,7 @@
     reason = "this is the terminal interface"
 )]
 
+mod journal;
 mod render;
 
 use std::path::{Path, PathBuf};
@@ -29,8 +30,9 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use nerpa_config::fleet::{Fleet, Route};
+use nerpa_core::Actor;
 use nerpa_core::address::{Address, Target};
-use nerpa_core::plan::ChangeKind;
+use nerpa_core::plan::{ChangeKind, Plan};
 use nerpa_core::planner;
 use nerpa_core::provider::{Machines, Providers, Reach};
 use nerpa_core::run;
@@ -60,6 +62,26 @@ struct Arguments {
     /// Which machines there are, and what is written down about them.
     #[arg(long, global = true)]
     fleet: Option<PathBuf>,
+
+    /// Who is acting in this run — a person, CI, or an agent.
+    ///
+    /// A run without an actor does not start (`INV-TRUST-001`).
+    #[arg(long = "as", value_name = "WHO", global = true)]
+    actor: Option<String>,
+
+    /// What this actor may touch. Carried now; a grant checks it later.
+    #[arg(
+        long = "as-scope",
+        value_name = "SCOPE",
+        default_value = "run",
+        global = true
+    )]
+    actor_scope: String,
+
+    /// When this identity stops being valid, RFC 3339. Carried now; a grant
+    /// checks it later.
+    #[arg(long = "as-expiry", value_name = "RFC3339", global = true)]
+    actor_expiry: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -373,7 +395,19 @@ fn release(arguments: &Arguments, machine: Option<&str>, control: bool) -> Resul
     Ok(())
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "the run's steps stay in one place and in order: identity, release, \
+              read, plan, apply, journal"
+)]
 fn run_task(arguments: &Arguments) -> Result<(), String> {
+    // The identity first: a run without one does not start (`INV-TRUST-001`).
+    // Refused here rather than by clap, because a global argument cannot be
+    // required and the refusal has to name the flag anyway.
+    let who = arguments.actor.as_deref().ok_or_else(no_actor_refused)?;
+    let actor = Actor::new(who, &arguments.actor_scope, arguments.actor_expiry.clone())
+        .map_err(|error| error.to_string())?;
+
     // Before the configuration is read, because releasing a machine is about
     // what a run left behind rather than about what anybody declares.
     if let Task::Release {
@@ -382,10 +416,14 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
         entry,
     } = &arguments.task
     {
-        return match entry {
+        let released = match entry {
             Some(entry) => release_entry(arguments, entry),
             None => release(arguments, machine.as_deref(), *control),
         };
+        if released.is_ok() {
+            note(&arguments.state, &format!("release as {actor}"));
+        }
+        return released;
     }
 
     let source = std::fs::read_to_string(&arguments.file)
@@ -454,7 +492,8 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     let observed =
         run::observe(&graph, &providers, &machines, &state).map_err(|error| error.to_string())?;
     let plan = planner::plan(&graph, &observed, &state, &providers.schema(), secrets)
-        .map_err(|error| error.to_string())?;
+        .map_err(|error| error.to_string())?
+        .attributed_to(actor.clone());
 
     if let Task::Plan { json: true } = arguments.task {
         // The same object the text is rendered from. The moment these become two
@@ -462,12 +501,20 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
         let written = serde_json::to_string_pretty(&plan)
             .map_err(|error| format!("the plan could not be written as JSON: {error}"))?;
         println!("{written}");
+        note(
+            &arguments.state,
+            &format!("plan {} as {actor}", what_number(&plan)),
+        );
         return Ok(());
     }
 
     print!("{}", render::plan(&plan));
 
     if matches!(arguments.task, Task::Plan { .. }) {
+        note(
+            &arguments.state,
+            &format!("plan {} as {actor}", what_number(&plan)),
+        );
         return Ok(());
     }
 
@@ -497,7 +544,38 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
 
     let applied = applied.map_err(|error| error.to_string())?;
     println!("\napplied {} changes", applied.changed());
+    note(
+        &arguments.state,
+        &format!(
+            "apply {} · {} changes as {actor}",
+            what_number(&plan),
+            applied.changed()
+        ),
+    );
     Ok(())
+}
+
+/// The refusal `INV-TRUST-001` is made of: a run without an actor identity
+/// does not start, and the refusal names the flag that fixes it.
+#[dacc_derive::doc_anchor(id = "inv-trust-001")]
+fn no_actor_refused() -> String {
+    "a run needs an actor identity: pass `--as <WHO>` (INV-TRUST-001)".to_owned()
+}
+
+/// The plan's number, or the reason it has none, as the journal writes it.
+fn what_number(plan: &Plan) -> String {
+    plan.digest().map_or_else(
+        |problem| format!("no number: {problem}"),
+        |digest| digest.to_string(),
+    )
+}
+
+/// Writes the run's line to the journal beside state. A journal that cannot be
+/// written says so out loud rather than failing a run that already happened.
+fn note(state: &Path, line: &str) {
+    if let Err(problem) = journal::record(state, line) {
+        eprintln!("nerpa: the run journal could not be written: {problem}");
+    }
 }
 
 // The step that decides whether one machine being down ends a run. Attacked

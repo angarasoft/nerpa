@@ -9,6 +9,7 @@
 // Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
+use nerpa_core::actor::Actor;
 use nerpa_core::address::address;
 use nerpa_core::attribute::{Attribute, Reference};
 use nerpa_core::plan::PlanDigest;
@@ -125,9 +126,28 @@ fn the_number_of_a_fixed_plan_is_written_down() {
         .expect("hashable");
     assert_eq!(
         number.to_hex(),
-        "12819ade5a7dce4aebfb6fd9ce19e9516b51131e2c6c96eaddc83b314b23a401",
+        "0d01bf8739a4088940d1a7c47b4f58185222c40c5aee9e3d4a4384ac622e8a9b",
         "the encoding changed; if that was meant, write the new number here in the same commit"
     );
+}
+
+/// `INV-TRUST-001`, in the number: whose plan it is has to be inside it, or a
+/// number could be moved from one proposer to another and the signature of
+/// `0009` would cover somebody else's plan.
+#[test]
+#[dacc_derive::doc_anchor(id = "whose-plan-it-is-moves-the-number")]
+fn whose_plan_it_is_moves_the_number() {
+    let nobody = one(&[("path", "/etc/motd")]).digest().expect("hashable");
+    let alice = one(&[("path", "/etc/motd")])
+        .attributed_to(Actor::new("alice", "run", None).unwrap())
+        .digest()
+        .expect("hashable");
+    let bob = one(&[("path", "/etc/motd")])
+        .attributed_to(Actor::new("bob", "run", None).unwrap())
+        .digest()
+        .expect("hashable");
+    assert_ne!(nobody, alice, "whose plan it is");
+    assert_ne!(alice, bob, "and who acts");
 }
 
 /// Anything a person is approving has to be inside the number, or their

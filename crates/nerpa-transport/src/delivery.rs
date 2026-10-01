@@ -247,7 +247,12 @@ fn jitter(waits: std::time::Duration) -> std::time::Duration {
 /// a shell on the far side, so passing words only creates the illusion of
 /// quoting. Everything in these commands is written here — a fixed shape and a
 /// digest — and nothing in them comes from a configuration.
-fn run(host: &str, config: Option<&str>, command: &str, stdin: &[u8]) -> Result<Said, Refused> {
+/// What one `ssh` is asked with, and everything it is asked with.
+///
+/// The identity is `ssh`'s own — its agent and the configuration this points
+/// at. Nothing here names a key, which is `INV-TRUST-001`'s half about static
+/// keys, and a test reads every word of this.
+fn invocation(host: &str, config: Option<&str>, command: &str) -> Command {
     let mut asking = Command::new("ssh");
     asking
         .arg("-o")
@@ -258,6 +263,11 @@ fn run(host: &str, config: Option<&str>, command: &str, stdin: &[u8]) -> Result<
         asking.arg("-F").arg(named);
     }
     asking.arg(host).arg(command);
+    asking
+}
+
+fn run(host: &str, config: Option<&str>, command: &str, stdin: &[u8]) -> Result<Said, Refused> {
+    let asking = invocation(host, config, command);
 
     // `ssh` not starting at all is this machine missing it, which asking again
     // will not fix.
@@ -373,6 +383,32 @@ mod tests {
     /// in flight (RFC 0001 §5.10), and the three commands delivery sends are
     /// idempotent: a file test, `uname -m`, and a copy that writes beside and
     /// moves into place. So asking again costs a round trip and risks nothing.
+    /// `INV-TRUST-001` names its bypass: a static key reaching the transport.
+    /// The invocation is built in one place, and this looks at every word of
+    /// it: the identity is `ssh`'s own, and nothing here names a key.
+    #[test]
+    #[dacc_derive::doc_anchor(id = "no-identity-reaches-the-ssh-command")]
+    fn no_identity_reaches_the_ssh_command() {
+        let asked = super::invocation("web-01", Some("/tmp/ssh_config"), "nerpa-executor");
+        let words: Vec<String> = asked
+            .get_args()
+            .map(|word| word.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            words,
+            [
+                "-o".to_owned(),
+                "BatchMode=yes".to_owned(),
+                "-o".to_owned(),
+                format!("ConnectTimeout={}", crate::ANSWERS_WITHIN),
+                "-F".to_owned(),
+                "/tmp/ssh_config".to_owned(),
+                "web-01".to_owned(),
+                "nerpa-executor".to_owned(),
+            ]
+        );
+    }
+
     #[test]
     fn a_connection_ssh_could_not_make_is_tried_again() {
         let tries = std::cell::Cell::new(0);

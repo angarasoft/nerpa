@@ -13,7 +13,7 @@ use std::sync::{Arc, Mutex};
 
 use nerpa_core::address::address;
 use nerpa_core::plan::ChangeKind;
-use nerpa_core::planner::plan;
+
 use nerpa_core::provider::{
     Afterwards, Answered, Attributes, Concluded, Concluding, Machines, Planned, Prepared, Provider,
     ProviderError, Providers, Reach, Read, Reading, Sending,
@@ -24,6 +24,20 @@ use nerpa_core::secret::{Key, Recorded, Remembered, Secrets, Source};
 use nerpa_core::state::{Mark, Record, Standing, State};
 use nerpa_core::{Address, Graph, Observed, Resource, Value};
 use nerpa_proto::{Answer, Ask, At, Entry, Operation, Seen};
+
+/// The plan a test drives, attributed to a tester: `run::apply` proceeds only
+/// with an actor identity (`INV-TRUST-001`), and a test is a run of a kind.
+fn plan(
+    graph: &Graph,
+    observed: &Observed,
+    state: &State,
+    schema: &Schema,
+    secrets: Secrets<'_>,
+) -> Result<nerpa_core::Plan, nerpa_core::planner::PlanError> {
+    nerpa_core::planner::plan(graph, observed, state, schema, secrets).map(|planned| {
+        planned.attributed_to(nerpa_core::Actor::new("tester", "run", None).expect("an actor"))
+    })
+}
 
 static DIGEST_KEY: Key = Key::from_bytes([9; 32]);
 static NO_STORE: Remembered = Remembered::EMPTY;

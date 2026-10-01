@@ -9,7 +9,7 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
 use nerpa_core::address::address;
-use nerpa_core::planner::plan;
+
 use nerpa_core::provider::{Machines, Provider, ProviderError, Providers, Reach, Read, Reading};
 use nerpa_core::run::{RunError, apply, observe};
 use nerpa_core::schema::Schema;
@@ -94,6 +94,20 @@ impl Provider for Selective {
 }
 
 use nerpa_core::Address;
+
+/// The plan a test drives, attributed to a tester: `run::apply` proceeds only
+/// with an actor identity (`INV-TRUST-001`), and a test is a run of a kind.
+fn plan(
+    graph: &Graph,
+    observed: &nerpa_core::Observed,
+    state: &State,
+    schema: &Schema,
+    secrets: Secrets<'_>,
+) -> Result<nerpa_core::Plan, nerpa_core::planner::PlanError> {
+    nerpa_core::planner::plan(graph, observed, state, schema, secrets).map(|planned| {
+        planned.attributed_to(nerpa_core::Actor::new("tester", "run", None).expect("an actor"))
+    })
+}
 
 /// A machine that answers and knows nothing about itself.
 ///

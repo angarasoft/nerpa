@@ -38,6 +38,11 @@ pub(crate) fn plan(plan: &Plan) -> String {
     } else {
         summary(plan.blast_radius())
     };
+    // Whose plan this is, before any of what it does. The number covers it, and
+    // a person approving the number is approving somebody's plan (`0009`).
+    if let Some(actor) = plan.actor() {
+        let _ = writeln!(out, "as {actor}");
+    }
     out.push_str(&out_of_reach(plan.unreachable()));
     out.push_str(&waits(plan.waiting()));
     out.push_str(&holds(plan.held()));
