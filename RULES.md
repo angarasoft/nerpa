@@ -42,7 +42,7 @@ Depth: [crates/nerpa-core/src/contract.rs](crates/nerpa-core/src/contract.rs).
 **3. An invariant is not marked `enforced` without a test that attempts the
 bypass its own entry names.**
 
-Every entry in `docs/invariants.toml` writes down how the guarantee could fail.
+Every entry in `doc/invariant/` writes down how the guarantee could fail.
 `enforced` means somebody wrote the attempt and watched it be refused; `claimed`
 means the code is believed to hold it and nobody has tried. Marking the second as
 the first is the failure this project is most exposed to, because the registry is
