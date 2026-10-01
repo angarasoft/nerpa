@@ -1,0 +1,40 @@
+{
+  "stages": [
+    {
+      "kind": "mixed",
+      "changes": [
+        {
+          "address": "yandex:instance.db",
+          "kind": "delete",
+          "deltas": [],
+          "desired": [],
+          "resent": false,
+          "past_forgetting": false
+        }
+      ]
+    }
+  ],
+  "unreachable": [],
+  "waiting": [],
+  "held": [],
+  "outdated": [],
+  "merges": [],
+  "migrations": [],
+  "spent": [],
+  "blast_radius": {
+    "creates": 0,
+    "updates": 0,
+    "replaces": 0,
+    "deletes": 1,
+    "reacts": 0,
+    "adopts": 0,
+    "reorders": 0,
+    "unresolved": 0,
+    "unreachable": 0,
+    "waiting": 0,
+    "held": 0,
+    "outdated": 0,
+    "nodes": []
+  },
+  "digest": "99c5c51a350f15ea4cac399ade74c710b45d566dfa2ee93ab6bd616e6202f738"
+}

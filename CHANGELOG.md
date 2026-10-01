@@ -879,6 +879,16 @@ without ceremony until the first stage is complete.
   the two spell every command differently — and a command it does not recognise
   exits 127, so the tests cannot pass by agreeing with a provider that changed.
 
+- `moved(from, to)` declares a rename, and a renamed resource keeps its
+  identity. Without it a rename was a removal and a creation after it: the thing
+  on the machine destroyed and made again under a new address, when nothing
+  about it had changed. A rename cannot change the provider, the kind or the
+  slot — that would be a different resource — and one that crosses them is
+  refused naming both ends. State records the migrations a run applied, and the
+  plan reports the spent ones as removable from the configuration, which is the
+  part Terraform's `moved` blocks lack: they accumulate for ever
+  (`0028`).
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the
@@ -1006,6 +1016,17 @@ without ceremony until the first stage is complete.
   and reproduced as two failing tests before the fix. A plan holding a
   reference, a secret or a fact-bounded value gets a different number than it
   did.
+
+- The plan document carries its renames and its merges. `migrations`, `spent`
+  and `merges` join the serialized plan — the last of the three was a field
+  nobody had put into the JSON — and the plan's number covers migrations and
+  merges, so two plans differing only in a rename no longer share a digest, and
+  approving a plan that spends a rename is not approving one that makes it.
+  Every plan's number moves once for this. What a recorded configuration plans
+  is now pinned by golden files in `crates/nerpa-core/tests/corpus/`, so a change
+  to the plan's shape fails the build until the golden is updated and an entry
+  appears here — `INV-COMPAT-002`, enforced from this change rather than
+  claimed.
 
 ### Fixed
 

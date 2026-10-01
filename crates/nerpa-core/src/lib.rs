@@ -84,7 +84,7 @@ pub mod value;
 pub use address::{Address, AddressError, Kind, Name, Provider, Slot, Target};
 pub use attribute::{Attribute, Reference};
 pub use domain::ExecutionDomain;
-pub use graph::{Graph, GraphError, Stage, StageKind};
+pub use graph::{Graph, GraphError, Moved, Stage, StageKind};
 pub use inventory::{Inventory, Provenance};
 pub use observed::Observed;
 pub use plan::{AttributeDelta, BlastRadius, Change, ChangeKind, Confidence, Plan, PlanStage};

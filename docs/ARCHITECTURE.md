@@ -84,19 +84,21 @@ a run that touches three open two hundred connections.
 Not built: the dynamic half. Nothing asks a cloud who exists, so nothing is
 materialised yet.
 
-## Renaming — `0028` · planned
+## Renaming — `0028` · built
 
 Because the address is the identity, a rename needs a declaration:
 `moved(from, to)`, identified by its endpoints. State records the migrations it
-has applied, which is the part Terraform lacks — so the plan can report that a
+has applied, which is the part Terraform lacks — so the plan reports that a
 migration is spent and its declaration can be deleted, instead of accumulating
 `moved` blocks forever. A rename changes nothing else: the plan for that resource
-is empty afterwards, and a real difference appears as an ordinary update.
+is empty afterwards, and a real difference appears as an ordinary update. A
+rename that would change the provider, the kind or the slot is refused naming
+both ends, because that is a different resource.
 
-Until then, a rename that keeps what it names — the same path under a new
-address — is a removal and a creation after it, and the plan shows both. The
-creation is not read from the machine, because what is there is what the removal
-is about to take away.
+Without the declaration, a rename that keeps what it names — the same path under
+a new address — is a removal and a creation after it, and the plan shows both.
+The creation is not read from the machine, because what is there is what the
+removal is about to take away.
 
 ## A single planning pass — `0006` · built
 

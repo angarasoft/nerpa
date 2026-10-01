@@ -134,11 +134,42 @@ impl Stage {
     }
 }
 
+/// A declared rename: the resource at `from` is now declared at `to`, and its
+/// identity — the thing on the machine — does not change. See decision 0028.
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
+pub struct Moved {
+    from: Address,
+    to: Address,
+}
+
+impl Moved {
+    /// A rename from one address to another.
+    #[must_use]
+    pub fn new(from: Address, to: Address) -> Self {
+        Self { from, to }
+    }
+
+    /// Where it was.
+    #[must_use]
+    pub fn from(&self) -> &Address {
+        &self.from
+    }
+
+    /// Where it is now.
+    #[must_use]
+    pub fn to(&self) -> &Address {
+        &self.to
+    }
+}
+
 /// A set of resources and the ordering between them.
 #[derive(Debug, Clone, Default)]
 pub struct Graph {
     resources: BTreeMap<Address, Resource>,
     inventory: Inventory,
+    moved: Vec<Moved>,
 }
 
 impl Graph {
@@ -186,6 +217,19 @@ impl Graph {
     #[must_use]
     pub fn get(&self, address: &Address) -> Option<&Resource> {
         self.resources.get(address)
+    }
+
+    /// Declares a rename: the resource at `from` is now declared at `to`.
+    #[must_use]
+    pub fn moved(mut self, from: Address, to: Address) -> Self {
+        self.moved.push(Moved::new(from, to));
+        self
+    }
+
+    /// The declared renames, in declaration order.
+    #[must_use]
+    pub fn migrations(&self) -> &[Moved] {
+        &self.moved
     }
 
     /// Declares that `resource` brings `target` into existence.

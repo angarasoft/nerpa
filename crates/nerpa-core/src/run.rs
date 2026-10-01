@@ -280,6 +280,10 @@ impl Reach for Sealing<'_> {
 /// Panics if a value is still unresolved when its stage runs, which would mean
 /// the plan's own ordering was wrong. See [`crate::contract`].
 #[dacc_derive::doc_anchor(id = "run-apply")]
+#[allow(
+    clippy::too_many_lines,
+    reason = "one pass over the plan's stages and the migration of renamed records; splitting it would scatter what one pass must keep together"
+)]
 pub fn apply(
     plan: &Plan,
     providers: &Providers,
@@ -293,6 +297,19 @@ pub fn apply(
     let mut changed = 0usize;
     let mut adopted = false;
     let rousing = roused_by_each(plan);
+
+    // A rename migrates a record: what was recorded at `from` is now at `to`,
+    // and the migration is recorded so a later plan knows it is spent. Done
+    // before the stages, so a change on the new address records over the
+    // migrated record rather than beside it.
+    for moved in plan.migrations() {
+        let (from, to) = (moved.from(), moved.to());
+        if let Some(record) = state.get(from).cloned() {
+            state.forget(from);
+            state.record(to.clone(), record);
+        }
+        state.record_migration(moved.clone());
+    }
 
     for stage in plan.stages() {
         for change in stage.changes() {

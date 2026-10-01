@@ -42,6 +42,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::address::Address;
+use crate::graph::Moved;
 use crate::provider::Attributes;
 use crate::secret::{Digest, Key, Recorded};
 use crate::state::{Record, Recording, State, Written};
@@ -104,6 +105,10 @@ struct Document {
     /// each other.
     digest_key: String,
     resources: BTreeMap<String, StoredRecord>,
+    /// Applied renames, from old address to new. Absent until the first one,
+    /// so an ordinary state file is not littered with an empty section.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    migrations: BTreeMap<String, String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -397,6 +402,18 @@ pub fn load(path: &Path) -> Result<(State, Key), StoreError> {
         );
     }
 
+    for (from, to) in document.migrations {
+        let from: Address = from.parse().map_err(|error| StoreError::Format {
+            path: path.display().to_string(),
+            problem: format!("{from:?}: {error}"),
+        })?;
+        let to: Address = to.parse().map_err(|error| StoreError::Format {
+            path: path.display().to_string(),
+            problem: format!("{to:?}: {error}"),
+        })?;
+        state.record_migration(Moved::new(from, to));
+    }
+
     let key = Key::from_hex(&document.digest_key).ok_or_else(|| StoreError::Format {
         path: path.display().to_string(),
         problem: "digest_key is not thirty-two bytes of hexadecimal".to_owned(),
@@ -415,6 +432,11 @@ pub fn save(path: &Path, state: &State, key: &Key) -> Result<(), StoreError> {
     let document = Document {
         version: FORMAT_VERSION,
         digest_key: key.to_hex(),
+        migrations: state
+            .migrations()
+            .iter()
+            .map(|moved| (moved.from().to_string(), moved.to().to_string()))
+            .collect(),
         resources: state
             .addresses()
             .filter_map(|address| {

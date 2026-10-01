@@ -23,7 +23,7 @@ use std::fmt;
 
 use crate::address::{Address, Target};
 use crate::attribute::Attribute;
-use crate::graph::{Graph, GraphError, Stage, StageKind};
+use crate::graph::{Graph, GraphError, Moved, Stage, StageKind};
 use crate::observed::Observed;
 use crate::plan::{
     AttributeDelta, Change, ChangeKind, Confidence, Merge, Outdated, Plan, PlanStage, Unreachable,
@@ -120,6 +120,18 @@ pub enum PlanError {
         /// Each step round the cycle.
         cycle: Vec<Step>,
     },
+    /// A rename that would change the provider, the kind or the slot of a
+    /// resource. A rename migrates the address, not what the resource is; see
+    /// 0028.
+    #[error(
+        "{from} cannot be renamed to {to}: a rename cannot change the provider, the kind or the slot"
+    )]
+    Move {
+        /// Where it was declared.
+        from: Address,
+        /// Where it is declared now.
+        to: Address,
+    },
 }
 
 /// One step round an order a run cannot follow: `later` has to come after
@@ -197,6 +209,45 @@ fn steps(cycle: &[Step]) -> String {
     format!("{joined}. Change one of them in a run of its own first")
 }
 
+/// The renames this plan applies, and where each new address finds its record.
+///
+/// A rename is a declared migration (decision 0028): the record at `from` is
+/// the record for `to`, so `to` is planned against what was recorded at `from`
+/// and `from` is not removed. A migration already recorded in state is spent
+/// and is not carried again. A rename across a provider, a kind or a slot is
+/// refused.
+#[dacc_derive::doc_anchor(id = "inv-plan-013")]
+#[allow(
+    clippy::type_complexity,
+    reason = "a rename migrates a record to its new address and reports the spent ones; the three collections are one decision"
+)]
+fn declared_migrations(
+    graph: &Graph,
+    state: &State,
+) -> Result<(BTreeMap<Address, Address>, Vec<Moved>, Vec<Moved>), PlanError> {
+    let mut moves: BTreeMap<Address, Address> = BTreeMap::new();
+    let mut migrations: Vec<Moved> = Vec::new();
+    let mut spent: Vec<Moved> = Vec::new();
+    for moved in graph.migrations() {
+        if moved.from().provider() != moved.to().provider()
+            || moved.from().kind() != moved.to().kind()
+            || moved.from().slot() != moved.to().slot()
+        {
+            return Err(PlanError::Move {
+                from: moved.from().clone(),
+                to: moved.to().clone(),
+            });
+        }
+        if state.migrations().contains(moved) {
+            spent.push(moved.clone());
+        } else {
+            moves.insert(moved.to().clone(), moved.from().clone());
+            migrations.push(moved.clone());
+        }
+    }
+    Ok((moves, migrations, spent))
+}
+
 /// Computes what would have to happen for the world to match the configuration.
 ///
 /// # Errors
@@ -242,6 +293,11 @@ pub fn plan_at(
     one_thing_once(graph, schema)?;
     reactions_allowed(graph, schema)?;
 
+    // A rename is a declared migration: the record at `from` is the record for
+    // `to`, and `from` is not removed. See 0028.
+    let (moves, migrations, spent) = declared_migrations(graph, state)?;
+    let migrating: BTreeSet<Address> = moves.values().cloned().collect();
+
     // Everything state remembers that the configuration still asks for —
     // records and entries alike, because that is what `abandoned` decides over.
     // Records alone, and an address remembered only by an entry was removed and
@@ -250,7 +306,17 @@ pub fn plan_at(
         .remembered()
         .filter(|address| graph.get(address).is_some())
         .collect();
-    let doomed = state.abandoned(&declared);
+    let doomed: Vec<Vec<Address>> = state
+        .abandoned(&declared)
+        .into_iter()
+        .map(|level| {
+            level
+                .into_iter()
+                .filter(|address| !migrating.contains(address))
+                .collect()
+        })
+        .filter(|level: &Vec<Address>| !level.is_empty())
+        .collect();
     let planning = Planning {
         graph,
         observed,
@@ -264,6 +330,9 @@ pub fn plan_at(
         doomed,
         dependencies,
         holds: holding(state),
+        moves,
+        migrations,
+        spent,
     };
 
     // Holding goes both ways. A removal waits while something recorded after it
@@ -352,6 +421,15 @@ struct Planning<'a> {
     now: Written,
     dependencies: BTreeMap<&'a Address, BTreeSet<&'a Address>>,
     stages: Vec<Stage>,
+    /// A rename migrates the record: the new address's record lives at the old
+    /// one until the migration is applied. Keyed by the new address.
+    moves: BTreeMap<Address, Address>,
+    /// The renames this plan applies, so apply can move the records and record
+    /// them. Already-applied renames are not here.
+    migrations: Vec<Moved>,
+    /// The renames this state has already applied, which the plan reports can
+    /// be removed from the configuration.
+    spent: Vec<Moved>,
     /// What state remembers and the configuration no longer declares, in the
     /// order it can be removed in.
     doomed: Vec<Vec<Address>>,
@@ -529,7 +607,7 @@ impl Planning<'_> {
 
                 // A reaction an earlier run began and did not finish is owed, and
                 // stays owed until it is paid. See decision 0026.
-                let record = self.state.get(address);
+                let record = self.state.get(self.moves.get(address).unwrap_or(address));
                 let owed: Vec<Address> = record
                     .map(|record| record.owed().iter().cloned().collect())
                     .unwrap_or_default();
@@ -556,7 +634,9 @@ impl Planning<'_> {
                             })
                             .unwrap_or_default(),
                         recorded: record.map(Record::depends_on),
-                        entry: self.state.marked(address),
+                        entry: self
+                            .state
+                            .marked(self.moves.get(address).unwrap_or(address)),
                         takes_over: reads_what_is_taken,
                     },
                 )? {
@@ -821,6 +901,8 @@ impl Planning<'_> {
             held,
             walk.outdated,
             walk.merges,
+            self.migrations.clone(),
+            self.spent.clone(),
         ))
     }
 

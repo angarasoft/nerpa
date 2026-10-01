@@ -1092,6 +1092,89 @@ fn a_resource_renamed_at_the_same_path_converges_in_one_run() {
     );
 }
 
+/// A rename declared with `moved` keeps the resource's identity: the plan
+/// proposes no destruction and no recreation, and apply moves the record to the
+/// new address. See decision 0028.
+#[test]
+#[dacc_derive::doc_anchor(id = "a-declared-rename-keeps-its-identity")]
+fn a_declared_rename_keeps_its_identity() {
+    let scratch = Scratch::new("rename-keeps-identity");
+    let providers = providers();
+    let mut state = State::new();
+    let path = scratch.join("motd");
+
+    let file = |name: &str| {
+        Resource::new(address(&format!("os:file.{name}@localhost")))
+            .with("path", path.clone())
+            .with("content", "hello\n")
+    };
+    let converge = |graph: &Graph, state: &mut State| {
+        let observed = observe(graph, &providers, &machines(), state).expect("readable");
+        let planned =
+            plan(graph, &observed, state, &providers.schema(), secrets()).expect("plannable");
+        apply(
+            &planned,
+            &providers,
+            &machines(),
+            &observed,
+            state,
+            secrets(),
+            &mut kept,
+        )
+        .expect("applies");
+    };
+
+    converge(&graph_of(vec![file("old")]), &mut state);
+
+    let renamed = graph_of(vec![file("new")]).moved(
+        address("os:file.old@localhost"),
+        address("os:file.new@localhost"),
+    );
+    let observed = observe(&renamed, &providers, &machines(), &state).expect("readable");
+    let planned =
+        plan(&renamed, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+
+    assert!(
+        planned.is_empty(),
+        "a rename is not a delete and a create: {planned:?}"
+    );
+    assert_eq!(
+        planned.migrations().len(),
+        1,
+        "the migration is what the plan carries: {planned:?}"
+    );
+
+    apply(
+        &planned,
+        &providers,
+        &machines(),
+        &observed,
+        &mut state,
+        secrets(),
+        &mut kept,
+    )
+    .expect("applies");
+
+    assert_eq!(
+        fs::read_to_string(&path).ok().as_deref(),
+        Some("hello\n"),
+        "the file survives the rename"
+    );
+    assert!(
+        state.get(&address("os:file.new@localhost")).is_some(),
+        "the record moved to the new address"
+    );
+    assert!(
+        state.get(&address("os:file.old@localhost")).is_none(),
+        "the old address holds nothing"
+    );
+    assert_eq!(
+        state.migrations().len(),
+        1,
+        "state remembers the applied migration"
+    );
+}
+
 /// A directory whose declaration goes, holding a file that moves out of it, is
 /// removed after the file has moved. Removals came first, so the directory was
 /// removed while the file was still in it, the removal refused, and every later run

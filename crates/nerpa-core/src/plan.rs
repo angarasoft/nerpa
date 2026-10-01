@@ -24,7 +24,7 @@ use std::collections::BTreeSet;
 
 use crate::address::{Address, Target};
 use crate::attribute::{Choice, Reference};
-use crate::graph::StageKind;
+use crate::graph::{Moved, StageKind};
 use std::fmt;
 
 use crate::secret::{Recorded, Sealed, Source};
@@ -749,10 +749,18 @@ pub struct Plan {
     outdated: Vec<Outdated>,
     #[serde(default)]
     merges: Vec<Merge>,
+    #[serde(default)]
+    migrations: Vec<Moved>,
+    #[serde(default)]
+    spent: Vec<Moved>,
     blast_radius: BlastRadius,
 }
 
 impl Plan {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the plan's parts stay together so the compatibility surface serializes in one place"
+    )]
     pub(crate) fn new(
         stages: Vec<PlanStage>,
         unreachable: Vec<Unreachable>,
@@ -760,6 +768,8 @@ impl Plan {
         held: Vec<Held>,
         outdated: Vec<Outdated>,
         merges: Vec<Merge>,
+        migrations: Vec<Moved>,
+        spent: Vec<Moved>,
     ) -> Self {
         let mut blast_radius = BlastRadius {
             unreachable: unreachable.len(),
@@ -794,6 +804,8 @@ impl Plan {
             held,
             outdated,
             merges,
+            migrations,
+            spent,
             blast_radius,
         }
     }
@@ -815,6 +827,19 @@ impl Plan {
     #[must_use]
     pub fn merges(&self) -> &[Merge] {
         &self.merges
+    }
+
+    /// The renames this plan applies, in declaration order.
+    #[must_use]
+    pub fn migrations(&self) -> &[Moved] {
+        &self.migrations
+    }
+
+    /// The renames this state has already applied, in declaration order, which
+    /// can be removed from the configuration.
+    #[must_use]
+    pub fn spent(&self) -> &[Moved] {
+        &self.spent
     }
 
     /// The resources nothing can be said about, in a stable order.
@@ -964,6 +989,17 @@ impl Plan {
         out.extend_from_slice(&value::length(self.stages.len()));
         for stage in &self.stages {
             encode_stage(stage, &mut out);
+        }
+        // Migrations and merges write no machine, but they are part of what the
+        // plan says: two plans differing only in them must not share a number.
+        out.extend_from_slice(&value::length(self.migrations.len()));
+        for moved in &self.migrations {
+            value::text(&moved.from().to_string(), &mut out);
+            value::text(&moved.to().to_string(), &mut out);
+        }
+        out.extend_from_slice(&value::length(self.merges.len()));
+        for merge in &self.merges {
+            value::text(&merge.address().to_string(), &mut out);
         }
         Ok(PlanDigest(*blake3::hash(&out).as_bytes()))
     }
@@ -1139,12 +1175,15 @@ fn encode_source(source: &Source, out: &mut Vec<u8>) {
 impl serde::Serialize for Plan {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeMap as _;
-        let mut map = serializer.serialize_map(Some(7))?;
+        let mut map = serializer.serialize_map(Some(10))?;
         map.serialize_entry("stages", &self.stages)?;
         map.serialize_entry("unreachable", &self.unreachable)?;
         map.serialize_entry("waiting", &self.waiting)?;
         map.serialize_entry("held", &self.held)?;
         map.serialize_entry("outdated", &self.outdated)?;
+        map.serialize_entry("merges", &self.merges)?;
+        map.serialize_entry("migrations", &self.migrations)?;
+        map.serialize_entry("spent", &self.spent)?;
         map.serialize_entry("blast_radius", &self.blast_radius)?;
         // `null` rather than absent when there is none: a reader that finds no
         // key cannot tell an old document from an unhashable plan, and those

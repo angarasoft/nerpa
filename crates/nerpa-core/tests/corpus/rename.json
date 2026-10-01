@@ -1,0 +1,31 @@
+{
+  "stages": [],
+  "unreachable": [],
+  "waiting": [],
+  "held": [],
+  "outdated": [],
+  "merges": [],
+  "migrations": [
+    {
+      "from": "yandex:instance.old",
+      "to": "yandex:instance.db"
+    }
+  ],
+  "spent": [],
+  "blast_radius": {
+    "creates": 0,
+    "updates": 0,
+    "replaces": 0,
+    "deletes": 0,
+    "reacts": 0,
+    "adopts": 0,
+    "reorders": 0,
+    "unresolved": 0,
+    "unreachable": 0,
+    "waiting": 0,
+    "held": 0,
+    "outdated": 0,
+    "nodes": []
+  },
+  "digest": "1beb749f24c3e193589c0df8b19fbba22084a1fa0661470e335cfe1e861d12ef"
+}

@@ -190,6 +190,8 @@ pub mod i0060;
 pub mod i0061;
 /// An invariant record.
 pub mod i0062;
+/// An invariant record.
+pub mod i0063;
 
 /// Every invariant, in order. Kept by hand until the scan learns the local type.
 pub static ALL_INVARIANTS: &[&Invariant] = &[
@@ -255,4 +257,5 @@ pub static ALL_INVARIANTS: &[&Invariant] = &[
     &i0060::INVARIANT,
     &i0061::INVARIANT,
     &i0062::INVARIANT,
+    &i0063::INVARIANT,
 ];

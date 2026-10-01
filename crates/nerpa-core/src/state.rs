@@ -25,6 +25,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::address::{Address, Target};
+use crate::graph::Moved;
 use crate::plan::ChangeKind;
 use crate::provider::Afterwards;
 use crate::provider::Attributes;
@@ -410,6 +411,8 @@ pub struct State {
     /// At most one for each address: a change in flight, or an entry a failed
     /// one left. The next mark for an address replaces what is there.
     marks: BTreeMap<Address, Mark>,
+    /// The renames this state has applied, by their two endpoints. See 0028.
+    migrations: BTreeSet<Moved>,
 }
 
 impl State {
@@ -437,6 +440,17 @@ impl State {
     #[must_use]
     pub fn marked(&self, address: &Address) -> Option<&Mark> {
         self.marks.get(address)
+    }
+
+    /// Records a rename as applied in this state.
+    pub fn record_migration(&mut self, moved: Moved) {
+        self.migrations.insert(moved);
+    }
+
+    /// The renames this state has applied.
+    #[must_use]
+    pub fn migrations(&self) -> &BTreeSet<Moved> {
+        &self.migrations
     }
 
     /// Every mark, by address.

@@ -14,6 +14,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
+use nerpa_core::Moved;
 use nerpa_core::plan::{Held, Merge, Outdated, Unreachable, Waiting};
 use nerpa_core::secret::Recorded;
 use nerpa_core::state::Written;
@@ -27,6 +28,7 @@ pub(crate) fn plan(plan: &Plan) -> String {
         && plan.is_complete()
         && plan.outdated().is_empty()
         && plan.merges().is_empty()
+        && plan.spent().is_empty()
     {
         return "nothing to do: the world already matches the configuration\n".to_owned();
     }
@@ -41,6 +43,7 @@ pub(crate) fn plan(plan: &Plan) -> String {
     out.push_str(&holds(plan.held()));
     out.push_str(&behind(plan.outdated()));
     out.push_str(&to_merge(plan.merges()));
+    out.push_str(&spent_migrations(plan.spent()));
 
     for (number, stage) in plan.stages().iter().enumerate() {
         let _ = writeln!(out, "\nstage {} · {}", number + 1, describe(stage.kind()));
@@ -114,6 +117,31 @@ fn to_merge(merges: &[Merge]) -> String {
         let _ = writeln!(out, "    {} · hand it to a person", entry.address());
     }
     out.push_str("  nothing is proposed: a hand-edited file is not silently replaced.\n");
+    out
+}
+
+/// Renames already applied in this state, which the configuration can drop.
+///
+/// Never among the stages, and not work: the migration is done. Printed so a
+/// person knows the `moved` declaration has served its purpose and can go, which
+/// is what Terraform cannot say (decision 0028).
+fn spent_migrations(spent: &[Moved]) -> String {
+    if spent.is_empty() {
+        return String::new();
+    }
+
+    let mut out = format!(
+        "\n  {} renames are already applied in this state and can be removed from the configuration:\n",
+        spent.len()
+    );
+    for migration in spent {
+        let _ = writeln!(
+            out,
+            "    {} → {} · remove this `moved`",
+            migration.from(),
+            migration.to()
+        );
+    }
     out
 }
 
@@ -503,8 +531,8 @@ mod tests {
     use nerpa_core::provider::Attributes;
     use nerpa_core::state::{Record, State, Written};
     use nerpa_core::{
-        ExecutionDomain, Graph, Kind, Observed, Provider, Reference, Resource, Schema, Target,
-        Value,
+        ExecutionDomain, Graph, Kind, Moved, Observed, Provider, Reference, Resource, Schema,
+        Target, Value,
     };
 
     use nerpa_core::secret::{Key, Recorded, Remembered, Secrets};
@@ -543,6 +571,30 @@ mod tests {
 
     fn rendered(graph: &Graph, observed: &Observed, state: &State, schema: &Schema) -> String {
         render(&planner::plan(graph, observed, state, schema, secrets()).unwrap())
+    }
+
+    /// A rename this state has already applied is reported as removable, which
+    /// is the report Terraform cannot give (decision 0028).
+    #[test]
+    fn a_spent_rename_is_reported_as_removable() {
+        let graph = graph_of(vec![
+            Resource::new(address("os:file.new@web-01")).with("path", "/etc/motd"),
+        ])
+        .moved(address("os:file.old@web-01"), address("os:file.new@web-01"));
+        let mut state = State::new();
+        state.record_migration(Moved::new(
+            address("os:file.old@web-01"),
+            address("os:file.new@web-01"),
+        ));
+        let text = rendered(&graph, &Observed::new(), &state, &Schema::new());
+        assert!(
+            text.contains("can be removed from the configuration"),
+            "{text}"
+        );
+        assert!(
+            text.contains("os:file.old@web-01 → os:file.new@web-01"),
+            "{text}"
+        );
     }
 
     /// The credential these two tests go looking for in the output.

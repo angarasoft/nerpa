@@ -228,6 +228,25 @@ pub(crate) fn nerpa(builder: &mut GlobalsBuilder) {
         Ok(NoneType)
     }
 
+    /// Declares a rename: the resource at `from` is now declared at `to`, and
+    /// its identity — the thing on the machine — does not change (decision
+    /// 0028). Without this, a rename reads as a delete and a create.
+    fn moved<'v>(
+        #[starlark(require = pos)] from: &str,
+        #[starlark(require = pos)] to: &str,
+        eval: &mut Evaluator<'v, '_, '_>,
+    ) -> starlark::Result<NoneType> {
+        let store = declarations(eval)?;
+        let from: Address = from
+            .parse()
+            .map_err(|error| starlark::Error::new_value(Rejected::Address(error)))?;
+        let to: Address = to
+            .parse()
+            .map_err(|error| starlark::Error::new_value(Rejected::Address(error)))?;
+        store.add_moved(from, to);
+        Ok(NoneType)
+    }
+
     /// Renders a template from the configuration's own directory.
     ///
     /// The values it may see are the ones handed to it here and nothing else.

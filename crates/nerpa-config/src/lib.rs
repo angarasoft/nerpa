@@ -96,6 +96,7 @@ pub(crate) struct Declarations {
     renderer: crate::template::Renderer,
     resources: RefCell<Vec<Resource>>,
     nodes: RefCell<Vec<(Target, Option<Address>)>>,
+    moves: RefCell<Vec<(Address, Address)>>,
     problems: RefCell<Vec<String>>,
     required_version: RefCell<Option<String>>,
     schema: nerpa_core::Schema,
@@ -113,6 +114,7 @@ impl Declarations {
             renderer,
             resources: RefCell::new(Vec::new()),
             nodes: RefCell::new(Vec::new()),
+            moves: RefCell::new(Vec::new()),
             problems: RefCell::new(Vec::new()),
             required_version: RefCell::new(None),
             schema,
@@ -141,6 +143,10 @@ impl Declarations {
 
     pub(crate) fn add_node(&self, target: Target, provided_by: Option<Address>) {
         self.nodes.borrow_mut().push((target, provided_by));
+    }
+
+    pub(crate) fn add_moved(&self, from: Address, to: Address) {
+        self.moves.borrow_mut().push((from, to));
     }
 
     pub(crate) fn add_problem(&self, problem: String) {
@@ -262,6 +268,9 @@ pub fn evaluate_with(
             Some(address) => graph.managed_by(target, address),
             None => graph.preexisting(target),
         }
+    }
+    for (from, to) in declarations.moves.take() {
+        graph = graph.moved(from, to);
     }
     Ok(graph)
 }
