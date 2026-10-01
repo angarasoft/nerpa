@@ -589,11 +589,13 @@ two slots side by side until the new one has shown itself.
 
 ## Packages — `0038` · partly built
 
-Two families and a refusal by name for the rest. `rpm` with `dnf` installs
+Three families, and a refusal by name for the rest. `rpm` with `dnf` installs
 prebuilt packages inside a transaction; `portage` with `emerge` builds from
 source, keeps versions side by side in slots, and spells a name as
-`category/name`. They are far enough apart that a shape surviving both will
-survive `apt`, and a third family added now would prove nothing.
+`category/name`; `dpkg` with `apt-get` installs a pinned version and removes
+one. The first two were built first, and were far enough apart that a shape
+surviving both would survive `apt` — which the third family then showed on a
+Debian machine, measured before it was written down like the other two.
 
 What a family is comes off the machine, in the fact journey that now runs before
 any provider is asked. A machine calling itself something this does not know is
