@@ -1,0 +1,5 @@
+event = "landed"
+work = "w-rename-keeps-identity"
+at = "2026-10-01T11:10:03Z"
+commit = "832d3d70d6e8a9af3d6917f755b70fa300cac242"
+tree = "bdbb5130d0155f660f7bc76e533ce4e8b9527448"
