@@ -1,6 +1,0 @@
-event = "landed"
-work = "w-actor-identity"
-at = "2026-10-01T13:35:55Z"
-commit = "ff71a480418db9c1b135fe31d5b9c4fd33ea7b7a"
-tree = "f4e983b929286df6bfb0cbb0c67df6010128b3f3"
-evidence = "history"
