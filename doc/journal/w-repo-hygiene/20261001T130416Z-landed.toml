@@ -1,0 +1,5 @@
+event = "landed"
+work = "w-repo-hygiene"
+at = "2026-10-01T13:04:16Z"
+commit = "1206e97a0d120c23583824ba796212a984966fe0"
+tree = "c7d7b32819098e29ae64a47370165f9fc254480d"
