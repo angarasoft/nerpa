@@ -112,7 +112,18 @@ fn ci() -> Result<(), String> {
 /// AGENTS.md is generated, and a generated file nobody re-generates is a
 /// generated file that disagrees with its source. The check is read-only: it
 /// says the file is stale and names the command that writes it.
+///
+/// It reads the registry through dacc, which reads it through the repository —
+/// and the gate's full tier runs on a tree exported from a commit, which has
+/// none. Every commit's own gate runs in the repository and checks this, so
+/// standing in an export is reported as a step not run — the shape `external
+/// names` already takes — rather than failing a tree for where it happens to
+/// be standing.
 fn agents() -> Result<(), String> {
+    if shell::git(&["rev-parse", "--show-toplevel"]).is_err() {
+        eprintln!("  agents: not run — this tree is an export without a repository");
+        return Ok(());
+    }
     shell::cargo_tool(
         "dacc",
         "cargo install cargo-dacc --locked",
