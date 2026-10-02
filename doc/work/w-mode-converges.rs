@@ -7,7 +7,7 @@ dacc_work::work!("w-mode-converges",
     slice: crate::slice::s_os_converges,
     origin: WorkOrigin::Divergence {
         specification: crate::rfc::rfc_2026_002,
-        violated: NonEmptyStr::new("A file mode is written as text and compared as the number it spells; a number, or text that spells no mode a file can have, is refused while planning."),
+        limitation: crate::limitation::l_mode_spells_a_number,
     },
     taxon: taxon!(Subsystem, Os),
     radius: BlastRadius::Local,

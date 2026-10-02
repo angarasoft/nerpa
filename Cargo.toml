@@ -44,11 +44,11 @@ nerpa-provider-os = { path = "crates/nerpa-provider-os", version = "=0.0.1" }
 # dacc: the methodology the registry runs on, and the pilot that tests it as
 # the first project outside dacc itself. Published on crates.io, so the tree
 # names a version rather than a revision.
-dacc-core = "0.3.0"
-dacc-knowledge = "0.3.0"
-dacc-work = "0.3.0"
-dacc-scan = "0.3.0"
-dacc-derive = "0.3.0"
+dacc-core = "0.5.0"
+dacc-knowledge = "0.5.0"
+dacc-work = "0.5.0"
+dacc-scan = "0.5.0"
+dacc-derive = "0.5.0"
 # Dates for decision records. Arrives with dacc; named here so the tree sees
 # one version of it rather than two.
 chrono = { version = "0.4.32", default-features = false, features = ["std"] }

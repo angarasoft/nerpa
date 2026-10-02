@@ -7,7 +7,7 @@ dacc_work::work!("w-stale-attribute-reference",
     slice: crate::slice::s_core_converges,
     origin: WorkOrigin::Divergence {
         specification: crate::rfc::rfc_2026_002,
-        violated: NonEmptyStr::new("Applying a plan and planning again produces an empty plan."),
+        limitation: crate::limitation::l_replanning_is_empty,
     },
     taxon: taxon!(Subsystem, Core),
     radius: BlastRadius::Crate,

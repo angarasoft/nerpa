@@ -7,7 +7,7 @@ dacc_work::work!("w-lost-machine-per-resource",
     slice: crate::slice::s_core_converges,
     origin: WorkOrigin::Divergence {
         specification: crate::rfc::rfc_2026_002,
-        violated: NonEmptyStr::new("A machine that did not answer is refused per resource, not per run."),
+        limitation: crate::limitation::l_refusal_per_resource,
     },
     taxon: taxon!(Subsystem, Core),
     radius: BlastRadius::Crate,

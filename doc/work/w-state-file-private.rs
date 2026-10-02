@@ -7,7 +7,7 @@ dacc_work::work!("w-state-file-private",
     slice: crate::slice::s_core_converges,
     origin: WorkOrigin::Divergence {
         specification: crate::rfc::rfc_2026_002,
-        violated: NonEmptyStr::new("State holds references to secrets and digests of their values, never the values."),
+        limitation: crate::limitation::l_state_keeps_no_values,
     },
     taxon: taxon!(Subsystem, Core),
     radius: BlastRadius::Crate,

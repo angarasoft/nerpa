@@ -7,7 +7,7 @@ dacc_work::work!("w-control-domain-unreachable",
     slice: crate::slice::s_core_converges,
     origin: WorkOrigin::Divergence {
         specification: crate::rfc::rfc_2026_002,
-        violated: NonEmptyStr::new("What waits for something that cannot be planned is said to wait for it, whatever its domain, and only a machine that did not answer is reported as one."),
+        limitation: crate::limitation::l_waiting_says_waiting,
     },
     taxon: taxon!(Subsystem, Core),
     radius: BlastRadius::Crate,

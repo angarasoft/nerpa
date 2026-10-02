@@ -472,33 +472,33 @@ dependencies = [
 
 [[package]]
 name = "dacc-core"
-version = "0.3.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e8aa9b7dc003556982ebf064f8da6e531bdf1c2cb987392a5e01d3c3f6e8d8f4"
+checksum = "34f7541159bb9a7b162c62d4393c1118a68a7bf40781794c1f009ad3c9f31614"
 
 [[package]]
 name = "dacc-derive"
-version = "0.3.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60c7a577940324f9eea0bd89fa351010ef00b123284dad80b5bcf8130e1456b8"
+checksum = "3c80991dc6dbcc91140820fe30ec85f48eaa32ac05d2020c4d1b048be7850721"
 dependencies = [
  "dacc-core",
 ]
 
 [[package]]
 name = "dacc-journal"
-version = "0.3.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "408d6f7b65325d0c76a5c9704a6de2d27fad39a2b4f0e6ffadf0e3bc3a84a0a5"
+checksum = "2604fb727d71b2b37faee31075f1438e84fa6500f213cccbe37ebf4e22156602"
 dependencies = [
  "dacc-core",
 ]
 
 [[package]]
 name = "dacc-knowledge"
-version = "0.3.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6895111d2eaf177d781ab397a912d7ce33120edd536588ffb9165d1a27e9a968"
+checksum = "97ef70c51205dee69a5c73b96355ae4f98ca407180b66e8547c0b57623d59b17"
 dependencies = [
  "chrono",
  "dacc-core",
@@ -506,11 +506,12 @@ dependencies = [
 
 [[package]]
 name = "dacc-scan"
-version = "0.3.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "27e21c82cd9ffec154aa0c12c1819c2935cbd62857cbbf9d4b5779dbfc6806ce"
+checksum = "009b613f5fb8f366f20bfbe4ee93fedba99889a843c923a2f5ef8e036ff751f9"
 dependencies = [
  "dacc-core",
+ "dacc-derive",
  "dacc-journal",
  "proc-macro2",
  "quote",
@@ -519,11 +520,12 @@ dependencies = [
 
 [[package]]
 name = "dacc-work"
-version = "0.3.0"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d24acdfe1352a3bd0e64ee4f818a2282146921c303bfad25c483a32e0efae62"
+checksum = "26522b17ed373ce3db443024ed472b5d625385d5fa7f262c90cd445847925922"
 dependencies = [
  "dacc-core",
+ "dacc-derive",
 ]
 
 [[package]]

@@ -912,6 +912,12 @@ without ceremony until the first stage is complete.
   verifies — so the count is part of the answer — and who wrote any of it is
   what the detached signature is for. `INV-LOG-001`, enforced.
 
+- The registry runs on dacc 0.5.0. A divergence is a record of its own now: a
+  work's `Divergence` origin points at a `Limitation` by path instead of naming
+  the violated assertion in free text, so an undeclared divergence does not
+  compile. The journal fold reads both shapes — the file the CLI writes and the
+  directories older events sit in — so the book's work states read one history.
+
 - One party applies and another signs (`0009`, `0067`). Where the fleet names
   who may sign — an OpenSSH `allowed_signers` file under `[approval]` —
   `apply` proceeds only over a plan a third party has signed: a detached

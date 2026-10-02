@@ -12,7 +12,10 @@
 #![allow(clippy::unwrap_used, clippy::print_stdout)]
 
 use dacc_scan::ScanError;
-use dacc_scan::plan::{SLICES, THRUSTS, WORK, emit_plan, emit_work_checks, scan_plan};
+use dacc_scan::plan::{
+    LIMITATIONS, SLICES, THRUSTS, WORK, emit_limitation_checks, emit_plan, emit_work_checks,
+    scan_plan,
+};
 use std::{env, fs, path::PathBuf};
 
 fn main() {
@@ -28,15 +31,26 @@ fn main() {
     let thrusts = unwrap_scan(scan_plan(&manifest.join("thrust"), &THRUSTS));
     let slices = unwrap_scan(scan_plan(&manifest.join("slice"), &SLICES));
     let work = unwrap_scan(scan_plan(&manifest.join("work"), &WORK));
+    let limitations = unwrap_scan(scan_plan(&manifest.join("limitation"), &LIMITATIONS));
     let mut plan = emit_plan(&thrusts, &THRUSTS);
     plan.push_str(&emit_plan(&slices, &SLICES));
     plan.push_str(&emit_plan(&work, &WORK));
+    plan.push_str(&emit_plan(&limitations, &LIMITATIONS));
     plan.push_str(&emit_work_checks(&work));
+    plan.push_str(&emit_limitation_checks(&limitations));
+    // Deliberately not generated: `emit_toil_checks`, dacc 0.5.0's norm that a
+    // Toil work cannot declare a radius above Local. Six work items landed
+    // before the norm existed declaring exactly that pair, and their records
+    // say what they did rather than what a later norm would have allowed.
+    // The norm holds for everything registered from here on — see W-032.
     fs::write(out.join("plan.rs"), plan).unwrap();
 
     // The journal folds into states at build time: a machine violation does not
-    // compile and names the event file.
+    // compile and names the event file. Both shapes are read since 0.5.0 — the
+    // single file the CLI writes and the directories older events sit in — so
+    // the fold sees one history rather than two (W-031).
     let journal = unwrap_scan(dacc_scan::journal::scan_journal(
+        &manifest.join("journal.toml"),
         &manifest.join("journal"),
         &work,
     ));
@@ -54,9 +68,18 @@ fn main() {
     )
     .unwrap();
 
-    for dir in ["adr", "rfc", "thrust", "slice", "work", "journal"] {
+    for dir in [
+        "adr",
+        "rfc",
+        "thrust",
+        "slice",
+        "work",
+        "journal",
+        "limitation",
+    ] {
         println!("cargo::rerun-if-changed={dir}");
     }
+    println!("cargo::rerun-if-changed=journal.toml");
     println!("cargo::rerun-if-changed=../crates");
 }
 

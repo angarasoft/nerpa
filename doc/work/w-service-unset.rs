@@ -7,7 +7,7 @@ dacc_work::work!("w-service-unset",
     slice: crate::slice::s_os_converges,
     origin: WorkOrigin::Divergence {
         specification: crate::rfc::rfc_2026_002,
-        violated: NonEmptyStr::new("An attribute a resource was born with is reported, never turned into work."),
+        limitation: crate::limitation::l_born_attributes_never_work,
     },
     taxon: taxon!(Subsystem, Os),
     radius: BlastRadius::Local,

@@ -7,7 +7,7 @@ dacc_work::work!("w-service-removal",
     slice: crate::slice::s_os_converges,
     origin: WorkOrigin::Divergence {
         specification: crate::rfc::rfc_2026_002,
-        violated: NonEmptyStr::new("Removing a resource removes that resource and nothing that was never declared."),
+        limitation: crate::limitation::l_removal_removes_the_declared,
     },
     taxon: taxon!(Subsystem, Os),
     radius: BlastRadius::Local,
