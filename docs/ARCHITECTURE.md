@@ -537,12 +537,17 @@ Terraform as data at build time; the binaries they came from are never shipped.
 A run carries an actor identity; static keys are not a mode. Built: `--as`
 carries who acts — with the scope and expiry a grant will check — into the
 plan, into its number, and into a run journal beside state, and a run without
-one does not start. Not built: a grant limiting a run to named kinds, targets
-and operations with an expiry, checked by the engine; `apply` requiring a
-detached signature over the plan hash from someone other than the proposer —
-and that hash covers the configuration revision, provider versions, state
-version and a digest of observed state, so it cannot be replayed against a
-changed world; the append-only log. State holds references and digests, never
+one does not start. Built: the log is an append-only hash chain — every entry
+carries the entry before it, from the first entry on, and
+`nerpa journal verify` names an entry rewritten, reordered or removed and
+says how much of the record stands (`INV-LOG-001`; the tail truncated and the
+whole log rewritten are outside a chain over itself, and the second is what
+the signature below is for). Not built: a grant limiting a run to named kinds,
+targets and operations with an expiry, checked by the engine; `apply`
+requiring a detached signature over the plan hash from someone other than the
+proposer — and that hash covers the configuration revision, provider
+versions, state version and a digest of observed state, so it cannot be
+replayed against a changed world. State holds references and digests, never
 secret values.
 
 ## Secrets — `0027` · partly built

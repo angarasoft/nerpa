@@ -904,6 +904,14 @@ without ceremony until the first stage is complete.
   host and the key belong to `ssh`. Every plan's number moves once for this.
   `INV-TRUST-001` moves from planned to enforced.
 
+- The run journal is an append-only hash chain (`0009`). Every entry carries
+  the entry before it, from the first entry on, so an entry rewritten,
+  reordered or removed breaks the chain, and `nerpa journal verify` names the
+  entry and says how much of the record stands. What a chain over itself
+  cannot prove is said rather than implied: truncating the tail still
+  verifies — so the count is part of the answer — and who wrote any of it is
+  what the detached signature is for. `INV-LOG-001`, enforced.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

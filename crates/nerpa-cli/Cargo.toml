@@ -17,6 +17,9 @@ name = "nerpa"
 path = "src/main.rs"
 
 [dependencies]
+# The run journal is a hash chain: blake3 is the same primitive the plan hash
+# and the state digests use, per the workspace manifest.
+blake3.workspace = true
 dacc-derive = { workspace = true }
 nerpa-config = { workspace = true }
 nerpa-core = { workspace = true }

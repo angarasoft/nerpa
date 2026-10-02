@@ -80,7 +80,10 @@ nothing to do: the world already matches the configuration
 ```
 
 Every run says who is acting in it (`--as`), and every run is a line in a
-journal beside the state file for whoever reads afterwards.
+journal beside the state file for whoever reads afterwards. The journal is an
+append-only hash chain — an entry rewritten, reordered or removed breaks it —
+and `nerpa journal verify` walks from the first entry and says whether it
+still holds.
 
 That number under the plan is a digest of everything the plan says and
 everything it was read from. A second run against an unchanged world produces it

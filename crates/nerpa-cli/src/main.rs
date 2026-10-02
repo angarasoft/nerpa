@@ -112,6 +112,22 @@ enum Task {
         #[arg(long, conflicts_with_all = ["machine", "control"], value_name = "ADDRESS")]
         entry: Option<String>,
     },
+    /// The run journal beside state, for a person reading afterwards.
+    Journal {
+        #[command(subcommand)]
+        what: JournalTask,
+    },
+}
+
+/// What to do with the run journal.
+#[derive(Subcommand)]
+enum JournalTask {
+    /// Say whether the log verifies from the first entry.
+    ///
+    /// A read of the record and nothing else: nothing is appended, because a
+    /// verification that wrote to the log it is reading would be verifying
+    /// something it had just changed.
+    Verify,
 }
 
 fn main() -> ExitCode {
@@ -426,6 +442,16 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
         return released;
     }
 
+    // The log's own question, answered before the configuration is read:
+    // verifying is about the record of what happened, not about what anybody
+    // declares.
+    if let Task::Journal {
+        what: JournalTask::Verify,
+    } = &arguments.task
+    {
+        return journal_verified(&arguments.state);
+    }
+
     let source = std::fs::read_to_string(&arguments.file)
         .map_err(|error| format!("{}: {error}", arguments.file.display()))?;
 
@@ -469,7 +495,9 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     // shared, so two plans may read at once and neither reads a live run's work
     // as though that run had ended.
     let taking = match arguments.task {
-        Task::Plan { .. } => shards::Taking::Reading,
+        // The journal's question is answered above and never gets this far;
+        // were it here, it reads.
+        Task::Plan { .. } | Task::Journal { .. } => shards::Taking::Reading,
         // Releasing returned above; it never gets this far.
         Task::Apply | Task::Release { .. } => shards::Taking::Writing,
     };
@@ -576,6 +604,19 @@ fn note(state: &Path, line: &str) {
     if let Err(problem) = journal::record(state, line) {
         eprintln!("nerpa: the run journal could not be written: {problem}");
     }
+}
+
+/// Says whether the log beside state verifies from the first entry. The count
+/// is the answer as much as the word is: a log of thirty entries that verifies
+/// and one of two are different claims about the same record.
+fn journal_verified(state: &Path) -> Result<(), String> {
+    let entries = journal::verify(state)?;
+    if entries == 0 {
+        println!("the log verifies from the first entry: it holds nothing yet");
+    } else {
+        println!("the log verifies from the first entry: {entries} entries");
+    }
+    Ok(())
 }
 
 // The step that decides whether one machine being down ends a run. Attacked
