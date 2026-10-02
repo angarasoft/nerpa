@@ -22,6 +22,13 @@ dacc_knowledge::rfc!(
         invariants it introduces live in the invariant registry, and the rest of
         the applying mechanism — shards, the recorder, parallelism — is internal
         design, not contract.
+
+        Corrected: 2026-10-02 — the invariants below were this record's own
+        words for four guarantees the registry holds in its own, so the contract
+        had no executors the registry could see. They are quoted from the
+        registry now — the home the paragraph above names — and one of them,
+        the write answered with a digest read back, gained the record it never
+        had. The guarantees are the four they always were.
     ",
     input_contract: r"
         The engine's request and the executor's response, framed as a length prefix
@@ -36,9 +43,9 @@ dacc_knowledge::rfc!(
         checks it (0041).
     ",
     invariants: nonempty_str![
-        "A frame whose version is not understood is refused rather than guessed at.",
-        "A length prefix over the bound is refused before a byte is reserved.",
-        "A secret travels sealed for the machine it describes, never as the value.",
+        "A frame written by a protocol version this build does not know is refused, not partly believed.",
+        "A frame's announced size is checked before any of it is allocated.",
+        "A premise leaves the planner only sealed for the machine it describes, a write that carries a secret says so, a private process answers with a seal, and an executor refuses any of them that arrives without one.",
         "A write is answered with a digest read back, and the engine checks it.",
     ],
     authors: nonempty_str!["Anishchuk Sergei"],

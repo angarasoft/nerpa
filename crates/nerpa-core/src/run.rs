@@ -807,6 +807,7 @@ fn confirmed_by(
 ///
 /// Returns [`RunError::Unconfirmed`] for an answer that is not what the write
 /// would have left behind.
+#[dacc_derive::doc_anchor(id = "inv-wire-004")]
 fn checked(
     became: Vec<nerpa_proto::Seen>,
     expecting: &BTreeMap<usize, nerpa_proto::Seen>,

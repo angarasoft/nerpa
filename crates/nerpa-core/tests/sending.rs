@@ -430,6 +430,7 @@ fn a_secret_carried_by_a_write_that_is_not_marked_secret_is_refused() {
 /// something nobody made, which no later reading can correct because the record
 /// would look exactly like the truth.
 #[test]
+#[dacc_derive::doc_anchor(id = "a-write-answered-with-the-wrong-digest-is-not-recorded-as-written")]
 fn a_write_answered_with_the_wrong_digest_is_not_recorded_as_written() {
     let ledger = Ledger::default();
     let providers = Providers::new().with(Box::new(Writes { carrying: false }));
