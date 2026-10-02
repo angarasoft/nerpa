@@ -912,6 +912,10 @@ without ceremony until the first stage is complete.
   verifies — so the count is part of the answer — and who wrote any of it is
   what the detached signature is for. `INV-LOG-001`, enforced.
 
+- `AGENTS.md` is generated from the registry by `cargo dacc emit all` — the
+  navigation, rituals and product settings an agent working here needs — and
+  `cargo xtask ci` refuses a tree where it is stale.
+
 - The registry runs on dacc 0.5.0. A divergence is a record of its own now: a
   work's `Divergence` origin points at a `Limitation` by path instead of naming
   the violated assertion in free text, so an undeclared divergence does not

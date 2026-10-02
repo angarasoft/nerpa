@@ -105,7 +105,19 @@ fn ci() -> Result<(), String> {
     invariants::check()?;
     book::check()?;
     docs::check()?;
+    agents()?;
     deny()
+}
+
+/// AGENTS.md is generated, and a generated file nobody re-generates is a
+/// generated file that disagrees with its source. The check is read-only: it
+/// says the file is stale and names the command that writes it.
+fn agents() -> Result<(), String> {
+    shell::cargo_tool(
+        "dacc",
+        "cargo install cargo-dacc --locked",
+        &["emit", "all", "--check"],
+    )
 }
 
 /// Points git at the hooks kept in this repository.

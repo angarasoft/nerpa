@@ -26,6 +26,7 @@ within a week.
 | How people are expected to behave | `CODE_OF_CONDUCT.md` |
 | What a report from outside must contain | `.github/ISSUE_TEMPLATE/` |
 | The book, and how it is assembled | `docs/book/` — chapters are generated, never checked in |
+| What an agent working here is told | `AGENTS.md` — generated from the registry by `cargo dacc emit all`, checked by the gate, never edited by hand |
 | How to work in the test suite | `docs/TESTING.md` |
 | What the gate enforces, and what review does | `docs/CODING_STANDARDS.md` |
 | Which kind of documentation answers which question | `docs/DOCUMENTATION.md` |
