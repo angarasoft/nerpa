@@ -22,6 +22,7 @@
     reason = "this is the terminal interface"
 )]
 
+mod approval;
 mod journal;
 mod render;
 
@@ -93,7 +94,13 @@ enum Task {
         json: bool,
     },
     /// Make it happen.
-    Apply,
+    Apply {
+        /// The approval over this plan: somebody else's detached signature
+        /// over its number (`0009`). Where the fleet names who may sign, this
+        /// is required.
+        #[arg(long, value_name = "FILE")]
+        approval: Option<PathBuf>,
+    },
     /// Say a machine is yours again after a run was killed while changing it.
     ///
     /// Nothing here can tell whether those changes arrived; somebody who can
@@ -111,6 +118,21 @@ enum Task {
         /// goes, because nothing remembers it any more.
         #[arg(long, conflicts_with_all = ["machine", "control"], value_name = "ADDRESS")]
         entry: Option<String>,
+    },
+    /// Sign a plan's number, as the third party whose approval an apply needs.
+    ///
+    /// The signer is somebody other than whoever proposed the plan (`0009`).
+    /// The key is handed to `ssh-keygen` rather than read here: it may be a
+    /// private key file, or a public one whose other half is in `ssh-agent`.
+    Sign {
+        /// The plan to approve, as `nerpa plan --json` wrote it.
+        plan: PathBuf,
+        /// The key to sign with.
+        #[arg(long = "with-key", value_name = "KEY")]
+        with_key: PathBuf,
+        /// Where the approval is written. Beside the plan, named after it.
+        #[arg(long, value_name = "FILE")]
+        out: Option<PathBuf>,
     },
     /// The run journal beside state, for a person reading afterwards.
     Journal {
@@ -452,6 +474,18 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
         return journal_verified(&arguments.state);
     }
 
+    // Signing approves a plan that already exists: no configuration, no state,
+    // no machines. The signer is the third party of `0009`, and their key goes
+    // to ssh-keygen rather than being read here (`0067`).
+    if let Task::Sign {
+        plan,
+        with_key,
+        out,
+    } = &arguments.task
+    {
+        return signed_with(plan, with_key, out.as_deref(), &actor);
+    }
+
     let source = std::fs::read_to_string(&arguments.file)
         .map_err(|error| format!("{}: {error}", arguments.file.display()))?;
 
@@ -495,11 +529,11 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     // shared, so two plans may read at once and neither reads a live run's work
     // as though that run had ended.
     let taking = match arguments.task {
-        // The journal's question is answered above and never gets this far;
-        // were it here, it reads.
-        Task::Plan { .. } | Task::Journal { .. } => shards::Taking::Reading,
+        // The journal's question and signing are answered above and never get
+        // this far; were they here, they read.
+        Task::Plan { .. } | Task::Journal { .. } | Task::Sign { .. } => shards::Taking::Reading,
         // Releasing returned above; it never gets this far.
-        Task::Apply | Task::Release { .. } => shards::Taking::Writing,
+        Task::Apply { .. } | Task::Release { .. } => shards::Taking::Writing,
     };
     let (mut state, key, _lock) =
         shards::opened(&arguments.state, taking).map_err(|error| error.to_string())?;
@@ -522,6 +556,42 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     let plan = planner::plan(&graph, &observed, &state, &providers.schema(), secrets)
         .map_err(|error| error.to_string())?
         .attributed_to(actor.clone());
+
+    // Where the fleet names who may sign, an apply runs only over a plan a
+    // third party has signed (`0009`). Checked before the plan is printed and
+    // long before anything is applied: nothing is said over a plan whose
+    // approval does not hold.
+    let signed_by = match (&arguments.task, fleet.approvers()) {
+        (
+            Task::Apply {
+                approval: Some(file),
+            },
+            Some(approvers),
+        ) => {
+            let held = approval::read(file)?;
+            Some(approval::checked(Path::new(approvers), &held, &plan)?)
+        }
+        (Task::Apply { .. }, Some(_)) => {
+            return Err(
+                "this fleet names who may sign, so apply needs --approval <FILE>: a \
+                 plan that a third party has not signed is not applied here (0009)"
+                    .to_owned(),
+            );
+        }
+        (
+            Task::Apply {
+                approval: Some(file),
+            },
+            None,
+        ) => {
+            return Err(format!(
+                "--approval {} holds an approval and nothing here asks for one: say \
+                 who may sign in the fleet's [approval], or apply without one",
+                file.display()
+            ));
+        }
+        _ => None,
+    };
 
     if let Task::Plan { json: true } = arguments.task {
         // The same object the text is rendered from. The moment these become two
@@ -575,10 +645,41 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     note(
         &arguments.state,
         &format!(
-            "apply {} · {} changes as {actor}",
+            "apply {} · {} changes as {actor}{}",
             what_number(&plan),
-            applied.changed()
+            applied.changed(),
+            signed_by.map_or_else(String::new, |signer| format!(", signed by {signer}"))
         ),
+    );
+    Ok(())
+}
+
+/// Signs a plan's number with the signer's key and writes the approval beside
+/// the plan, named after it.
+fn signed_with(
+    plan: &Path,
+    with_key: &Path,
+    out: Option<&Path>,
+    actor: &Actor,
+) -> Result<(), String> {
+    let text =
+        std::fs::read_to_string(plan).map_err(|error| format!("{}: {error}", plan.display()))?;
+    let approved: Plan = serde_json::from_str(&text).map_err(|error| {
+        format!(
+            "{}: this is not a plan this build can read: {error}",
+            plan.display()
+        )
+    })?;
+    let hold = approval::approved(actor.who(), with_key, &approved)?;
+    let mut named = plan.as_os_str().to_owned();
+    named.push(".approval");
+    let written = out.map_or_else(|| PathBuf::from(named), Path::to_path_buf);
+    approval::write(&written, &hold)?;
+    println!(
+        "signed {} as {}: {}",
+        what_number(&approved),
+        actor.who(),
+        written.display()
     );
     Ok(())
 }

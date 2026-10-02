@@ -1089,6 +1089,7 @@ dependencies = [
  "nerpa-core",
  "nerpa-provider-os",
  "nerpa-transport",
+ "serde",
  "serde_json",
  "tempfile",
 ]

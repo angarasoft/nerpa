@@ -85,6 +85,26 @@ append-only hash chain â€” an entry rewritten, reordered or removed breaks it â€
 and `nerpa journal verify` walks from the first entry and says whether it
 still holds.
 
+Where a deployment keeps who writes a change and who may make it apart, the
+fleet names the approvers:
+
+```toml
+[approval]
+approvers = "/etc/nerpa/approvers"
+```
+
+The plan is proposed and then signed by somebody else, who needs nothing but
+an ssh key of their own:
+
+```console
+$ nerpa plan --as alice@example.com --json > plan.json
+$ nerpa sign --as carol@example.com --with-key ~/.ssh/plan-key plan.json
+$ nerpa apply --as alice@example.com --approval plan.json.approval
+```
+
+Whoever proposed a plan cannot sign it, and an apply over a plan that moved
+since the signature is refused, naming what moved.
+
 That number under the plan is a digest of everything the plan says and
 everything it was read from. A second run against an unchanged world produces it
 again; a world that moved underneath produces a different one, which is what

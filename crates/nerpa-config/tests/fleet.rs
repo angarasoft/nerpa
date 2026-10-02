@@ -413,3 +413,47 @@ key = "/home/somebody/.ssh/id_ed25519"
     assert!(refused.contains("\"key\""), "{refused}");
     assert!(refused.contains("belong to `ssh`"), "{refused}");
 }
+
+/// Where a deployment keeps the two duties apart, the fleet names the
+/// approvers (`0009`). One that names none asks for no signature.
+#[test]
+fn a_fleet_says_who_may_sign_a_plan() {
+    let named = Fleet::read(
+        r#"
+[approval]
+approvers = "/etc/nerpa/approvers"
+
+[nodes.web-01]
+"#,
+    )
+    .expect("a fleet");
+    assert_eq!(named.approvers(), Some("/etc/nerpa/approvers"));
+
+    assert_eq!(
+        fleet().approvers(),
+        None,
+        "and one that names none says none"
+    );
+}
+
+/// The approval table is a closed set, like a node's fields: a field silently
+/// ignored would leave a document that says something no run does.
+#[test]
+fn an_approval_field_nobody_knows_is_refused_naming_it() {
+    let refused = Fleet::read(
+        r#"
+[approval]
+signers = "/etc/nerpa/approvers"
+"#,
+    )
+    .unwrap_err();
+    assert!(refused.contains("\"signers\""), "{refused}");
+}
+
+/// An approval table that says nobody may sign says nothing at all: naming the
+/// table without the approvers is refused rather than read as no policy.
+#[test]
+fn an_approval_table_that_nobody_may_sign_under_is_refused() {
+    let refused = Fleet::read("[approval]\n").unwrap_err();
+    assert!(refused.contains("approvers"), "{refused}");
+}

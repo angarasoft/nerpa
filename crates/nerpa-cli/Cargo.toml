@@ -26,12 +26,19 @@ nerpa-core = { workspace = true }
 nerpa-provider-os = { workspace = true }
 nerpa-transport = { workspace = true }
 clap = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
+# ssh-keygen wants the signature in a file while it is checked; this is the
+# scratch that removes itself, the same one the state machinery uses.
+tempfile = { workspace = true }
 
 [dev-dependencies]
 # The command is exercised against a real state directory, which goes in a
 # scratch directory that removes itself.
 tempfile = { workspace = true }
+# The approval tests assemble an approval by hand — the bypass a person with a
+# text editor has — and a plan document is JSON.
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

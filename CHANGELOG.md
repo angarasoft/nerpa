@@ -912,6 +912,16 @@ without ceremony until the first stage is complete.
   verifies — so the count is part of the answer — and who wrote any of it is
   what the detached signature is for. `INV-LOG-001`, enforced.
 
+- One party applies and another signs (`0009`, `0067`). Where the fleet names
+  who may sign — an OpenSSH `allowed_signers` file under `[approval]` —
+  `apply` proceeds only over a plan a third party has signed: a detached
+  signature over the plan's number, carrying the plan it approves. Whoever
+  proposed the plan cannot sign it, a signer the deployment never named is
+  refused, and an apply whose plan moved since the signature is refused,
+  naming what moved. `nerpa sign` makes the signature with `ssh-keygen` — the
+  key may live in `ssh-agent` — and nerpa reads no private key.
+  `INV-TRUST-002`, enforced.
+
 ### Changed
 
 - Provider logic runs where the engine runs and the work happens where the

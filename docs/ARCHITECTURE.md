@@ -542,13 +542,18 @@ carries the entry before it, from the first entry on, and
 `nerpa journal verify` names an entry rewritten, reordered or removed and
 says how much of the record stands (`INV-LOG-001`; the tail truncated and the
 whole log rewritten are outside a chain over itself, and the second is what
-the signature below is for). Not built: a grant limiting a run to named kinds,
-targets and operations with an expiry, checked by the engine; `apply`
-requiring a detached signature over the plan hash from someone other than the
-proposer — and that hash covers the configuration revision, provider
-versions, state version and a digest of observed state, so it cannot be
-replayed against a changed world. State holds references and digests, never
-secret values.
+the signature is for). Built: one party applies and another signs. Where the
+fleet's `[approval]` names an approvers file, `apply` takes a detached
+signature over the plan's number from somebody other than the proposer
+(`INV-TRUST-002`), refuses the proposer's own, and refuses an apply whose
+plan moved since the signature — naming what moved, because the approval
+carries the plan it approves. The mechanism is `0067`: an OpenSSH signature,
+made and verified with `ssh-keygen`, and nerpa reads no private key. The
+replay `0009` feared is refused from two directions: a change the plan covers
+moves the number, and one only the premise saw is refused where the work
+happens, naming what moved (`INV-PREMISE-001`). Not built: a grant limiting a
+run to named kinds, targets and operations with an expiry, checked by the
+engine. State holds references and digests, never secret values.
 
 ## Secrets — `0027` · partly built
 

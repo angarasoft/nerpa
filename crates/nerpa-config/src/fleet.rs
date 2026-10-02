@@ -34,6 +34,18 @@
 //! one answer per value and a collision is a thing somebody has to decide, not a
 //! thing a rule decides for them. A node may override its groups, because that is
 //! a statement rather than a rank.
+//!
+//! # Who may sign a plan
+//!
+//! Where a deployment separates who writes a change from who may make it, the
+//! fleet names the approvers: an OpenSSH `allowed_signers` file, the one
+//! "where configured" in `0009` means. A fleet that names none asks for no
+//! signature, and one that names one refuses every apply without one.
+//!
+//! ```toml
+//! [approval]
+//! approvers = "/etc/nerpa/approvers"
+//! ```
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -44,6 +56,9 @@ use nerpa_core::{Target, Value as CoreValue};
 pub struct Fleet {
     nodes: BTreeMap<Target, Machine>,
     groups: BTreeMap<String, BTreeSet<Target>>,
+    /// Where who may sign a plan is written down, for a deployment that keeps
+    /// the two duties apart (`0009`, `0067`).
+    approvers: Option<String>,
 }
 
 /// One machine, and what belongs to it.
@@ -115,7 +130,10 @@ impl Fleet {
             }
         }
 
-        let mut fleet = Self::default();
+        let mut fleet = Self {
+            approvers: read_approval(&document)?,
+            ..Self::default()
+        };
         let Some(nodes) = document.get("nodes").and_then(toml::Value::as_table) else {
             return Ok(fleet);
         };
@@ -233,6 +251,15 @@ impl Fleet {
             .unwrap_or_default()
     }
 
+    /// Where the deployment says who may sign a plan, if it says so.
+    ///
+    /// An `allowed_signers` file: the "where configured" of `0009`. Absent is
+    /// a deployment with no second party, which asks for no signature.
+    #[must_use]
+    pub fn approvers(&self) -> Option<&str> {
+        self.approvers.as_deref()
+    }
+
     /// Everything written down about a machine.
     #[must_use]
     pub(crate) fn values_of(&self, node: &Target) -> BTreeMap<String, CoreValue> {
@@ -252,6 +279,32 @@ impl Fleet {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.nodes.is_empty()
+    }
+}
+
+/// Where who may sign a plan is written down.
+///
+/// The table's fields are a closed set, like a node's: a field silently
+/// ignored would leave a document that says something no run does.
+fn read_approval(document: &toml::Value) -> Result<Option<String>, String> {
+    let Some(table) = document.get("approval").and_then(toml::Value::as_table) else {
+        return Ok(None);
+    };
+    for (field, _) in table {
+        if field != "approvers" {
+            return Err(format!(
+                "approval: {field:?} is not a field of approval — who may sign is \
+                 an `allowed_signers` file, and that is the whole of it"
+            ));
+        }
+    }
+    match table.get("approvers") {
+        Some(named) => named.as_str().map(str::to_owned).map(Some).ok_or_else(|| {
+            "approval: `approvers` has to be a path to an `allowed_signers` file".to_owned()
+        }),
+        None => {
+            Err("approval: say who may sign — `approvers = \"/etc/nerpa/approvers\"`".to_owned())
+        }
     }
 }
 
