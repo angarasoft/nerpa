@@ -263,7 +263,10 @@ fn resolve(page: &str, target: &str) -> Option<String> {
 /// which is markdown for "these are literal brackets"; and neither of those was
 /// hypothetical, because this very file documents link syntax. Reference-style
 /// definitions (`[label]: target`) are the opposite case — they were invisible
-/// to the scanner, and are now checked like any other route.
+/// to the scanner, and are now checked like any other route. A fourth was
+/// found by the generated directives: a link inside an inline code span is the
+/// text of an example — `[TYPE](scope)` names a commit's shape — and a reader
+/// of markdown does not follow it anywhere.
 fn routes(pages: &[Page], present: &BTreeSet<String>) -> Vec<String> {
     let mut complaints = Vec::new();
 
@@ -278,6 +281,8 @@ fn routes(pages: &[Page], present: &BTreeSet<String>) -> Vec<String> {
             if fenced {
                 continue;
             }
+            let line = outside_code(line);
+            let trimmed = line.trim_start();
 
             let mut complain = |target: &str| {
                 if let Some(path) = resolve(page, target)
@@ -300,13 +305,46 @@ fn routes(pages: &[Page], present: &BTreeSet<String>) -> Vec<String> {
                 continue;
             }
 
-            for target in inline_targets(line) {
+            for target in inline_targets(&line) {
                 complain(target);
             }
         }
     }
 
     complaints
+}
+
+/// Everything outside inline code spans, with the code blanked to spaces.
+///
+/// Run-aware: a span closes with a backtick run of its own length, so a double
+/// backtick span survives its content's single ones. The blanks keep the
+/// columns where they were, for a complaint that names a line.
+fn outside_code(line: &str) -> String {
+    let chars: Vec<char> = line.chars().collect();
+    let mut out = String::with_capacity(line.len());
+    let mut at = 0usize;
+    let mut open = 0usize;
+    while let Some(ch) = chars.get(at).copied() {
+        if ch == '`' {
+            let mut run = 0;
+            while chars.get(at + run) == Some(&'`') {
+                run += 1;
+            }
+            if open == 0 {
+                open = run;
+            } else if run == open {
+                open = 0;
+            }
+            for _ in 0..run {
+                out.push(' ');
+            }
+            at += run;
+        } else {
+            out.push(if open == 0 { ch } else { ' ' });
+            at += 1;
+        }
+    }
+    out
 }
 
 /// Every `](target)` on one line, skipping brackets the author escaped.
@@ -587,6 +625,29 @@ mod tests {
             r"a literal \[thing\](not-a-path) in prose".to_owned() + "\n",
         )];
         assert_eq!(routes(&pages, &BTreeSet::new()), Vec::<String>::new());
+    }
+
+    /// The generated directives spell a commit's shape as `[TYPE](scope)`,
+    /// which is the text of an example. A reader of markdown follows code
+    /// nowhere, so the scanner must not either — and a real route on the same
+    /// line, outside the backticks, is still a route.
+    #[test]
+    fn a_link_shown_inside_inline_code_is_not_a_route() {
+        let pages = vec![(
+            "AGENTS.md".to_owned(),
+            "the subject is `[TYPE](scope): summary`, and the rules are \
+             docs/COMMITS.md\n"
+                .to_owned(),
+        )];
+        assert_eq!(routes(&pages, &BTreeSet::new()), Vec::<String>::new());
+
+        let pages = vec![(
+            "AGENTS.md".to_owned(),
+            "the subject is `[TYPE](scope)`, and the rules are [here](docs/gone.md)\n".to_owned(),
+        )];
+        let complaints = routes(&pages, &BTreeSet::new());
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(complaints[0].contains("docs/gone.md"), "{complaints:?}");
     }
 
     #[test]

@@ -106,12 +106,20 @@ pub(crate) fn cargo_tool(subcommand: &str, install: &str, args: &[&str]) -> Resu
 /// without it. Probing `cargo-thing --version` therefore reports a perfectly
 /// well installed tool as missing, which is what this function did on its first
 /// outing and why a mutation run silently never happened.
+///
+/// `--version` first, because a tool that has one answers it. cargo-dacc's
+/// contract has no `--version` — it refuses with a usage code — so anything
+/// that refuses the first question is asked its read-only answer, `help`, and
+/// a tool that is genuinely missing refuses both.
 fn installed(subcommand: &str) -> bool {
     let cargo = std::env::var("CARGO").unwrap_or_else(|_| "cargo".to_owned());
-    Command::new(cargo)
-        .args([subcommand, "--version"])
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .is_ok_and(|status| status.success())
+    let asks = |args: &[&str]| {
+        Command::new(&cargo)
+            .args(args)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|status| status.success())
+    };
+    asks(&[subcommand, "--version"]) || asks(&[subcommand, "help"])
 }
