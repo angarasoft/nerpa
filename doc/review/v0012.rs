@@ -1,8 +1,8 @@
 use dacc_core::{NonEmptyStr, nonempty_str};
 
-crate::review!(
+dacc_knowledge::review!("v0012",
     title: NonEmptyStr::new("The verdict, read independently against the criteria written before the start"),
-    angle: "A reading of the nine hypotheses against the records that measured them and the tree as it stands, checking each result against its measure and its stop threshold without having written any other pilot record.",
+    angle: NonEmptyStr::new("A reading of the nine hypotheses against the records that measured them and the tree as it stands, checking each result against its measure and its stop threshold without having written any other pilot record."),
     findings: nonempty_str![
         "H1 holds — compiled references catch what Markdown checks miss. v0010 found five semantic disagreements the build could not catch while the compiled references stayed green, so the compiled form catches renames and deletions and review catches the semantic mapping.",
         "H2 holds — writing a record costs little. v0002 measured the eighteen wave-2 records in minutes each, compiling on the first build that named the package, neither over the thresholds that would narrow the pilot.",

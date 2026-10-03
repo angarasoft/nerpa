@@ -19,10 +19,17 @@ path = "lib.rs"
 workspace = true
 
 [dependencies]
+# The guarantee sites carry the anchors of the pilot's promises (adr-2026-068).
 dacc-core = { workspace = true }
+dacc-derive = { workspace = true }
 dacc-knowledge = { workspace = true }
 dacc-work = { workspace = true }
 chrono = { workspace = true }
 
+[dev-dependencies]
+# The guarantee tests walk the journal events.
+dacc-journal = { workspace = true }
+
 [build-dependencies]
+dacc-derive = { workspace = true }
 dacc-scan = { workspace = true }

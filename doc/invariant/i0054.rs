@@ -1,13 +1,13 @@
-use crate::invariant::{Enforced, Status};
+use dacc_knowledge::{Enforced, InvariantStatus};
 use dacc_core::NonEmptyStr;
 
-crate::invariant!(
-    id: NonEmptyStr::new("INV-FACT-001"),
-    status: Status::Enforced(Enforced::Adversarial {
+dacc_knowledge::invariant!("i0054",
+    specification: crate::rfc::rfc_2026_004,
+    status: InvariantStatus::Enforced(Enforced::Adversarial {
         bypass: NonEmptyStr::new("A fact handed into a function's positional parameter and compared with a constant inside the body, which Starlark answers silently. A named argument is still not followed."),
         tests: &[crate::anchor::a_fact_passed_into_a_function_still_cannot_decide_resources],
     }),
-    statement: NonEmptyStr::new("Something read from a machine may decide what an attribute says and never whether a resource exists."),
+    statement: NonEmptyStr::new("INV-FACT-001: Something read from a machine may decide what an attribute says and never whether a resource exists."),
     rationale: r#"A single planning pass is possible because the set of resources is known before anything runs. A fact is not known then — it is what the machine turned out to be — so letting one decide which resources exist would take the property the whole design rests on.
 
 But a path that differs by distribution is a *value*, and refusing that outright would make the tool unusable on a mixed fleet. So `select(fact, {closed set})` is the mechanism and the only one: every branch is written down, the graph is the same whichever way it goes, and what is open is the value — within a set the plan prints, which is more useful than "unknown after apply" because a person can approve a set.

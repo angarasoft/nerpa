@@ -282,6 +282,47 @@ fn situation() -> Situation {
     }
 }
 
+/// The work items and slices of this tree, by the names their records carry.
+fn plan_ids(root: &std::path::Path) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for dir in ["work", "slice"] {
+        if let Ok(entries) = fs::read_dir(root.join("doc").join(dir)) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                if let Some(stem) = name.to_string_lossy().strip_suffix(".rs") {
+                    out.insert(stem.to_owned());
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The basis: the message names a work item of this tree (INV-PILOT-003).
+///
+/// The trailer is read from the message and the record from the tree, so the
+/// two have to agree: a message without its basis is refused, and so is one
+/// whose basis names a record this tree does not hold.
+#[dacc_derive::doc_anchor(id = "the-commit-gate-checks-the-basis")]
+pub(crate) fn basis(message: &str, records: &std::collections::BTreeSet<String>) -> Vec<String> {
+    let named = message.lines().find_map(|line| {
+        line.strip_prefix("Dacc-Work: ")
+            .or_else(|| line.strip_prefix("Dacc-Slice: "))
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+    });
+    match named {
+        None => {
+            vec![
+                "the message carries no Dacc-Work or Dacc-Slice trailer naming its basis"
+                    .to_owned(),
+            ]
+        }
+        Some(id) if records.contains(id) => Vec::new(),
+        Some(id) => vec![format!("{id} names no work item or slice of this tree")],
+    }
+}
+
 /// Checks a message file, or `HEAD` when given none.
 pub(crate) fn check(path: Option<&str>) -> Result<(), String> {
     let message = match path {
@@ -289,16 +330,23 @@ pub(crate) fn check(path: Option<&str>) -> Result<(), String> {
         None => shell::git(&["log", "-1", "--pretty=%B"])?,
     };
 
-    let review = judge(&message, situation());
+    let situation = situation();
+    let review = judge(&message, situation);
     for warning in &review.warnings {
         eprintln!("  commit-msg: {warning}");
     }
-    if review.refusals.is_empty() {
+    let mut refusals = review.refusals;
+    // A merge's message is git's own, and the tree it names is the merge that
+    // is under way: the basis rule is for messages somebody wrote.
+    if matches!(situation, Situation::Ordinary) {
+        refusals.extend(basis(&message, &plan_ids(&shell::root())));
+    }
+    if refusals.is_empty() {
         eprintln!("  commit-msg: subject well formed");
         return Ok(());
     }
 
-    let mut report = review.refusals.join("\n");
+    let mut report = refusals.join("\n");
     report.push_str(
         "\n\nShape: [TYPE] scope: subject — the scope is optional.\nSee docs/COMMITS.md.",
     );
@@ -314,7 +362,44 @@ pub(crate) fn check(path: Option<&str>) -> Result<(), String> {
     reason = "tests may be blunt: an unwrap is an expectation and an index is a claim about shape"
 )]
 mod tests {
-    use super::{Situation, judge};
+    use super::{Situation, basis, judge};
+
+    /// A message without its basis is refused, and one naming a work item this
+    /// tree does not hold is refused by name (INV-PILOT-003).
+    #[dacc_derive::doc_anchor(id = "a-basis-less-message-is-refused")]
+    #[test]
+    fn a_basis_less_message_is_refused() {
+        let records: std::collections::BTreeSet<String> =
+            ["w-obligations".to_owned()].into_iter().collect();
+        let complaints = basis("[FIX] os: a thing\n", &records);
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(complaints[0].contains("no Dacc-Work"), "{complaints:?}");
+    }
+
+    #[dacc_derive::doc_anchor(id = "a-basis-naming-no-work-item-is-refused")]
+    #[test]
+    fn a_basis_naming_no_work_item_is_refused() {
+        let records: std::collections::BTreeSet<String> =
+            ["w-obligations".to_owned()].into_iter().collect();
+        let complaints = basis("[FIX] os: a thing\n\nDacc-Work: w-nothing-here\n", &records);
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(complaints[0].contains("w-nothing-here"), "{complaints:?}");
+    }
+
+    /// The two trailers are read alike, and a record of this tree settles it.
+    #[test]
+    fn a_named_basis_of_this_tree_is_accepted() {
+        let records: std::collections::BTreeSet<String> =
+            ["w-obligations".to_owned(), "s-dacc-050".to_owned()]
+                .into_iter()
+                .collect();
+        for message in [
+            "[FIX] os: a thing\n\nDacc-Work: w-obligations\n",
+            "[FIX] os: a thing\n\nDacc-Slice: s-dacc-050\n",
+        ] {
+            assert_eq!(basis(message, &records), Vec::<String>::new(), "{message}");
+        }
+    }
 
     fn refusals(message: &str) -> Vec<String> {
         judge(message, Situation::Ordinary).refusals

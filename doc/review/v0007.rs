@@ -1,8 +1,8 @@
 use dacc_core::{NonEmptyStr, nonempty_str};
 
-crate::review!(
+dacc_knowledge::review!("v0007",
     title: NonEmptyStr::new("Fifth review of RFC 0001, 2026-09-11"),
-    angle: "P and S, both by reviewer A, on revision 4 (d11060f) and step 1 only.",
+    angle: NonEmptyStr::new("P and S, both by reviewer A, on revision 4 (d11060f) and step 1 only."),
     findings: nonempty_str![
         "P4-4, P4-5, P4-9, P4-14 and P4-15 resolved; the rest partly.",
     ],

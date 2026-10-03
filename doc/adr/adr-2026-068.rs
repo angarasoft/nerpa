@@ -67,9 +67,9 @@ dacc_knowledge::adr!(
     ",
     trade_offs: &[
         "The contract check passes for every specification, and the slices close on evidence in this tree rather than on an argument about where the enforcement lives.",
-        "Anchors in build.rs and xtask couple the registry to two more files; the alternative was executors named in prose, which is what the check exists to refuse.",
-        "The basis rule is enforced twice — by dacc's msg-check and by the xtask gate; duplication is accepted where the gate is the project's own.",
-        "The conversion promise keeps a measured past and a guarded residue: the byte-for-byte proof is v0001's, and the test guards what remains readable.",
+        "The cost is two more files carrying anchors — build.rs and xtask couple themselves to the registry; the alternative was executors named in prose, which is what the check exists to refuse.",
+        "The basis rule is enforced twice — by dacc's msg-check and by the xtask gate, and the cost of the duplication is a second fixture suite; accepted where the gate is the project's own.",
+        "The conversion promise keeps a measured past and a guarded residue: the byte-for-byte proof is v0001's, and the cost of guarding the residue is one test that looks at what remains readable.",
     ],
     constraints: &[
         "The anchor scan covers crates/, doc/ and xtask/; an anchor outside them does not compile.",

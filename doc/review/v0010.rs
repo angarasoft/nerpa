@@ -1,8 +1,8 @@
 use dacc_core::{NonEmptyStr, nonempty_str};
 
-crate::review!(
+dacc_knowledge::review!("v0010",
     title: NonEmptyStr::new("Wave 3, measured after it happened"),
-    angle: "A reading of the converted invariants and proposals against the RFCs, decisions and specifications they came from, measuring H1 (compiled references catch what Markdown checks miss) and H9 (the local types earn their place), and looking for what the compiled references could not check.",
+    angle: NonEmptyStr::new("A reading of the converted invariants and proposals against the RFCs, decisions and specifications they came from, measuring H1 (compiled references catch what Markdown checks miss) and H9 (the local types earn their place), and looking for what the compiled references could not check."),
     findings: nonempty_str![
         "`p0001.decided` holds all thirteen decisions the RFC `Touches`, but the field is meant to be the decisions it settled. Section 3 `What is decided` separates `Decided already` (eleven: 0031, 0006, 0015, 0026, 0027, 0033, 0034, 0040, 0041, 0042, 0043) from what the RFC settles, and 0020 and 0028 are touched without being in that list. Resolved: `decided` holds the eleven decisions section 3 names, dropping 0020 and 0028.",
         "`rfc-2026-003.decided_by` names only 0041, but protocol 5 rests on the wire decision (0010, `Ship a static executor and treat the transport as a plug`), the version stamp (0040) and the sealed premise (0041). A reader tracing the contract to its decisions stops one step in. Resolved: `decided_by` lists 0010, 0040 and 0041.",

@@ -1,10 +1,10 @@
-use crate::invariant::{Enforced, Status};
+use dacc_knowledge::{Enforced, InvariantStatus};
 use dacc_core::NonEmptyStr;
 
-crate::invariant!(
-    id: NonEmptyStr::new("INV-FLEET-001"),
-    status: Status::Enforced(Enforced::Adversarial { bypass: NonEmptyStr::new("A fleet that is not settled before evaluation — a dynamic inventory read at run time and used directly rather than materialised. Then \"data by the time the program sees it\" stops being true, and a graph built from it is a graph nobody can reproduce or hash. Nothing does this yet, which is why the dynamic half is unbuilt rather than half-built."), tests: &[crate::anchor::two_groups_giving_one_node_the_same_key_is_an_error_naming_both, crate::anchor::a_value_the_fleet_does_not_give_is_a_refusal_rather_than_a_default, crate::anchor::what_the_fleet_says_may_decide_which_resources_exist] }),
-    statement: NonEmptyStr::new("What the fleet says may decide which resources exist; what a machine says may not."),
+dacc_knowledge::invariant!("i0055",
+    specification: crate::rfc::rfc_2026_004,
+    status: InvariantStatus::Enforced(Enforced::Adversarial { bypass: NonEmptyStr::new("A fleet that is not settled before evaluation — a dynamic inventory read at run time and used directly rather than materialised. Then \"data by the time the program sees it\" stops being true, and a graph built from it is a graph nobody can reproduce or hash. Nothing does this yet, which is why the dynamic half is unbuilt rather than half-built."), tests: &[crate::anchor::two_groups_giving_one_node_the_same_key_is_an_error_naming_both, crate::anchor::a_value_the_fleet_does_not_give_is_a_refusal_rather_than_a_default, crate::anchor::what_the_fleet_says_may_decide_which_resources_exist] }),
+    statement: NonEmptyStr::new("INV-FLEET-001: What the fleet says may decide which resources exist; what a machine says may not."),
     rationale: r#"The pair to `INV-FACT-001`, and the line decision 0025 draws. A fleet document is settled before the program is evaluated: which machines exist is decided by a person or by the cloud stage, and it is data by the time anything reads it. So it may be iterated, compared and branched on, and `for host in group("web")` builds a graph for a hundred machines without breaking the rule that composition is known before anything runs.
 
 A fact is the other thing entirely — what a machine turned out to be, discovered by looking — and letting one decide which resources exist would take the property a single planning pass rests on.

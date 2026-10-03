@@ -9,6 +9,8 @@ authors.workspace = true
 publish = false
 
 [dependencies]
+# The commit gate's basis rule carries its anchor (adr-2026-068).
+dacc-derive = { workspace = true }
 toml = { workspace = true }
 
 [lints]

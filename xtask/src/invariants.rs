@@ -28,10 +28,13 @@ fn read_records(dir: &Path) -> Result<Vec<(String, String)>, String> {
     for path in paths {
         let text =
             fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+        // The INV- key rides in the statement before its first colon, and the
+        // status is the upstream name (adr-2026-068).
         let id = text
             .lines()
-            .find_map(|line| line.trim().strip_prefix("id: NonEmptyStr::new(\""))
+            .find_map(|line| line.trim().strip_prefix("statement: NonEmptyStr::new(\""))
             .and_then(|rest| rest.split('"').next())
+            .and_then(|statement| statement.split(": ").next())
             .unwrap_or_default();
         let status = if text.contains("Status::Planned") {
             "planned"

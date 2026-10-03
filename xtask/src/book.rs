@@ -273,6 +273,13 @@ fn field(text: &str, prefix: &str) -> Option<String> {
     Some(body.get(..end).unwrap_or_default().to_owned())
 }
 
+/// The INV- key of a record: the statement carries it before its first colon
+/// (adr-2026-068).
+fn invariant_key(text: &str) -> Option<String> {
+    let statement = field(text, "statement: NonEmptyStr::new(")?;
+    statement.split(": ").next().map(str::to_owned)
+}
+
 /// Reads the raw string after `rationale: `, with or without hashes.
 fn rationale(text: &str) -> Option<String> {
     let at = text.find("rationale: r")? + "rationale: r".len();
@@ -340,7 +347,7 @@ fn invariants(root: &Path) -> Result<Vec<InvariantSummary>, String> {
             fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
         let (status, bypass, adversarial) = status(&text);
         out.push(InvariantSummary {
-            id: field(&text, "id: NonEmptyStr::new(").unwrap_or_default(),
+            id: invariant_key(&text).unwrap_or_default(),
             statement: field(&text, "statement: NonEmptyStr::new(").unwrap_or_default(),
             status,
             rationale: rationale(&text).unwrap_or_default(),

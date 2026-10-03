@@ -1,8 +1,8 @@
 use dacc_core::{NonEmptyStr, nonempty_str};
 
-crate::review!(
+dacc_knowledge::review!("v0011",
     title: NonEmptyStr::new("Wave 4 and the L2 completion, measured after it happened"),
-    angle: "A reading of the hypotheses not yet measured — H3 (nobody works around the gate), H5 (done is proven), H6 (radius is labelled honestly), H7 (book-keeping does not grow), and a re-check of H8 (conversion loses nothing) — against the tree as it stands after all eight subsystems reached L2.",
+    angle: NonEmptyStr::new("A reading of the hypotheses not yet measured — H3 (nobody works around the gate), H5 (done is proven), H6 (radius is labelled honestly), H7 (book-keeping does not grow), and a re-check of H8 (conversion loses nothing) — against the tree as it stands after all eight subsystems reached L2."),
     findings: nonempty_str![
         "H3: every hand-written commit since the switch carries a basis — 104 of 112 commits name a work item, and the eight without one are the auto-generated `slice … closed` journal commits. No forced bypass is on the record: no `--no-verify`, no skipped gate, no refusal pushed over. The one gate step not exercised is `external names`, whose list is empty, so six of seven steps run and refuse.",
         "H5: done is proven — all twenty-five landed work items carry a gate record on the same tree (25 started, 25 gate, 25 landed), and none lands without one. Twelve work items are planned for stages not yet reached, which is work not started rather than work left unproven.",
