@@ -934,6 +934,16 @@ without ceremony until the first stage is complete.
 
 ### Changed
 
+- The invariant registry rides on dacc 0.5.0's knowledge types, retiring the
+  local `Invariant` of `adr-2026-057` as that record promised. Every invariant
+  names the specification whose contract it holds, the `INV-` key moves into
+  the statement, reviews take `dacc_knowledge::review!`, and `doc/build.rs`
+  scans and emits both registries the way it already did the plan. The six
+  promises of `rfc-2026-001` become records `i0067`–`i0072` with live anchors:
+  the anchor scan now reaches `doc/` and `xtask/`, so the build and the gate
+  carry the sites that hold them, and the commit gate refuses a message whose
+  basis names no work item of the tree.
+
 - Provider logic runs where the engine runs and the work happens where the
   resource is. The `os` provider no longer touches a disk: it turns readings into
   things to look at and a change into things to do, and something at the other

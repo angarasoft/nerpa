@@ -676,5 +676,6 @@ the origin of each value, summary before detail, identical changes aggregated.
 ## What holds it together · built
 
 `doc/invariant/` lists the guarantees that must not break, each naming the
-code that enforces it and the tests that prove it. `cargo xtask ci` fails if
-either link rots. Start there when changing anything in this document.
+specification whose contract it holds, the code that enforces it and the tests
+that prove it. The registry rides on dacc-knowledge's types. `cargo xtask ci`
+fails if any link rots. Start there when changing anything in this document.
