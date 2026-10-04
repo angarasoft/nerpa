@@ -81,9 +81,8 @@ fn chapters(text: &str) -> Vec<Chapter> {
             let status = ["partly built", "built", "planned"]
                 .iter()
                 .find(|marker| heading.ends_with(*marker))
-                .map(|marker| (*marker).to_owned())
                 // A heading with no marker is read as carrying no status.
-                .unwrap_or_else(String::new);
+                .map_or_else(String::new, |marker| (*marker).to_owned());
 
             let title = heading
                 .split(" — ")

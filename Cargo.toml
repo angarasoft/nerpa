@@ -170,6 +170,16 @@ cast_lossless = "deny"
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
 
+# Clippy suggests `unwrap_or_default()` wherever a fallback happens to be a
+# default, and rule 7's third sentence calls that shape worse than either bare
+# `unwrap()` or `expect`: it turns an impossible case into a wrong answer
+# instead of a loud stop. The two disagree about one spelling, and the
+# repository's rule wins — `cargo xtask lint` refuses the pattern outright,
+# with a fixture that watches it fire. A real absence names its fallback —
+# `unwrap_or_else(String::new)`, `map_or_else(Vec::new, …)` — and an impossible
+# case takes `expect`.
+unwrap_or_default = "allow"
+
 # Not ours to fix. Starlark's dependency tree carries duplicate versions of half
 # a dozen crates, and the lint cannot tell an avoidable duplicate from one three
 # levels down in somebody else's manifest. `cargo xtask deny` still reports them.

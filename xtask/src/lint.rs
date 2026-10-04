@@ -225,7 +225,14 @@ fn changes_under_judgement() -> Option<(Vec<String>, Vec<String>)> {
     // which is compared against nothing instead.
     let committed = shell::git(&["diff", "--name-only", "HEAD^", "HEAD"])
         .or_else(|_| {
-            shell::git(&["diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "HEAD"])
+            shell::git(&[
+                "diff-tree",
+                "--root",
+                "--no-commit-id",
+                "--name-only",
+                "-r",
+                "HEAD",
+            ])
         })
         .ok()?;
     // The commit about to be written: staged, unstaged, and not yet tracked.
@@ -305,21 +312,18 @@ fn code_lines(text: &str) -> impl Iterator<Item = (usize, &str)> {
 
 /// The lines of a file that are not part of an inline test item.
 fn code_regions(text: &str) -> Vec<(usize, &str)> {
-    let lines: Vec<(usize, &str)> = text.lines().enumerate().collect();
     let mut code = Vec::new();
-    let mut at = 0;
-    while at < lines.len() {
-        if lines[at].1.trim() != "#[cfg(test)]" {
-            code.push(lines[at]);
-            at += 1;
+    let mut lines = text.lines().enumerate().peekable();
+    while let Some((index, line)) = lines.next() {
+        if line.trim() != "#[cfg(test)]" {
+            code.push((index, line));
             continue;
         }
         // The attributes over the item, which may open a bracket on one line
         // and close it lines later.
-        let mut brackets = 0i32;
-        while at < lines.len() {
-            let line = lines[at].1;
-            let trimmed = line.trim_start();
+        let mut brackets = 0i64;
+        while let Some((_, next)) = lines.peek().copied() {
+            let trimmed = next.trim_start();
             if brackets == 0
                 && !trimmed.starts_with("#[")
                 && !trimmed.starts_with("//")
@@ -327,17 +331,21 @@ fn code_regions(text: &str) -> Vec<(usize, &str)> {
             {
                 break;
             }
-            brackets += line.chars().filter(|ch| *ch == '[').count() as i32;
-            brackets -= line.chars().filter(|ch| *ch == ']').count() as i32;
-            at += 1;
+            for ch in next.chars() {
+                match ch {
+                    '[' => brackets += 1,
+                    ']' => brackets -= 1,
+                    _ => {}
+                }
+            }
+            lines.next();
         }
         // The item itself: a block runs to its closing brace, and one that ends
         // in a semicolon is a single line.
-        let mut depth = 0i32;
+        let mut depth = 0i64;
         let mut opened = false;
-        while at < lines.len() {
-            let line = lines[at].1;
-            for ch in line.chars() {
+        for (_, next) in lines.by_ref() {
+            for ch in next.chars() {
                 match ch {
                     '{' => {
                         depth += 1;
@@ -347,12 +355,11 @@ fn code_regions(text: &str) -> Vec<(usize, &str)> {
                     _ => {}
                 }
             }
-            at += 1;
             if opened {
                 if depth <= 0 {
                     break;
                 }
-            } else if line.contains(';') {
+            } else if next.contains(';') {
                 break;
             }
         }
@@ -452,7 +459,10 @@ mod tests {
 
         let complaints = invisible_default("src/thing.rs", source);
         assert_eq!(complaints.len(), 1, "{complaints:?}");
-        assert!(complaints[0].starts_with("src/thing.rs:3:"), "{complaints:?}");
+        assert!(
+            complaints[0].starts_with("src/thing.rs:3:"),
+            "{complaints:?}"
+        );
     }
 
     #[test]
