@@ -290,3 +290,7 @@ at = "2026-10-04T16:44:45Z"
 commit = "69b311a7b682cabd1768d76bdd5aaed88fea7b25"
 tree = "f1f50f170da27a01aa948deb168fa3481651a08a"
 red_before = "an_identity_whose_expiry_passed_does_not_run"
+[[events]]
+event = "closed"
+slice = "s-review-0013"
+at = "2026-10-04T16:46:59Z"
