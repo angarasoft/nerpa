@@ -340,3 +340,7 @@ work = "w-local-build-target"
 at = "2026-10-04T18:25:59Z"
 commit = "b65226886ad8e655186915123b800b0468ecb0bd"
 tree = "6ab6edf8786f15f86496bb5dfe71866308a93886"
+[[events]]
+event = "closed"
+slice = "s-build-hygiene"
+at = "2026-10-04T18:26:06Z"
