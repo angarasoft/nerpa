@@ -1,3 +1,9 @@
+[build]
+# Build output lives beside the sources in `.cargo-target` (as AngaraBase does),
+# so `cargo sweep` has one directory to clean, and the gate's exported tree
+# builds beside its own copy rather than into a shared `target/`.
+target-dir = ".cargo-target"
+
 [alias]
 # `cargo xtask` rather than a Makefile: the checks are compiled and typed, they
 # run anywhere cargo runs, and they cannot drift away from the code they check
