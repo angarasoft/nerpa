@@ -74,14 +74,16 @@ fn chapters(text: &str) -> Vec<Chapter> {
             let record = heading
                 .split('`')
                 .find(|part| part.len() == 4 && part.chars().all(|ch| ch.is_ascii_digit()))
-                .unwrap_or_default()
+                // A heading naming no record is read as naming none.
+                .unwrap_or("")
                 .to_owned();
 
             let status = ["partly built", "built", "planned"]
                 .iter()
                 .find(|marker| heading.ends_with(*marker))
                 .map(|marker| (*marker).to_owned())
-                .unwrap_or_default();
+                // A heading with no marker is read as carrying no status.
+                .unwrap_or_else(String::new);
 
             let title = heading
                 .split(" — ")
@@ -166,15 +168,23 @@ fn delinked(doc: &str) -> String {
             out.push_str(tail);
             return out;
         };
-        let label = tail.get(1..close).unwrap_or_default();
-        let after = tail.get(close + 1..).unwrap_or_default();
+        let label = tail
+            .get(1..close)
+            .expect("the label runs from just past the bracket to the one that closes it");
+        let after = tail
+            .get(close + 1..)
+            .expect("everything past the closing bracket is inside the text");
 
         // `[label](target)` — keep it only if the target is a real address.
         if let Some(rest_of_target) = after.strip_prefix('(')
             && let Some(end) = rest_of_target.find(')')
         {
-            let target = rest_of_target.get(..end).unwrap_or_default();
-            let onward = rest_of_target.get(end + 1..).unwrap_or_default();
+            let target = rest_of_target
+                .get(..end)
+                .expect("the offset where a parenthesis was found is a character boundary");
+            let onward = rest_of_target
+                .get(end + 1..)
+                .expect("everything past the parenthesis is inside the text");
             if target.starts_with("http://") || target.starts_with("https://") {
                 let _ = write!(out, "[{label}]({target})");
             } else {
@@ -270,7 +280,11 @@ fn field(text: &str, prefix: &str) -> Option<String> {
     let rest = text.get(at..)?;
     let body = rest.strip_prefix('"')?;
     let end = body.find('"')?;
-    Some(body.get(..end).unwrap_or_default().to_owned())
+    Some(
+        body.get(..end)
+            .expect("the offset where a quote was found is a character boundary")
+            .to_owned(),
+    )
 }
 
 /// The INV- key of a record: the statement carries it before its first colon
@@ -288,7 +302,11 @@ fn rationale(text: &str) -> Option<String> {
     let rest = rest.get(hashes..)?;
     let body = rest.strip_prefix('"')?;
     let end = body.find(&format!("\"{}", "#".repeat(hashes)))?;
-    Some(body.get(..end).unwrap_or_default().to_owned())
+    Some(
+        body.get(..end)
+            .expect("the offset where a quote was found is a character boundary")
+            .to_owned(),
+    )
 }
 
 /// The status, its bypass, and the adversarial test names.
@@ -297,7 +315,7 @@ fn status(text: &str) -> (String, String, Vec<String>) {
         return ("planned".to_owned(), String::new(), Vec::new());
     }
     if text.contains("Status::Claimed") {
-        let bypass = field(text, "bypass: NonEmptyStr::new(").unwrap_or_default();
+        let bypass = field(text, "bypass: NonEmptyStr::new(").unwrap_or_else(String::new);
         return ("claimed".to_owned(), bypass, Vec::new());
     }
     if text.contains("Enforced::Unrepresentable") {
@@ -307,7 +325,7 @@ fn status(text: &str) -> (String, String, Vec<String>) {
             Vec::new(),
         );
     }
-    let bypass = field(text, "bypass: NonEmptyStr::new(").unwrap_or_default();
+    let bypass = field(text, "bypass: NonEmptyStr::new(").unwrap_or_else(String::new);
     let adversarial = anchor_list(text, "tests: &[");
     ("enforced".to_owned(), bypass, adversarial)
 }
@@ -317,11 +335,15 @@ fn anchor_list(text: &str, prefix: &str) -> Vec<String> {
     let Some(at) = text.find(prefix) else {
         return Vec::new();
     };
-    let rest = text.get(at + prefix.len()..).unwrap_or_default();
+    let rest = text
+        .get(at + prefix.len()..)
+        .expect("the offset just past a found prefix is inside the text");
     let Some(end) = rest.find(']') else {
         return Vec::new();
     };
-    let body = rest.get(..end).unwrap_or_default();
+    let body = rest
+        .get(..end)
+        .expect("the offset where a bracket was found is a character boundary");
     body.split(',')
         .filter_map(|part| part.trim().strip_prefix("crate::anchor::"))
         .map(str::to_owned)
@@ -347,10 +369,10 @@ fn invariants(root: &Path) -> Result<Vec<InvariantSummary>, String> {
             fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
         let (status, bypass, adversarial) = status(&text);
         out.push(InvariantSummary {
-            id: invariant_key(&text).unwrap_or_default(),
-            statement: field(&text, "statement: NonEmptyStr::new(").unwrap_or_default(),
+            id: invariant_key(&text).unwrap_or_else(String::new),
+            statement: field(&text, "statement: NonEmptyStr::new(").unwrap_or_else(String::new),
             status,
-            rationale: rationale(&text).unwrap_or_default(),
+            rationale: rationale(&text).unwrap_or_else(String::new),
             bypass,
             adversarial,
         });

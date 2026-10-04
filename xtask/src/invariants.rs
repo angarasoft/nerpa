@@ -35,7 +35,9 @@ fn read_records(dir: &Path) -> Result<Vec<(String, String)>, String> {
             .find_map(|line| line.trim().strip_prefix("statement: NonEmptyStr::new(\""))
             .and_then(|rest| rest.split('"').next())
             .and_then(|statement| statement.split(": ").next())
-            .unwrap_or_default();
+            // A record whose statement carries no key reads as the empty id,
+            // and the two-way check below is what names it.
+            .unwrap_or("");
         let status = if text.contains("Status::Planned") {
             "planned"
         } else if text.contains("Status::Claimed") {
@@ -61,13 +63,17 @@ fn security_policy(policy: &str, claimed: &BTreeSet<String>) -> Vec<String> {
     let mut named: BTreeSet<String> = BTreeSet::new();
     let mut rest = policy;
     while let Some(at) = rest.find("INV-") {
-        let tail = rest.get(at..).unwrap_or_default();
+        let tail = rest
+            .get(at..)
+            .expect("the offset where a marker was found is inside the text");
         let id: String = tail
             .chars()
             .take_while(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || *ch == '-')
             .collect();
         named.insert(id);
-        rest = tail.get(4..).unwrap_or_default();
+        rest = tail
+            .get(4..)
+            .expect("the tail begins with the four bytes just matched");
     }
 
     for id in named.difference(claimed) {

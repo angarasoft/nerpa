@@ -66,12 +66,14 @@ fn refs(text: &str, field: &str, prefix: &str) -> Vec<String> {
     let Some(at) = text.find(field) else {
         return Vec::new();
     };
-    let rest = text.get(at + field.len()..).unwrap_or_default();
+    let rest = text
+        .get(at + field.len()..)
+        .expect("the offset just past a found field is inside the text");
     let Some(end) = rest.find(']') else {
         return Vec::new();
     };
     rest.get(..end)
-        .unwrap_or_default()
+        .expect("the offset where a bracket was found is a character boundary")
         .split(',')
         .filter_map(|part| part.trim().strip_prefix(prefix))
         .map(str::to_owned)
@@ -227,7 +229,10 @@ fn architecture(text: &str) -> Vec<String> {
 /// `None` for anything that does not name a file in this repository: an external
 /// address, or a bare fragment pointing within the page itself.
 fn resolve(page: &str, target: &str) -> Option<String> {
-    let target = target.split('#').next().unwrap_or_default();
+    let target = target
+        .split('#')
+        .next()
+        .expect("splitting always yields the part before the first separator");
     if target.is_empty()
         || target.starts_with("http://")
         || target.starts_with("https://")

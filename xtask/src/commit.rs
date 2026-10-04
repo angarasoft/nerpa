@@ -269,12 +269,12 @@ fn scope_shaped(text: &str) -> bool {
 /// `MERGE_HEAD` exists for exactly as long as a merge is in progress, which is
 /// the only moment a merge subject is one.
 fn situation() -> Situation {
-    let git_dir = shell::git(&["rev-parse", "--git-dir"])
-        .map(|found| found.trim().to_owned())
-        .unwrap_or_default();
-    if git_dir.is_empty() {
+    // No repository is no merge: a message hook asked outside one has nothing
+    // to be in the middle of.
+    let Ok(found) = shell::git(&["rev-parse", "--git-dir"]) else {
         return Situation::Ordinary;
-    }
+    };
+    let git_dir = found.trim().to_owned();
     if std::path::Path::new(&git_dir).join("MERGE_HEAD").exists() {
         Situation::Merging
     } else {

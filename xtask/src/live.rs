@@ -112,8 +112,9 @@ fn read_fleet(path: &Path) -> Result<Vec<Machine>, String> {
         let escalate = table
             .get("become")
             .and_then(Value::as_str)
-            .map(|words| words.split_whitespace().map(str::to_owned).collect())
-            .unwrap_or_default();
+            .map_or_else(Vec::new, |words| {
+                words.split_whitespace().map(str::to_owned).collect()
+            });
         machines.push(Machine {
             node: node.clone(),
             ssh: ssh.to_owned(),

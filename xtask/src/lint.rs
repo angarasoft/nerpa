@@ -64,7 +64,10 @@ fn unwinds_on_panic(manifest: &str) -> Vec<String> {
         .lines()
         .enumerate()
         .filter(|(_, line)| {
-            let line = line.split('#').next().unwrap_or_default();
+            let line = line
+                .split('#')
+                .next()
+                .expect("splitting always yields the part before the first separator");
             let squashed: String = line.chars().filter(|ch| !ch.is_whitespace()).collect();
             squashed.starts_with("panic=") && squashed.contains("abort")
         })
@@ -153,6 +156,7 @@ pub(crate) fn repository_rules() -> Result<(), String> {
     for (path, text) in &sources {
         let shown = display(path);
         complaints.extend(bare_unwrap(&shown, text));
+        complaints.extend(invisible_default(&shown, text));
         complaints.extend(missing_module_docs(&shown, text));
         complaints.extend(header_prose(&shown, text));
     }
@@ -260,16 +264,100 @@ fn bare_unwrap(path: &str, text: &str) -> Vec<String> {
         .collect()
 }
 
-/// Everything up to an inline test module.
+/// `unwrap_or_default()` says what will happen and not whether it is right.
+///
+/// Rule 7's third sentence: reaching for it to satisfy the rule above is worse
+/// than either bare `unwrap()` or `expect`, because it turns an impossible case
+/// into a wrong answer instead of a loud stop. One line cannot tell an
+/// impossible case from a real absence, so the shape is refused whole: the
+/// impossible case wants `expect("why this cannot fail")`, and a real absence
+/// wants its fallback named where it is written — `unwrap_or(0)`,
+/// `map_or_else(Vec::new, …)` — so a reader can see what the answer is when
+/// nothing is there.
+fn invisible_default(path: &str, text: &str) -> Vec<String> {
+    // Assembled rather than written out, for the reason bare_unwrap gives.
+    let needle = concat!(".unwrap_or_default", "()");
+
+    code_lines(text)
+        .filter(|(_, line)| line.contains(needle) && !line.trim_start().starts_with("//"))
+        .map(|(index, line)| {
+            format!(
+                "{path}:{}: an invisible default — expect(\"why this cannot fail\") \
+                 or name the fallback where it is written\n    {}",
+                index + 1,
+                line.trim()
+            )
+        })
+        .collect()
+}
+
+/// Everything that is not inside a test item.
 ///
 /// Tests get the same latitude here as tests in a `tests/` directory do: an
-/// unwrap is an expectation and a fixture may hold anything at all. This assumes
-/// the convention that `#[cfg(test)] mod tests` comes last in a file, which is
-/// where Rust puts it and where `cargo fmt` leaves it.
+/// unwrap is an expectation and a fixture may hold anything at all. An inline
+/// `#[cfg(test)]` item is skipped whole — its attributes, its body, its closing
+/// brace — and the scan then carries on. Stopping at the first one instead let
+/// every rule in this file miss the production code that followed a test
+/// module, which is one refactor away from being unchecked.
 fn code_lines(text: &str) -> impl Iterator<Item = (usize, &str)> {
-    text.lines()
-        .enumerate()
-        .take_while(|(_, line)| line.trim() != "#[cfg(test)]")
+    code_regions(text).into_iter()
+}
+
+/// The lines of a file that are not part of an inline test item.
+fn code_regions(text: &str) -> Vec<(usize, &str)> {
+    let lines: Vec<(usize, &str)> = text.lines().enumerate().collect();
+    let mut code = Vec::new();
+    let mut at = 0;
+    while at < lines.len() {
+        if lines[at].1.trim() != "#[cfg(test)]" {
+            code.push(lines[at]);
+            at += 1;
+            continue;
+        }
+        // The attributes over the item, which may open a bracket on one line
+        // and close it lines later.
+        let mut brackets = 0i32;
+        while at < lines.len() {
+            let line = lines[at].1;
+            let trimmed = line.trim_start();
+            if brackets == 0
+                && !trimmed.starts_with("#[")
+                && !trimmed.starts_with("//")
+                && !trimmed.is_empty()
+            {
+                break;
+            }
+            brackets += line.chars().filter(|ch| *ch == '[').count() as i32;
+            brackets -= line.chars().filter(|ch| *ch == ']').count() as i32;
+            at += 1;
+        }
+        // The item itself: a block runs to its closing brace, and one that ends
+        // in a semicolon is a single line.
+        let mut depth = 0i32;
+        let mut opened = false;
+        while at < lines.len() {
+            let line = lines[at].1;
+            for ch in line.chars() {
+                match ch {
+                    '{' => {
+                        depth += 1;
+                        opened = true;
+                    }
+                    '}' => depth -= 1,
+                    _ => {}
+                }
+            }
+            at += 1;
+            if opened {
+                if depth <= 0 {
+                    break;
+                }
+            } else if line.contains(';') {
+                break;
+            }
+        }
+    }
+    code
 }
 
 /// A module without a `//!` header is a module whose purpose lives only in
@@ -303,7 +391,8 @@ pub(crate) fn display(path: &Path) -> String {
 )]
 mod tests {
     use super::{
-        bare_unwrap, corpus_names_its_changelog, header_prose, missing_module_docs, unwinds_on_panic,
+        bare_unwrap, corpus_names_its_changelog, header_prose, invisible_default,
+        missing_module_docs, unwinds_on_panic,
     };
 
     /// The bypass `INV-COMPAT-002` names, attempted in full: a golden changes
@@ -348,10 +437,22 @@ mod tests {
     }
 
     #[test]
-    fn expect_and_unwrap_or_are_left_alone() {
-        let source = "//! A module.\nlet a = x.expect(\"why\");\nlet b = y.unwrap_or_default();\n";
+    fn expect_and_a_named_fallback_are_left_alone() {
+        let source = "//! A module.\nlet a = x.expect(\"why\");\nlet b = y.unwrap_or(0);\n";
 
         assert!(bare_unwrap("src/thing.rs", source).is_empty());
+        assert!(invisible_default("src/thing.rs", source).is_empty());
+    }
+
+    /// Rule 7's third sentence, watched refuse: the pattern that turns an
+    /// impossible case into a wrong answer.
+    #[test]
+    fn an_invisible_default_is_refused_with_its_line() {
+        let source = "//! A module.\nfn real() {\n    let x = y.unwrap_or_default();\n}\n";
+
+        let complaints = invisible_default("src/thing.rs", source);
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(complaints[0].starts_with("src/thing.rs:3:"), "{complaints:?}");
     }
 
     #[test]
@@ -362,11 +463,14 @@ mod tests {
     }
 
     #[test]
-    fn code_after_an_inline_test_module_is_not_code() {
+    fn the_contents_of_an_inline_test_module_are_not_code() {
         let source = concat!(
             "//! A module.\n",
             "fn real() { thing().unwrap(); }\n",
             "#[cfg(test)]\n",
+            "#[allow(\n",
+            "    clippy::unwrap_used,\n",
+            ")]\n",
             "mod tests {\n",
             "    fn a_test() { thing().unwrap(); }\n",
             "}\n"
@@ -376,10 +480,35 @@ mod tests {
         assert_eq!(
             complaints.len(),
             1,
-            "only the line above the test module counts"
+            "the test module is skipped whole, attributes and all"
         );
         assert!(
             complaints[0].starts_with("src/thing.rs:2:"),
+            "{complaints:?}"
+        );
+    }
+
+    /// The rule the review found missing: stopping at the first test module
+    /// left everything below it unchecked. It does not stop now.
+    #[test]
+    fn code_after_an_inline_test_module_is_still_code() {
+        let source = concat!(
+            "//! A module.\n",
+            "#[cfg(test)]\n",
+            "mod tests {\n",
+            "    fn a_test() { thing().unwrap(); }\n",
+            "}\n",
+            "fn real() { thing().unwrap(); }\n"
+        );
+
+        let complaints = bare_unwrap("src/thing.rs", source);
+        assert_eq!(
+            complaints.len(),
+            1,
+            "the code below the test module is code again"
+        );
+        assert!(
+            complaints[0].starts_with("src/thing.rs:6:"),
             "{complaints:?}"
         );
     }
