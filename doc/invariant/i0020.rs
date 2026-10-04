@@ -4,11 +4,11 @@ use dacc_core::NonEmptyStr;
 dacc_knowledge::invariant!("i0020",
     specification: crate::rfc::rfc_2026_004,
     status: InvariantStatus::Enforced(Enforced::Adversarial {
-        bypass: NonEmptyStr::new("a change to the plan output of a recorded configuration with no changelog entry; the corpus compares the current plan to the checked-in golden and fails until the golden is updated and a changelog entry is written."),
-        tests: &[crate::anchor::compat_rename],
+        bypass: NonEmptyStr::new("a change to the plan output of a recorded configuration with no changelog entry: the golden is updated on its own and the change lands saying nothing. Two holders refuse it, and each is attacked by name — the corpus compares the current plan to the checked-in golden and fails until the golden is updated, and the gate refuses a commit that changes the corpus without a CHANGELOG.md hunk in it."),
+        tests: &[crate::anchor::compat_rename, crate::anchor::a_corpus_change_without_a_changelog_is_refused],
     }),
     statement: NonEmptyStr::new("INV-COMPAT-002: The plan for a recorded configuration does not change without the change being declared."),
-    rationale: r"The plan is the compatibility surface, and a corpus of configurations with their plans checked in makes that promise something a machine verifies rather than something a person intends. A version that changes one either has a bug or has made a decision, and the changelog entry is what failed the build until written.",
-    enforced_by: &[crate::anchor::compat_check],
-    tests: &[crate::anchor::compat_create, crate::anchor::compat_update, crate::anchor::compat_delete, crate::anchor::compat_rename],
+    rationale: r"The plan is the compatibility surface, and a corpus of configurations with their plans checked in makes that promise something a machine verifies rather than something a person intends. A version that changes one either has a bug or has made a decision, and the changelog entry is what failed the build until written. The corpus test holds the golden half — it fails until the golden is updated — and the gate holds the declaration half: a commit that changes the corpus carries its CHANGELOG.md hunk in the same commit, or it is refused.",
+    enforced_by: &[crate::anchor::compat_check, crate::anchor::the_corpus_change_checks_the_changelog],
+    tests: &[crate::anchor::compat_create, crate::anchor::compat_update, crate::anchor::compat_delete, crate::anchor::compat_rename, crate::anchor::a_corpus_change_without_a_changelog_is_refused],
 );

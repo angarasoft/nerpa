@@ -157,11 +157,87 @@ pub(crate) fn repository_rules() -> Result<(), String> {
         complaints.extend(header_prose(&shown, text));
     }
 
+    match changes_under_judgement() {
+        None => eprintln!("  corpus: not run — this tree has no commits of its own to judge"),
+        Some((committed, pending)) => {
+            complaints.extend(corpus_names_its_changelog(&committed));
+            complaints.extend(corpus_names_its_changelog(&pending));
+        }
+    }
+
     if complaints.is_empty() {
         eprintln!("  repository rules: {} files, clean", sources.len());
         return Ok(());
     }
     Err(complaints.join("\n"))
+}
+
+/// Where the compatibility surface is checked in, and what declares it.
+const CORPUS: &str = "crates/nerpa-core/tests/corpus/";
+const CHANGELOG: &str = "CHANGELOG.md";
+
+/// A commit that changes the corpus carries its changelog in the same commit
+/// (`INV-COMPAT-002`).
+///
+/// The corpus is the plan's shape as checked-in files, and updating it is
+/// allowed: a change to the plan's shape is either a bug or a decision. What is
+/// not allowed is doing it quietly — the changelog entry is the record of the
+/// decision, and a golden updated on its own moves the compatibility surface
+/// where nobody reading the release will ever look. The corpus test fails until
+/// the golden is updated; this refuses the change until it is declared. Both
+/// halves are named in the entry, and each is shown this rule's bypass.
+#[dacc_derive::doc_anchor(id = "the-corpus-change-checks-the-changelog")]
+fn corpus_names_its_changelog(changed: &[String]) -> Vec<String> {
+    let goldens: Vec<&str> = changed
+        .iter()
+        .map(String::as_str)
+        .filter(|path| path.starts_with(CORPUS))
+        .collect();
+    if goldens.is_empty() || changed.iter().any(|path| path == CHANGELOG) {
+        return Vec::new();
+    }
+    vec![format!(
+        "{} changed and CHANGELOG.md did not: updating the golden is allowed, \
+         doing it without saying so in the changelog is not (INV-COMPAT-002)",
+        goldens.join(", ")
+    )]
+}
+
+/// The files the commit under judgement is made of: the commit as it stands,
+/// and the changes waiting to become one.
+///
+/// [`None`] where there is no repository to ask. The gate's full tier runs on a
+/// tree exported from a commit, which has neither history nor a working copy of
+/// its own — and standing inside some other repository is not standing in this
+/// one, so the step is reported as not run rather than answered for the wrong
+/// tree.
+fn changes_under_judgement() -> Option<(Vec<String>, Vec<String>)> {
+    let root = fs::canonicalize(shell::root()).ok()?;
+    let toplevel = shell::git(&["rev-parse", "--show-toplevel"]).ok()?;
+    if fs::canonicalize(toplevel.trim()).ok()? != root {
+        return None;
+    }
+    // The commit itself. `HEAD^` fails on the first commit of a repository,
+    // which is compared against nothing instead.
+    let committed = shell::git(&["diff", "--name-only", "HEAD^", "HEAD"])
+        .or_else(|_| {
+            shell::git(&["diff-tree", "--root", "--no-commit-id", "--name-only", "-r", "HEAD"])
+        })
+        .ok()?;
+    // The commit about to be written: staged, unstaged, and not yet tracked.
+    let mut pending = shell::git(&["diff", "--name-only", "HEAD"]).ok()?;
+    pending.push_str(&shell::git(&["ls-files", "--others", "--exclude-standard"]).ok()?);
+    Some((names(&committed), names(&pending)))
+}
+
+/// One trimmed, non-empty line of git's output, as one changed path.
+fn names(listed: &str) -> Vec<String> {
+    listed
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 /// `unwrap()` says "this cannot fail" and gives nobody a reason to believe it.
@@ -226,7 +302,38 @@ pub(crate) fn display(path: &Path) -> String {
     reason = "tests may be blunt: an unwrap is an expectation and an index is a claim about shape"
 )]
 mod tests {
-    use super::{bare_unwrap, header_prose, missing_module_docs, unwinds_on_panic};
+    use super::{
+        bare_unwrap, corpus_names_its_changelog, header_prose, missing_module_docs, unwinds_on_panic,
+    };
+
+    /// The bypass `INV-COMPAT-002` names, attempted in full: a golden changes
+    /// and the changelog stays as it was. Refused, by name.
+    #[dacc_derive::doc_anchor(id = "a-corpus-change-without-a-changelog-is-refused")]
+    #[test]
+    fn a_corpus_change_without_a_changelog_is_refused() {
+        let changed = ["crates/nerpa-core/tests/corpus/create.json".to_owned()];
+        let complaints = corpus_names_its_changelog(&changed);
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(
+            complaints[0].contains("CHANGELOG.md") && complaints[0].contains("create.json"),
+            "{complaints:?}"
+        );
+    }
+
+    #[test]
+    fn a_corpus_change_with_its_changelog_passes() {
+        let changed = [
+            "crates/nerpa-core/tests/corpus/create.json".to_owned(),
+            "CHANGELOG.md".to_owned(),
+        ];
+        assert_eq!(corpus_names_its_changelog(&changed), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_changelog_alone_is_not_a_corpus_change() {
+        let changed = ["CHANGELOG.md".to_owned()];
+        assert_eq!(corpus_names_its_changelog(&changed), Vec::<String>::new());
+    }
 
     #[test]
     fn a_bare_unwrap_is_reported_with_its_line() {
