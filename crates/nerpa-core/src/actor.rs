@@ -9,11 +9,14 @@
 //! What this is not: authentication. The engine cannot tell a real OIDC subject
 //! from a string, and does not try — that a name is who it says it is belongs to
 //! the grant and the identity provider (`0009`), not to a value carried here.
-//! `scope` and `expiry` are carried for that grant to one day check; nothing
-//! reads them yet.
+//! `scope` is carried for that grant to one day check; nothing reads it yet.
+//! `expiry` is checked here, because checking it needs no grant: an identity
+//! whose expiry has passed does not run, and an expiry that is not an `RFC3339`
+//! time is refused by name rather than carried as a string.
 
 use std::fmt;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Who acts in a run, over what, and until when.
@@ -28,8 +31,9 @@ pub struct Actor {
     who: String,
     /// What the actor may touch. Carried now, checked when grants arrive.
     scope: String,
-    /// When this identity stops being valid, as written. Carried now, checked
-    /// when grants arrive; absent means no expiry was given.
+    /// When this identity stops being valid, as written. Checked where the
+    /// actor is made — an expiry already in the past is refused — and carried
+    /// into the plan and its number; absent means no expiry was given.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     expiry: Option<String>,
 }
@@ -46,6 +50,14 @@ pub enum ActorError {
     /// nothing, and the shape is the promise.
     #[error("an actor needs a scope: `--as-scope` was empty")]
     EmptyScope,
+    /// The expiry is not an `RFC3339` time. Refused by name, because an expiry
+    /// the comparison cannot read is the decorative flag all over again.
+    #[error("an actor's expiry is not an RFC3339 time: {0:?}")]
+    MalformedExpiry(String),
+    /// The expiry has already passed: this identity stopped being valid before
+    /// the run asked to use it.
+    #[error("an actor's expiry is already in the past: {0:?}")]
+    Expired(String),
 }
 
 impl Actor {
@@ -56,7 +68,10 @@ impl Actor {
     /// Returns [`ActorError::EmptyWho`] or [`ActorError::EmptyScope`] for an
     /// empty name or scope: an identity that names nobody is not one, and a run
     /// carrying it would pass `INV-TRUST-001` in the letter while failing it in
-    /// the fact.
+    /// the fact. Returns [`ActorError::MalformedExpiry`] for an expiry that is
+    /// not an `RFC3339` time, and [`ActorError::Expired`] for one already in the
+    /// past: an expiry is a boundary, and a boundary nothing compares is a
+    /// label.
     pub fn new(
         who: impl Into<String>,
         scope: impl Into<String>,
@@ -69,6 +84,14 @@ impl Actor {
         }
         if scope.trim().is_empty() {
             return Err(ActorError::EmptyScope);
+        }
+        if let Some(written) = expiry.as_deref() {
+            let until = DateTime::parse_from_rfc3339(written)
+                .map_err(|_| ActorError::MalformedExpiry(written.to_owned()))?;
+            let now: DateTime<Utc> = std::time::SystemTime::now().into();
+            if until.naive_utc() < now.naive_utc() {
+                return Err(ActorError::Expired(written.to_owned()));
+            }
         }
         Ok(Self { who, scope, expiry })
     }
@@ -130,9 +153,28 @@ mod tests {
     }
 
     #[test]
-    fn an_expiry_is_carried_and_one_that_was_not_given_is_absent() {
-        let given = Actor::new("alice", "run", Some("2026-10-02T00:00:00Z".to_owned())).unwrap();
-        assert_eq!(given.expiry(), Some("2026-10-02T00:00:00Z"));
+    fn an_expiry_in_the_future_is_carried_and_one_that_was_not_given_is_absent() {
+        let given = Actor::new("alice", "run", Some("2999-06-01T00:00:00Z".to_owned())).unwrap();
+        assert_eq!(given.expiry(), Some("2999-06-01T00:00:00Z"));
         assert_eq!(Actor::new("alice", "run", None).unwrap().expiry(), None);
+    }
+
+    /// The flag was read and checked by nothing (review v0013's minor-1). The
+    /// refusal names the expiry it refused.
+    #[test]
+    fn an_expiry_already_in_the_past_is_refused_naming_it() {
+        let refused =
+            Actor::new("alice", "run", Some("2000-01-01T00:00:00Z".to_owned())).unwrap_err();
+        assert_eq!(
+            refused,
+            ActorError::Expired("2000-01-01T00:00:00Z".to_owned())
+        );
+    }
+
+    #[test]
+    fn an_expiry_that_is_not_a_time_is_refused_naming_the_format() {
+        let refused = Actor::new("alice", "run", Some("yesterday".to_owned())).unwrap_err();
+        assert_eq!(refused, ActorError::MalformedExpiry("yesterday".to_owned()));
+        assert!(refused.to_string().contains("RFC3339"), "{refused}");
     }
 }

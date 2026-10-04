@@ -31,6 +31,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 dacc-derive = { workspace = true }
 thiserror = { workspace = true }
+# `--as-expiry` is RFC3339 as a person writes it, and the comparison against the
+# clock is what makes the expiry a boundary rather than a label.
+chrono.workspace = true
 
 [lints]
 workspace = true

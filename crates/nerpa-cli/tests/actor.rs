@@ -55,3 +55,86 @@ fn a_run_journal_says_who_acted() {
         "{journal}"
     );
 }
+
+/// `--as-expiry` is a boundary, not a label (review v0013's minor-1): an
+/// identity whose expiry has passed does not run, and the refusal names it.
+#[test]
+fn an_identity_whose_expiry_passed_does_not_run() {
+    let scratch = tempfile::tempdir().unwrap();
+    let said = Command::new(env!("CARGO_BIN_EXE_nerpa"))
+        .args([
+            "plan",
+            "--as",
+            "alice@example.com",
+            "--as-expiry",
+            "2000-01-01T00:00:00Z",
+        ])
+        .arg("--state")
+        .arg(scratch.path().join("state.json"))
+        .output()
+        .unwrap();
+    assert!(
+        !said.status.success(),
+        "an identity whose expiry passed must not run"
+    );
+    let problem = String::from_utf8_lossy(&said.stderr);
+    assert!(
+        problem.contains("expiry") && problem.contains("2000-01-01T00:00:00Z"),
+        "{problem}"
+    );
+}
+
+/// An expiry that is not an RFC3339 time is refused naming the format and the
+/// value, rather than carried as a string that means nothing.
+#[test]
+fn an_expiry_that_is_not_a_time_is_refused_by_name() {
+    let scratch = tempfile::tempdir().unwrap();
+    let said = Command::new(env!("CARGO_BIN_EXE_nerpa"))
+        .args([
+            "plan",
+            "--as",
+            "alice@example.com",
+            "--as-expiry",
+            "yesterday",
+        ])
+        .arg("--state")
+        .arg(scratch.path().join("state.json"))
+        .output()
+        .unwrap();
+    assert!(
+        !said.status.success(),
+        "an expiry that is not a time must not run"
+    );
+    let problem = String::from_utf8_lossy(&said.stderr);
+    assert!(
+        problem.contains("RFC3339") && problem.contains("yesterday"),
+        "{problem}"
+    );
+}
+
+/// The future expiry is what the flag is for: the run proceeds.
+#[test]
+fn an_identity_with_a_future_expiry_runs() {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path();
+    std::fs::write(root.join("main.star"), "node(\"localhost\")\n").unwrap();
+    let said = Command::new(env!("CARGO_BIN_EXE_nerpa"))
+        .args([
+            "plan",
+            "--as",
+            "alice@example.com",
+            "--as-expiry",
+            "2999-06-01T00:00:00Z",
+        ])
+        .arg("--state")
+        .arg(root.join("state.json"))
+        .arg("-f")
+        .arg(root.join("main.star"))
+        .output()
+        .unwrap();
+    assert!(
+        said.status.success(),
+        "{}",
+        String::from_utf8_lossy(&said.stderr)
+    );
+}
