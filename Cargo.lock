@@ -472,33 +472,33 @@ dependencies = [
 
 [[package]]
 name = "dacc-core"
-version = "0.5.0"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34f7541159bb9a7b162c62d4393c1118a68a7bf40781794c1f009ad3c9f31614"
+checksum = "d167d368d9b030b827327da9e405c0c9d2cee14da84520a98d6b2fb5c0afe693"
 
 [[package]]
 name = "dacc-derive"
-version = "0.5.0"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3c80991dc6dbcc91140820fe30ec85f48eaa32ac05d2020c4d1b048be7850721"
+checksum = "b63a486ab21a71d71fcfd452812e2a1dd215b4f9ab1aa88445dfd3d595f50989"
 dependencies = [
  "dacc-core",
 ]
 
 [[package]]
 name = "dacc-journal"
-version = "0.5.0"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2604fb727d71b2b37faee31075f1438e84fa6500f213cccbe37ebf4e22156602"
+checksum = "3fd82354d6b6c809a11360e0fff83d68e2beac02abdc50068589d5d29cfb5198"
 dependencies = [
  "dacc-core",
 ]
 
 [[package]]
 name = "dacc-knowledge"
-version = "0.5.0"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97ef70c51205dee69a5c73b96355ae4f98ca407180b66e8547c0b57623d59b17"
+checksum = "82a93dd268aa18108a7be3d39c139fa8b4d89165a3bc975b19a360026aed8d69"
 dependencies = [
  "chrono",
  "dacc-core",
@@ -506,9 +506,9 @@ dependencies = [
 
 [[package]]
 name = "dacc-scan"
-version = "0.5.0"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "009b613f5fb8f366f20bfbe4ee93fedba99889a843c923a2f5ef8e036ff751f9"
+checksum = "ca2c39fb055fae61310c1e641c5f169a9fcd8a36be7c04c38b120ffdc0fc1c2b"
 dependencies = [
  "dacc-core",
  "dacc-derive",
@@ -520,9 +520,9 @@ dependencies = [
 
 [[package]]
 name = "dacc-work"
-version = "0.5.0"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26522b17ed373ce3db443024ed472b5d625385d5fa7f262c90cd445847925922"
+checksum = "08881d41048828313c063fb8d732d8625c99b0a1b5d5c190f367dcb7d53c0d93"
 dependencies = [
  "dacc-core",
  "dacc-derive",

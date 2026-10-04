@@ -934,6 +934,9 @@ without ceremony until the first stage is complete.
 
 ### Changed
 
+- The registry rides on dacc 0.5.2: the six dacc crates, and the CLI the gate
+  installs at the one version line `Cargo.toml` carries, move off 0.5.0.
+
 - The invariant registry rides on dacc 0.5.0's knowledge types, retiring the
   local `Invariant` of `adr-2026-057` as that record promised. Every invariant
   names the specification whose contract it holds, the `INV-` key moves into
