@@ -18,15 +18,31 @@ A test name is a sentence about a guarantee.
 
 ## Layers
 
+The table says what the tree runs. A layer named here and absent from the tree is
+a claim the suite cannot back, and this document has made exactly that mistake
+once already. So the layers that do not exist sit below, in their own table,
+marked as the plans they are.
+
 | Layer | What it covers | Where it runs |
 | --- | --- | --- |
-| Unit and property | model, graph, planner | `cargo test`, every commit |
-| Snapshot | plan text, plan JSON, **plan hash** | `cargo test`, every commit |
-| Provider, recorded | one real cloud API, replayed | `cargo test`, every commit |
-| Provider, live | the same, against the real account | on demand, costs money |
-| Executor | one container per supported distribution | CI, every commit |
+| Unit and property | model, graph, planner, actor, config | `cargo test`, every commit |
+| Integration | the built command against a scratch machine: plan, apply, sign, the journal | `cargo test`, every commit |
+| Provider, contract | the os provider through the local executor, against a scratch directory | `cargo test`, every commit |
+| Corpus, plan stability | the plan for a recorded configuration, as JSON and as its number | `cargo test`, every commit |
 | Gate | that every check can go red | `cargo test -p xtask`, every commit |
 | Mutation | whether the suite means anything | nightly, `cargo xtask mutants` |
+
+### Layers that do not run yet
+
+Planned — the work that would build each is named rather than implied, so the
+pyramid can be told from the hope.
+
+| Layer | What it would cover | The work that would build it |
+| --- | --- | --- |
+| Provider, recorded | one real cloud API, recorded once and replayed | planned — stage 3's recorded-exchange tests, built beside the Terraform converter (`t-stage-3-cloud`) |
+| Provider, live | the same, against the real account | planned — on demand, before a stage is declared finished; it costs money |
+| Executor, distributions | one container per supported distribution | planned — no work in the plan builds it yet |
+| Live harness, stage 4 | plan, sign, apply, an out-of-band change refused naming what moved, the log | planned — `cargo xtask live --stage4`, the harness review v0013's major-4 asks for |
 
 ### Property tests, where an example would lie
 
@@ -89,9 +105,12 @@ The requirement lives in the provider trait, so a provider without one does not
 compile. This makes providers testable by construction rather than by discipline,
 and it applies to authors outside this repository too.
 
-Real providers are additionally tested against recorded HTTP exchanges: recorded
-once against the live account, replayed in CI. Recordings go stale — refreshing
-them needs an account and money, and that is a known, accepted cost.
+There are no real providers in the tree yet. The one provider is `os`, and its
+contract runs against a scratch directory through the local executor. When a
+cloud provider arrives, recorded HTTP exchanges — recorded once against the live
+account, replayed in CI — are planned as its layer, and recordings go stale:
+refreshing them needs an account and money. That is a plan for stage 3
+(`t-stage-3-cloud`), not a description of what runs today.
 
 ## The gate is tested too
 
@@ -157,7 +176,7 @@ on a contract's side effect.
 ```console
 $ cargo xtask test          both configurations
 $ cargo xtask ci            everything, what CI runs
-$ cargo mutants             nightly in CI, occasionally worth running by hand
+$ cargo xtask mutants       nightly in CI, occasionally worth running by hand
 ```
 
 ## What is not tested, and why
@@ -166,3 +185,8 @@ Live cloud runs are not on the commit path. They cost money and they fail for
 reasons that have nothing to do with the change under review, which is how teams
 learn to ignore a red build. They run on demand, before a stage is declared
 finished — see the exit criteria in [ROADMAP.md](../ROADMAP.md).
+
+The live fleet runs (`cargo xtask live`) are not on the commit path either: they
+need ssh reach to real machines and a root-owned executor path, which is what
+makes them a stage exit rather than a test. The stage-4 scenario is marked as
+needing the live park wherever it is run.
