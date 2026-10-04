@@ -412,3 +412,201 @@ fn an_approval_of_another_shape_is_refused_by_name() {
         "{problem}"
     );
 }
+
+/// A configuration with two files, on this machine, for the cases that differ
+/// only in the order of the stages.
+fn world_with_two_files(root: &Path) {
+    std::fs::write(
+        root.join("main.star"),
+        format!(
+            "node(\"localhost\")\nresource(\"os:file.a@localhost\", {{\n    \"path\": {:?},\n    \"content\": \"a\\n\",\n}})\nresource(\"os:file.b@localhost\", {{\n    \"path\": {:?},\n    \"content\": \"b\\n\",\n}})\n",
+            root.join("a").display().to_string(),
+            root.join("b").display().to_string(),
+        ),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("fleet.toml"),
+        format!(
+            "[approval]\napprovers = {:?}\n",
+            root.join("approvers").display().to_string()
+        ),
+    )
+    .unwrap();
+}
+
+/// Signs a plan rewritten by hand, then tries the apply the signature covers.
+///
+/// The approval carries the rewritten plan and the signature is over whatever
+/// number that plan turns out to have — exactly what a person with a text
+/// editor and a key they hold already can produce, and exactly what the
+/// refusal has to name a difference for.
+fn signed_rewritten(root: &Path, rewrite: &mut dyn FnMut(&mut serde_json::Value)) -> Output {
+    let plan_json = planned(root);
+    let mut value: serde_json::Value = serde_json::from_str(&plan_json).unwrap();
+    rewrite(&mut value);
+    std::fs::write(
+        root.join("plan.json"),
+        serde_json::to_string_pretty(&value).unwrap(),
+    )
+    .unwrap();
+    let said = nerpa(
+        root,
+        &[
+            "sign",
+            root.join("plan.json").to_str().unwrap(),
+            "--as",
+            "carol@example.com",
+            "--with-key",
+            root.join("carol").to_str().unwrap(),
+        ],
+    );
+    assert!(
+        said.status.success(),
+        "{}",
+        String::from_utf8_lossy(&said.stderr)
+    );
+    nerpa(
+        root,
+        &[
+            "apply",
+            "--as",
+            "alice@example.com",
+            "--approval",
+            root.join("plan.json.approval").to_str().unwrap(),
+        ],
+    )
+}
+
+/// The number covers the migrations, so the refusal names the rename that
+/// moved — the one thing a diff by address cannot see.
+#[test]
+#[dacc_derive::doc_anchor(id = "a-refusal-names-the-rename-that-moved")]
+fn a_refusal_names_the_rename_that_moved() {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path();
+    world(root);
+    let carol = keygen(root, "carol");
+    approvers(root, &[("carol@example.com", &carol)]);
+
+    // Only the rename differs: the signed plan carries one and the world never
+    // declared one.
+    let said = signed_rewritten(root, &mut |value| {
+        value["migrations"] = serde_json::json!([
+            {"from": "os:file.old@localhost", "to": "os:file.note@localhost"}
+        ]);
+    });
+    assert!(
+        !said.status.success(),
+        "the numbers differ: the apply stops"
+    );
+    let problem = String::from_utf8_lossy(&said.stderr);
+    assert!(
+        problem.contains("the rename") && problem.contains("os:file.old@localhost"),
+        "the refusal names the rename that moved: {problem}"
+    );
+}
+
+/// The number covers the merges, and so does the refusal.
+#[test]
+#[dacc_derive::doc_anchor(id = "a-refusal-names-the-merge-that-moved")]
+fn a_refusal_names_the_merge_that_moved() {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path();
+    world(root);
+    let carol = keygen(root, "carol");
+    approvers(root, &[("carol@example.com", &carol)]);
+
+    let said = signed_rewritten(root, &mut |value| {
+        value["merges"] = serde_json::json!([{"address": "os:file.note@localhost"}]);
+    });
+    assert!(
+        !said.status.success(),
+        "the numbers differ: the apply stops"
+    );
+    let problem = String::from_utf8_lossy(&said.stderr);
+    assert!(
+        problem.contains("merging") && problem.contains("os:file.note@localhost"),
+        "the refusal names the merge that moved: {problem}"
+    );
+}
+
+/// The number covers the order of the stages, and the refusal names the order
+/// rather than only the changes.
+#[test]
+#[dacc_derive::doc_anchor(id = "a-refusal-names-the-stage-order-that-moved")]
+fn a_refusal_names_the_stage_order_that_moved() {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path();
+    world_with_two_files(root);
+    let carol = keygen(root, "carol");
+    approvers(root, &[("carol@example.com", &carol)]);
+
+    // Only the order differs: the signed plan runs the two the other way round.
+    let said = signed_rewritten(root, &mut |value| {
+        if let Some(changes) = value["stages"][0]["changes"].as_array_mut() {
+            changes.reverse();
+        }
+    });
+    assert!(
+        !said.status.success(),
+        "the numbers differ: the apply stops"
+    );
+    let problem = String::from_utf8_lossy(&said.stderr);
+    assert!(
+        problem.contains("the stages moved")
+            && problem.contains("os:file.a@localhost")
+            && problem.contains("os:file.b@localhost"),
+        "the refusal names the order that moved: {problem}"
+    );
+}
+
+/// The number covers more than any diff puts into words — here the same actor
+/// under a different expiry — and a refusal over it names the two numbers it
+/// compared rather than trailing a dash.
+#[test]
+#[dacc_derive::doc_anchor(id = "a-refusal-with-nothing-left-to-name-names-both-numbers")]
+fn a_refusal_with_nothing_left_to_name_names_both_numbers() {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path();
+    world(root);
+    let carol = keygen(root, "carol");
+    approvers(root, &[("carol@example.com", &carol)]);
+
+    let plan_json = planned(root);
+    std::fs::write(root.join("plan.json"), &plan_json).unwrap();
+    let said = nerpa(
+        root,
+        &[
+            "sign",
+            root.join("plan.json").to_str().unwrap(),
+            "--as",
+            "carol@example.com",
+            "--with-key",
+            root.join("carol").to_str().unwrap(),
+        ],
+    );
+    assert!(said.status.success());
+
+    let said = nerpa(
+        root,
+        &[
+            "apply",
+            "--as",
+            "alice@example.com",
+            "--as-expiry",
+            "2999-06-01T00:00:00Z",
+            "--approval",
+            root.join("plan.json.approval").to_str().unwrap(),
+        ],
+    );
+    assert!(
+        !said.status.success(),
+        "the numbers differ: the apply stops"
+    );
+    let problem = String::from_utf8_lossy(&said.stderr);
+    assert!(
+        problem.contains("the signed plan numbers") && problem.contains("this one numbers"),
+        "the refusal names both numbers: {problem}"
+    );
+}

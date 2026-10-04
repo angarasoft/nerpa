@@ -15,14 +15,15 @@
 //! public half on disk with the other half in `ssh-agent`, exactly as the
 //! transport hands hosts to `ssh`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Write as _;
 use std::io::Write as _;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
 use nerpa_core::Actor;
 use nerpa_core::address::Address;
-use nerpa_core::plan::{AttributeDelta, Change, ChangeKind, Plan};
+use nerpa_core::plan::{AttributeDelta, Change, ChangeKind, Merge, Plan};
 
 /// What an approval says it is. A document of another shape is refused by
 /// name rather than read as this one.
@@ -163,7 +164,17 @@ pub(crate) fn checked(
             approval.signer
         );
         let moved = what_moved(signed_plan, fresh);
-        refused.push_str(&moved.join("; "));
+        if moved.is_empty() {
+            // The number covers more than any diff can put into words, and a
+            // dash after the word names nothing. The two numbers are the
+            // honest answer, and they are what was signed over.
+            let _ = write!(
+                refused,
+                "the signed plan numbers {number} and this one numbers {now}"
+            );
+        } else {
+            refused.push_str(&moved.join("; "));
+        }
         return Err(refused);
     }
     Ok(approval.signer.clone())
@@ -180,6 +191,11 @@ fn number_of(plan: &Plan) -> Result<String, String> {
 
 /// What moved between the plan that was signed and the one this run computed,
 /// named rather than summarised.
+///
+/// Covers what the number covers (`INV-PLAN-006`): who acts, the changes
+/// address by address, the migrations from and to, the merges, and the order
+/// and composition of the stages. What the two plans merely report is not in
+/// the number and not here.
 fn what_moved(signed: &Plan, fresh: &Plan) -> Vec<String> {
     let mut moved = Vec::new();
     let was_who = signed.actor().map(Actor::who);
@@ -216,7 +232,109 @@ fn what_moved(signed: &Plan, fresh: &Plan) -> Vec<String> {
             ));
         }
     }
+    migrations_moved(signed, fresh, &mut moved);
+    merges_moved(signed, fresh, &mut moved);
+    stages_moved(signed, fresh, &mut moved);
     moved
+}
+
+/// The renames, from and to: two plans differing only in a migration are two
+/// plans, and the refusal says which rename moved.
+fn migrations_moved(signed: &Plan, fresh: &Plan, moved: &mut Vec<String>) {
+    let was: BTreeSet<(&Address, &Address)> = signed
+        .migrations()
+        .iter()
+        .map(|rename| (rename.from(), rename.to()))
+        .collect();
+    let is: BTreeSet<(&Address, &Address)> = fresh
+        .migrations()
+        .iter()
+        .map(|rename| (rename.from(), rename.to()))
+        .collect();
+    for (from, to) in was.difference(&is) {
+        moved.push(format!(
+            "the rename {from} → {to} moved: the signed plan had it and this one has dropped it"
+        ));
+    }
+    for (from, to) in is.difference(&was) {
+        moved.push(format!(
+            "the rename {from} → {to} moved: this plan has it and the signed one never did"
+        ));
+    }
+}
+
+/// The resources marked for merging: not work, but part of what the plan says
+/// and of its number.
+fn merges_moved(signed: &Plan, fresh: &Plan, moved: &mut Vec<String>) {
+    let was: BTreeSet<&Address> = signed.merges().iter().map(Merge::address).collect();
+    let is: BTreeSet<&Address> = fresh.merges().iter().map(Merge::address).collect();
+    for address in was.difference(&is) {
+        moved.push(format!(
+            "{address} moved: the signed plan had it marked for merging and this one has dropped it"
+        ));
+    }
+    for address in is.difference(&was) {
+        moved.push(format!(
+            "{address} moved: this plan marks it for merging and the signed one never did"
+        ));
+    }
+}
+
+/// The stages, in the order they run: the number covers them, and a diff
+/// address by address cannot see where the work sits or in what order.
+///
+/// Only addresses both plans carry are compared here. An address one plan adds
+/// or drops is named above, and repeating it as a stage difference would bury
+/// the two things only this can say: which stage the work sits in, and what
+/// runs before what.
+fn stages_moved(signed: &Plan, fresh: &Plan, moved: &mut Vec<String>) {
+    let signed_changes: BTreeSet<&Address> = signed.changes().map(Change::address).collect();
+    let shared: BTreeSet<&Address> = fresh
+        .changes()
+        .map(Change::address)
+        .filter(|address| signed_changes.contains(*address))
+        .collect();
+    let was = order_of(signed, &shared);
+    let is = order_of(fresh, &shared);
+    if was.len() != is.len() {
+        moved.push(format!(
+            "the stages moved: {} carry the shared work in the signed plan and {} in this one",
+            was.len(),
+            is.len()
+        ));
+    }
+    for ((at, left), (_, right)) in was.iter().zip(is.iter()) {
+        if left != right {
+            moved.push(format!(
+                "the stages moved: stage {} runs {} in the signed plan and {} in this one",
+                at + 1,
+                left.join(", "),
+                right.join(", ")
+            ));
+        }
+    }
+}
+
+/// Each stage that carries work both plans name, as its addresses in the order
+/// they run.
+fn order_of(plan: &Plan, shared: &BTreeSet<&Address>) -> Vec<(usize, Vec<String>)> {
+    plan.stages()
+        .iter()
+        .enumerate()
+        .map(|(index, stage)| {
+            (
+                index,
+                stage
+                    .changes()
+                    .iter()
+                    .map(Change::address)
+                    .filter(|address| shared.contains(*address))
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .filter(|(_, order)| !order.is_empty())
+        .collect()
 }
 
 /// One address both plans carry, with a change that is not the same one: the
