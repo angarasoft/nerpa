@@ -77,6 +77,12 @@ fn copy(path: &str, length: usize) -> String {
 ///
 /// Returns [`ProviderError::Unreachable`] if the machine cannot be reached, if
 /// it is of an architecture this build is not for, or if the copy failed.
+///
+/// # Panics
+///
+/// Never in fact: the one `expect` names a property of the digest type —
+/// sixty-four hexadecimal characters always carry sixteen — and it is written
+/// as a loud stop rather than a silent short name because rule 7 says so.
 pub fn deliver(
     node: &Target,
     host: &str,
@@ -92,7 +98,9 @@ pub fn deliver(
     let bytes = std::fs::read(binary)
         .map_err(|error| out_of_reach(format!("{}: {error}", binary.display())))?;
     let digest = blake3::hash(&bytes).to_hex();
-    let short = digest.get(..16).unwrap_or_default();
+    let short = digest.get(..16).expect(
+        "a blake3 digest is sixty-four hexadecimal characters, so sixteen are always there",
+    );
     let path = named(short);
 
     // Already there is the common case, and it costs one round trip rather than
@@ -234,9 +242,10 @@ fn jitter(waits: std::time::Duration) -> std::time::Duration {
     }
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|since| u128::from(since.subsec_nanos()))
-        .unwrap_or_default();
-    let millis = u64::try_from(now % spread).unwrap_or_default();
+        // A clock before the epoch has no nanoseconds to spread.
+        .map_or(0, |since| u128::from(since.subsec_nanos()));
+    let millis = u64::try_from(now % spread)
+        .expect("the nanoseconds of a second fit a u64, and so does their remainder");
     std::time::Duration::from_millis(millis)
 }
 
@@ -320,16 +329,21 @@ fn spoken(
     let err = child.stderr.take();
 
     let (said, complained) = std::thread::scope(|scope| {
-        let reading_out = scope.spawn(move || out.map(tail).unwrap_or_default());
-        let reading_err = scope.spawn(move || err.map(tail).unwrap_or_default());
+        // No pipe is no output, and no bytes is the answer.
+        let reading_out = scope.spawn(move || out.map_or_else(Vec::new, tail));
+        let reading_err = scope.spawn(move || err.map_or_else(Vec::new, tail));
         if let Some(mut pipe) = input.take() {
             // A far side that has gone, or that refuses the rest, says so by its
             // status; what it wrote is read either way.
             let _ = pipe.write_all(stdin);
         }
         (
-            reading_out.join().unwrap_or_default(),
-            reading_err.join().unwrap_or_default(),
+            reading_out
+                .join()
+                .expect("the threads reading the pipes do not panic"),
+            reading_err
+                .join()
+                .expect("the threads reading the pipes do not panic"),
         )
     });
 
@@ -345,7 +359,11 @@ pub(crate) fn tail(mut stream: impl std::io::Read) -> Vec<u8> {
         if read == 0 {
             break;
         }
-        kept.extend_from_slice(chunk.get(..read).unwrap_or_default());
+        kept.extend_from_slice(
+            chunk
+                .get(..read)
+                .expect("a read never returns more than the buffer it read into"),
+        );
         if kept.len() > KEPT {
             kept.drain(..kept.len() - KEPT);
         }
