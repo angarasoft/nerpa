@@ -1083,6 +1083,18 @@ without ceremony until the first stage is complete.
 
 ### Fixed
 
+- Review v0013's nine findings, closed. The testing document names the layers
+  the suite runs and what is only planned; a commit touching the corpus carries
+  its changelog; a refusal names everything its number covers, or the two
+  numbers it compared when words fail; `cargo xtask live --stage4` drives the
+  five verbs of the stage-4 outcome, marked as needing the live park; an
+  identity whose expiry passed does not run, and an expiry that is not an
+  RFC3339 time is refused by name; and rule 7's every sentence has a lint
+  behind it, reading past inline test modules. Beside them the convergence line
+  is matched whole, and the executor installs through a temporary name of each
+  run's own. Declared rather than done, and the invariants say so: an actor's
+  scope, carried until grants exist.
+
 - Documents and a test named somebody's real machines: a Teleport proxy by its
   address, two hosts by their names, a private address and a home directory.
   What was measured is what a record is for; whose machines they were is not,
