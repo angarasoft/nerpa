@@ -541,8 +541,7 @@ impl Planning<'_> {
                 let claimed: &[Address] = name
                     .as_ref()
                     .and_then(|name| self.taken.get(name))
-                    .map(Vec::as_slice)
-                    .unwrap_or_default();
+                    .map_or(&[], Vec::as_slice);
                 for removal in claimed {
                     walk.claims.insert(removal.clone(), address.clone());
                 }
@@ -608,9 +607,8 @@ impl Planning<'_> {
                 // A reaction an earlier run began and did not finish is owed, and
                 // stays owed until it is paid. See decision 0026.
                 let record = self.state.get(self.moves.get(address).unwrap_or(address));
-                let owed: Vec<Address> = record
-                    .map(|record| record.owed().iter().cloned().collect())
-                    .unwrap_or_default();
+                let owed: Vec<Address> =
+                    record.map_or_else(Vec::new, |record| record.owed().iter().cloned().collect());
 
                 if let Some(change) = change_for(
                     resource,
@@ -623,16 +621,15 @@ impl Planning<'_> {
                     Bearings {
                         roused_by,
                         owed,
-                        depends_on: self
-                            .dependencies
-                            .get(address)
-                            .map(|of_this| {
+                        depends_on: self.dependencies.get(address).map_or_else(
+                            Vec::new,
+                            |of_this| {
                                 of_this
                                     .iter()
                                     .map(|dependency| (*dependency).clone())
                                     .collect()
-                            })
-                            .unwrap_or_default(),
+                            },
+                        ),
                         recorded: record.map(Record::depends_on),
                         entry: self
                             .state
@@ -845,7 +842,7 @@ impl Planning<'_> {
 
         let mut leaving: BTreeMap<usize, Vec<Change>> = BTreeMap::new();
         for removal in removals.planned {
-            let at = rank.get(removal.address()).copied().unwrap_or_default();
+            let at = rank.get(removal.address()).copied().unwrap_or(0);
             leaving.entry(at).or_default().push(removal);
         }
         // In the graph's order within a rank, with a rank's kind taken from
@@ -853,7 +850,7 @@ impl Planning<'_> {
         let mut arriving: BTreeMap<usize, (Vec<Address>, Vec<Change>)> = BTreeMap::new();
         for stage in &self.stages {
             for address in stage.addresses() {
-                let at = rank.get(address).copied().unwrap_or_default();
+                let at = rank.get(address).copied().unwrap_or(0);
                 let (all, changes) = arriving.entry(at).or_default();
                 all.push(address.clone());
                 if let Some(change) = declared.remove(address) {
@@ -887,8 +884,8 @@ impl Planning<'_> {
             .holds
             .iter()
             .map(|(domain, since)| {
-                let changes = walk.holding.get(domain).copied().unwrap_or_default()
-                    + removals.holding.get(domain).copied().unwrap_or_default();
+                let changes = walk.holding.get(domain).copied().unwrap_or(0)
+                    + removals.holding.get(domain).copied().unwrap_or(0);
                 crate::plan::Held::new(domain.clone(), *since, changes)
             })
             .collect();
@@ -1073,10 +1070,7 @@ impl Planning<'_> {
 
     /// What state recorded as coming after `address`.
     fn later(&self, address: &Address) -> &[&Address] {
-        self.recorded_after
-            .get(address)
-            .map(Vec::as_slice)
-            .unwrap_or_default()
+        self.recorded_after.get(address).map_or(&[], Vec::as_slice)
     }
 }
 
@@ -1107,7 +1101,7 @@ fn ranked(
     let mut placed = 0usize;
     while let Some(earlier) = ready.pop_front() {
         placed += 1;
-        let at = rank.get(earlier).copied().unwrap_or_default();
+        let at = rank.get(earlier).copied().unwrap_or(0);
         for later in after.get(earlier).into_iter().flatten().copied() {
             if let Some(own) = rank.get_mut(later) {
                 *own = (*own).max(at + 1);

@@ -1056,7 +1056,9 @@ fn told(
     secret: &BTreeSet<String>,
 ) -> Attributes {
     if kind == Sending::Delete {
-        return recorded.cloned().unwrap_or_default();
+        // A delete of something never recorded sends nothing, and an empty set
+        // of attributes is the answer rather than a stand-in for one.
+        return recorded.cloned().unwrap_or_else(Attributes::new);
     }
     desired
         .iter()

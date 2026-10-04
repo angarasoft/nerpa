@@ -559,8 +559,9 @@ fn held_by(path: &Path, state: &mut State) -> Result<(), StoreError> {
     let expected = name_of(target.as_ref());
     let named = path
         .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default();
+        // A path with no file name matches nothing, which is what the check
+        // below wants to hear.
+        .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
     if expected != named {
         return Err(refuse(format!(
             "this shard is about {}, which belongs in {expected}",

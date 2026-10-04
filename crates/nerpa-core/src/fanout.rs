@@ -82,7 +82,13 @@ where
         }
     });
 
-    let mut answers = done.into_inner().unwrap_or_default();
+    let mut answers = match done.into_inner() {
+        Ok(answers) => answers,
+        // The scope has joined every worker before this point, so nothing
+        // panicked to poison the lock — and a poisoned one still holds every
+        // answer collected before whatever went wrong.
+        Err(poisoned) => poisoned.into_inner(),
+    };
     answers.sort_by_key(|(at, _)| *at);
     answers.into_iter().map(|(_, answer)| answer).collect()
 }

@@ -961,7 +961,11 @@ impl fmt::Debug for PlanDigest {
 impl fmt::Display for PlanDigest {
     /// The first twelve characters, which is what a person compares by eye.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.to_hex().get(..12).unwrap_or_default())
+        f.write_str(
+            self.to_hex().get(..12).expect(
+                "a digest is sixty-four hexadecimal characters, so twelve are always there",
+            ),
+        )
     }
 }
 

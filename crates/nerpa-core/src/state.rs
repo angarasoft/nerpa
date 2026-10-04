@@ -602,7 +602,7 @@ impl State {
             .map(|address| {
                 let blockers = self
                     .after(address)
-                    .map(|depends_on| {
+                    .map_or_else(BTreeSet::new, |depends_on| {
                         // Only doomed dependencies hold up a removal. Anything
                         // still declared is staying, and waiting for it would
                         // wait for ever.
@@ -610,8 +610,7 @@ impl State {
                             .iter()
                             .filter(|other| doomed.contains(other))
                             .collect()
-                    })
-                    .unwrap_or_default();
+                    });
                 (*address, blockers)
             })
             .collect();

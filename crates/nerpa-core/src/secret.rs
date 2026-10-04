@@ -177,7 +177,11 @@ impl fmt::Display for Digest {
     /// The first eight characters, which is enough to tell two apart by eye and
     /// not enough to be worth attacking.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.to_hex().get(..8).unwrap_or_default())
+        f.write_str(
+            self.to_hex()
+                .get(..8)
+                .expect("a digest is sixty-four hexadecimal characters, so eight are always there"),
+        )
     }
 }
 
