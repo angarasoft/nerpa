@@ -163,13 +163,16 @@ impl Fleet {
             let belongs: Vec<String> = described
                 .get("groups")
                 .and_then(toml::Value::as_array)
-                .map(|listed| {
-                    listed
-                        .iter()
-                        .filter_map(|entry| entry.as_str().map(ToOwned::to_owned))
-                        .collect()
-                })
-                .unwrap_or_default();
+                .map_or_else(
+                    // No groups field is a node in no groups.
+                    Vec::new,
+                    |listed| {
+                        listed
+                            .iter()
+                            .filter_map(|entry| entry.as_str().map(ToOwned::to_owned))
+                            .collect()
+                    },
+                );
 
             for group in &belongs {
                 if !groups.contains_key(group) {
@@ -231,12 +234,12 @@ impl Fleet {
         {
             return None;
         }
-        Some(
-            self.groups
-                .get(name)
-                .map(|members| members.iter().cloned().collect())
-                .unwrap_or_default(),
-        )
+        Some(self.groups.get(name).map_or_else(
+            // The name may be held by nodes alone, in which case the group
+            // itself lists nobody.
+            Vec::new,
+            |members| members.iter().cloned().collect(),
+        ))
     }
 
     /// How to reach a machine.
@@ -245,10 +248,12 @@ impl Fleet {
     /// configuration naming its own nodes means by `node("localhost")`.
     #[must_use]
     pub fn route(&self, node: &Target) -> Route {
-        self.nodes
-            .get(node)
-            .map(|machine| machine.route.clone())
-            .unwrap_or_default()
+        self.nodes.get(node).map_or_else(
+            // A node the fleet does not describe is reached here, which is
+            // where a configuration naming its own machines expects it.
+            Route::default,
+            |machine| machine.route.clone(),
+        )
     }
 
     /// Where the deployment says who may sign a plan, if it says so.
@@ -263,10 +268,11 @@ impl Fleet {
     /// Everything written down about a machine.
     #[must_use]
     pub(crate) fn values_of(&self, node: &Target) -> BTreeMap<String, CoreValue> {
-        self.nodes
-            .get(node)
-            .map(|machine| machine.values.clone())
-            .unwrap_or_default()
+        self.nodes.get(node).map_or_else(
+            // A node the fleet does not describe carries no values.
+            BTreeMap::new,
+            |machine| machine.values.clone(),
+        )
     }
 
     /// How many machines it describes.
