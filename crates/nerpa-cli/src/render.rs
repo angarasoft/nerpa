@@ -176,7 +176,9 @@ fn out_of_reach(unreachable: &[Unreachable]) -> String {
         unreachable.len()
     );
     for (node, age) in nodes {
-        let count = counts.get(node).copied().unwrap_or_default();
+        // A machine nothing is claimed about is named with zero resources
+        // still, which is what the count beside it means.
+        let count = counts.get(node).copied().unwrap_or(0);
         let known = match age {
             Some(seconds) => format!("last seen {}", ago(seconds)),
             None => "never seen".to_owned(),
