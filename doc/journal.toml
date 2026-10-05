@@ -807,3 +807,7 @@ commit = "3ff540a1fbe5f5e79c1e66025725b95e30c9f838"
 tree = "62bc929f82156a28668e48a5cf1c2415c7d15c4a"
 mutation_proof = "cargo xtask ci"
 anti_vacuum = "cargo test -p nerpa --test import_plan"
+[[events]]
+event = "closed"
+slice = "s-publish-crates"
+at = "2026-10-05T16:42:52Z"
