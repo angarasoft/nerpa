@@ -140,6 +140,13 @@ enum Task {
         #[command(subcommand)]
         what: JournalTask,
     },
+    /// Read a Terraform state and write the configuration and state that
+    /// declare what it made. A migration, not a run: nothing here reaches the
+    /// cloud, and the state is Terraform's, on the way out.
+    Import {
+        /// The `terraform.tfstate` to read.
+        tfstate: PathBuf,
+    },
 }
 
 /// What to do with the run journal.
@@ -434,12 +441,53 @@ fn release(arguments: &Arguments, machine: Option<&str>, control: bool) -> Resul
     Ok(())
 }
 
+/// Reads a Terraform state and writes the configuration and state that declare
+/// what it made. A migration, not a run: nothing here reaches the cloud.
+fn imported(tfstate: &Path, config: &Path, state_path: &Path) -> Result<(), String> {
+    let text = std::fs::read_to_string(tfstate)
+        .map_err(|error| format!("{}: {error}", tfstate.display()))?;
+    let tf: nerpa_import::TfState =
+        serde_json::from_str(&text).map_err(|error| format!("{}: {error}", tfstate.display()))?;
+    let import = nerpa_import::Import::read(&tf)?;
+
+    // The secrets first: the one thing a migration must not swallow.
+    for secret in &import.secrets {
+        eprintln!(
+            "secret in clear text: {} — {}",
+            secret.resource, secret.attribute
+        );
+    }
+
+    let rendered = import.render();
+    std::fs::write(config, rendered).map_err(|error| format!("{}: {error}", config.display()))?;
+
+    let key = nerpa_core::secret::Key::fresh()
+        .map_err(|error| format!("no randomness for a digest key: {error}"))?;
+    let recorded = import.state()?;
+    nerpa_core::store::save(state_path, &recorded, &key)
+        .map_err(|error| format!("{}: {error}", state_path.display()))?;
+
+    println!(
+        "imported {} resources into {} and {}",
+        import.resources.len(),
+        config.display(),
+        state_path.display()
+    );
+    Ok(())
+}
+
 #[allow(
     clippy::too_many_lines,
     reason = "the run's steps stay in one place and in order: identity, release, \
               read, plan, apply, journal"
 )]
 fn run_task(arguments: &Arguments) -> Result<(), String> {
+    // Importing is a migration, not a run: it reads a Terraform state and
+    // writes a configuration and a state, and reaches no cloud.
+    if let Task::Import { tfstate } = &arguments.task {
+        return imported(tfstate, &arguments.file, &arguments.state);
+    }
+
     // The identity first: a run without one does not start (`INV-TRUST-001`).
     // Refused here rather than by clap, because a global argument cannot be
     // required and the refusal has to name the flag anyway.
@@ -545,8 +593,8 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
         // The journal's question and signing are answered above and never get
         // this far; were they here, they read.
         Task::Plan { .. } | Task::Journal { .. } | Task::Sign { .. } => shards::Taking::Reading,
-        // Releasing returned above; it never gets this far.
-        Task::Apply { .. } | Task::Release { .. } => shards::Taking::Writing,
+        // Releasing and importing return above; these only make the match total.
+        Task::Apply { .. } | Task::Release { .. } | Task::Import { .. } => shards::Taking::Writing,
     };
     let (mut state, key, _lock) =
         shards::opened(&arguments.state, taking).map_err(|error| error.to_string())?;

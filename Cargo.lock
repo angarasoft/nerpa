@@ -1338,6 +1338,7 @@ dependencies = [
  "dacc-derive",
  "nerpa-config",
  "nerpa-core",
+ "nerpa-import",
  "nerpa-provider-os",
  "nerpa-provider-yandex",
  "nerpa-transport",

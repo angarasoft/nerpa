@@ -25,6 +25,7 @@ nerpa-config = { workspace = true }
 nerpa-core = { workspace = true }
 nerpa-provider-os = { workspace = true }
 nerpa-provider-yandex = { workspace = true }
+nerpa-import = { workspace = true }
 nerpa-transport = { workspace = true }
 clap = { workspace = true }
 serde = { workspace = true }
