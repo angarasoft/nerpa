@@ -9,6 +9,7 @@ members = [
   "crates/nerpa-proto",
   "crates/nerpa-provider-os",
   "crates/nerpa-provider-yandex",
+  "crates/nerpa-import",
   "xtask",
   "doc",
 ]
@@ -42,6 +43,7 @@ nerpa-proto = { path = "crates/nerpa-proto", version = "=0.0.1" }
 nerpa-transport = { path = "crates/nerpa-transport", version = "=0.0.1" }
 nerpa-provider-os = { path = "crates/nerpa-provider-os", version = "=0.0.1" }
 nerpa-provider-yandex = { path = "crates/nerpa-provider-yandex", version = "=0.0.1" }
+nerpa-import = { path = "crates/nerpa-import", version = "=0.0.1" }
 
 # dacc: the methodology the registry runs on, and the pilot that tests it as
 # the first project outside dacc itself. Published on crates.io, so the tree

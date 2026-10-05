@@ -1402,6 +1402,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nerpa-import"
+version = "0.0.1"
+dependencies = [
+ "nerpa-core",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "nerpa-proto"
 version = "0.0.1"
 dependencies = [
