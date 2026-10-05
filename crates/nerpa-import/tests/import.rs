@@ -76,7 +76,9 @@ fn state() -> TfState {
                                 "name": "db",
                                 "zone": "ru-central1-b",
                                 "platform_id": "standard-v3",
-                                "resources": [{ "cores": 2, "memory": 4 }]
+                                "resources": [{ "cores": 2, "memory": 4 }],
+                                "network_interface": [{ "subnet_id": "id-subnet" }],
+                                "boot_disk": [{ "initialize_params": [{ "image_id": "img-db" }] }]
                             }
                         }
                     ]
@@ -116,6 +118,14 @@ fn the_known_resources_map_to_addresses() {
     assert_eq!(
         instance.attributes.get("memory_gb"),
         Some(&Value::Integer(4))
+    );
+    assert_eq!(
+        instance.attributes.get("subnet_id"),
+        Some(&Value::Text("id-subnet".to_owned()))
+    );
+    assert_eq!(
+        instance.attributes.get("boot_disk_image_id"),
+        Some(&Value::Text("img-db".to_owned()))
     );
 
     let subnet = import

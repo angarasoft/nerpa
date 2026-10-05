@@ -191,6 +191,22 @@ fn map(resource: &TfResource, instance: &TfInstance) -> Result<Imported, String>
                 "memory_gb".to_owned(),
                 Value::Integer(integer(resources, "memory", resource)?),
             );
+            declared.insert(
+                "subnet_id".to_owned(),
+                Value::Text(nested_text(
+                    attributes,
+                    &["network_interface", "subnet_id"],
+                    resource,
+                )?),
+            );
+            declared.insert(
+                "boot_disk_image_id".to_owned(),
+                Value::Text(nested_text(
+                    attributes,
+                    &["boot_disk", "initialize_params", "image_id"],
+                    resource,
+                )?),
+            );
             Ok(Imported {
                 address: format!("yandex:instance.{name}"),
                 attributes: declared,
@@ -261,6 +277,41 @@ fn integer(
         .ok_or_else(|| {
             format!(
                 "{} \"{}\": `{key}` is missing or not an integer",
+                resource.resource_type, resource.name
+            )
+        })
+}
+
+/// A required nested text attribute. Each key except the last names a list that
+/// is stepped through by its first element; the last key names the text.
+fn nested_text(
+    attributes: &serde_json::Value,
+    path: &[&str],
+    resource: &TfResource,
+) -> Result<String, String> {
+    let (last, parents) = path
+        .split_last()
+        .expect("a nested text path has at least one key");
+    let mut cursor = attributes;
+    for key in parents {
+        cursor = cursor
+            .get(*key)
+            .and_then(serde_json::Value::as_array)
+            .and_then(|values| values.first())
+            .ok_or_else(|| {
+                format!(
+                    "{} \"{}\": `{key}` is missing or not a non-empty list",
+                    resource.resource_type, resource.name
+                )
+            })?;
+    }
+    cursor
+        .get(*last)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            format!(
+                "{} \"{}\": `{last}` is missing or not text",
                 resource.resource_type, resource.name
             )
         })

@@ -375,6 +375,15 @@ struct WireInstance {
     #[serde(rename = "platformId")]
     platform_id: String,
     resources: WireResources,
+    #[serde(rename = "networkInterfaces", default)]
+    network_interfaces: Vec<WireInterface>,
+}
+
+/// One network interface of an instance.
+#[derive(Debug, Deserialize, Serialize)]
+struct WireInterface {
+    #[serde(rename = "subnetId")]
+    subnet_id: String,
 }
 
 /// What an instance is made of.
@@ -479,6 +488,9 @@ fn attributes(instance: &WireInstance) -> Attributes {
         "memory_gb".to_owned(),
         Value::Integer(instance.resources.memory / GIB),
     );
+    if let Some(interface) = instance.network_interfaces.first() {
+        attributes.insert("subnet_id".to_owned(), Value::Text(interface.subnet_id.clone()));
+    }
     attributes
 }
 
@@ -599,7 +611,9 @@ impl Provider for Yandex {
         Schema::new()
             .creates_node(self.name.clone(), instance.clone())
             .immutable(self.name.clone(), instance.clone(), "zone_id")
-            .immutable(self.name.clone(), instance, "platform_id")
+            .immutable(self.name.clone(), instance.clone(), "platform_id")
+            .immutable(self.name.clone(), instance.clone(), "subnet_id")
+            .at_birth(self.name.clone(), instance, "boot_disk_image_id")
             .immutable(self.name.clone(), subnet.clone(), "network_id")
             .immutable(self.name.clone(), subnet.clone(), "zone_id")
             .immutable(self.name.clone(), subnet, "v4_cidr_blocks")
@@ -821,6 +835,7 @@ impl Api for Memory {
                         zone_id: create.zone_id,
                         platform_id: create.platform_id,
                         resources: create.resources_spec,
+                        network_interfaces: Vec::new(),
                     },
                 );
             }
