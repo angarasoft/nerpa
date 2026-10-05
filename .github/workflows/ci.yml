@@ -55,16 +55,17 @@ jobs:
       # Every pushed commit carries a basis; the check runs over the whole
       # pushed range, not just the tip.
       #
-      # The first push to an empty repository is the whole history, which
-      # predates the transition onto dacc: before ba215f4 commits carry no
-      # basis at all, or a Slipway-Work trailer and the old type list, which
-      # msg-check rightly refuses. The check therefore starts at ba215f4.
+      # The first push to an empty repository is the whole history. Commits
+      # before the slug convention — dacc 0.2.0, 2274c575 — carry no basis, a
+      # Slipway-Work trailer, or a numeric work id (`Dacc-Work: w0017`), all of
+      # which msg-check rightly refuses. The check never reaches before the
+      # convention starts.
       - name: Commit messages
         if: github.event_name == 'push'
         run: |
           BEFORE="${{ github.event.before }}"
-          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-            BEFORE="ba215f4"
+          if ! git merge-base --is-ancestor 2274c575 "$BEFORE" 2>/dev/null; then
+            BEFORE="2274c575"
           fi
           cargo dacc msg-check --range "$BEFORE..${{ github.event.after }}"
 
