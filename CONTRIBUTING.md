@@ -13,8 +13,9 @@ worth reading twice — review here is blunt about work and never about people.
 The repository is private while the early stages are in progress. Once it opens,
 the notes below apply.
 
-Work lands on `develop`. `main` is merged into by hand, after the change has been
-tried on something real — the gate passing is necessary and not sufficient.
+Work lands on `main`, gated on every commit. A stage is declared done when its
+exit criterion passes on real hardware, and a release is a tag at that boundary
+(adr-2026-014) — the gate passing is necessary and not sufficient.
 
 ## Building and checking
 
