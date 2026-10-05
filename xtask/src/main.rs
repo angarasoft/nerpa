@@ -61,6 +61,7 @@ tasks:
   invariants  doc/invariant/ against the code, in both directions
   docs        decision records, then rustdoc with warnings denied
   deny        dependency licences and advisories
+  semver      the public API's semver against the last published version
   mutants     mutation testing (minutes; not part of ci)
   book        assemble the book's index from what is already written
   budget      what a plan costs, against docs/budgets.toml (not part of ci)
@@ -80,6 +81,7 @@ fn main() -> ExitCode {
         Some("invariants") => invariants::check(),
         Some("docs") => docs::check(),
         Some("deny") => deny(),
+        Some("semver") => semver(),
         Some("book") => book::check(),
         Some("budget") => budget::check(),
         Some("commit-msg") => commit::check(std::env::args().nth(2).as_deref()),
@@ -144,6 +146,19 @@ fn hooks() -> Result<(), String> {
 
 fn deny() -> Result<(), String> {
     shell::cargo_tool("deny", "cargo install cargo-deny --locked", &["check"])
+}
+
+/// The semver of the public API against the last published version.
+///
+/// Joins `ci` once the first version is published: before that there is no
+/// baseline to compare against (adr-2026-014). Until then it is reachable by
+/// hand and by CI's publish step.
+fn semver() -> Result<(), String> {
+    shell::cargo_tool(
+        "semver-checks",
+        "cargo install cargo-semver-checks --locked",
+        &["check-release", "--workspace"],
+    )
 }
 
 /// Deliberately not part of `ci`: it is minutes rather than seconds, and a gate
