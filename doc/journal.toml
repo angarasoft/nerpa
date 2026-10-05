@@ -437,3 +437,7 @@ at = "2026-10-05T05:09:50Z"
 event = "closed"
 slice = "s-wave-3-proposals"
 at = "2026-10-05T05:09:57Z"
+[[events]]
+event = "started"
+work = "w-control-apply"
+at = "2026-10-05T07:29:41Z"
