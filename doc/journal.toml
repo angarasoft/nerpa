@@ -730,3 +730,7 @@ anti_vacuum = "nerpa_config/tests/evaluate.rs::a_configuration_that_asks_for_thi
 event = "closed"
 slice = "s-release-0-3"
 at = "2026-10-05T15:07:16Z"
+[[events]]
+event = "started"
+work = "w-ci-msg-check-bound"
+at = "2026-10-05T15:19:07Z"
