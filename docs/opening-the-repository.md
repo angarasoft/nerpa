@@ -105,13 +105,15 @@ Heritage, GHArchive and every crawler that indexes public code.
 
 Public is a one-way door. Private is not.
 
-## 6. crates.io is a separate door, also one-way
+## 6. crates.io is a separate door, also one-way — done, 2026-10-05
 
 Publishing a crate is what actually guards the name — `0019`
 says so and flags that the name is unguarded until then. A published version can
-be yanked but never deleted, and `Cargo.toml` pins `=0.0.1` path dependencies
-that have to be published in order. Not part of opening the repository; do not
-let the two run together.
+be yanked but never deleted, and `Cargo.toml` pins `=0.3.0` path dependencies
+that have to be published in order. The crates are now published — `nerpa` and
+the `nerpa-*` crates, in dependency order — ahead of opening the repository, so
+the name is guarded the day it is wanted, not the day the repository opens. Not
+part of opening the repository; the two did not run together.
 
 ## 7. Reconcile the writing that becomes untrue
 

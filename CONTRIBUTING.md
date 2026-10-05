@@ -10,8 +10,9 @@ worth reading twice — review here is blunt about work and never about people.
 
 ## Before anything else
 
-The repository is private while the early stages are in progress. Once it opens,
-the notes below apply.
+The repository is private while the early stages are in progress, but the crates
+are published to crates.io, so the source is public there. Once the repository
+opens, the notes below apply.
 
 Work lands on `main`, gated on every commit. A stage is declared done when its
 exit criterion passes on real hardware, and a release is a tag at that boundary
