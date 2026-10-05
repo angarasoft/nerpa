@@ -21,6 +21,7 @@ use nerpa_core::schema::Schema;
 use nerpa_core::value::Value;
 use serde::{Deserialize, Serialize};
 
+use crate::auth::TokenCache;
 pub use api::{Api, ApiError, Http, Response};
 pub use auth::Auth;
 pub use record::{Exchange, Recorded};
@@ -36,6 +37,7 @@ pub struct Yandex {
     vpc: String,
     auth: Auth,
     api: Box<dyn Api>,
+    token_cache: TokenCache,
 }
 
 impl std::fmt::Debug for Yandex {
@@ -80,13 +82,14 @@ impl Yandex {
             vpc: vpc.into(),
             auth,
             api,
+            token_cache: TokenCache::default(),
         }
     }
 
-    /// The IAM token, resolved for one address.
+    /// The IAM token, resolved once and reused until it expires.
     fn token(&self, address: &Address) -> Result<String, ProviderError> {
-        self.auth
-            .resolve(self.api.as_ref())
+        self.token_cache
+            .token(|| self.auth.resolve(self.api.as_ref()))
             .map_err(|error| ProviderError::World {
                 address: address.clone(),
                 problem: error.to_string(),
