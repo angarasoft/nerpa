@@ -30,15 +30,17 @@ pub struct TfResource {
     pub resource_type: String,
     /// The resource's name in the Terraform configuration.
     pub name: String,
+    /// `managed` or `data`: a data source is read, not managed.
+    pub mode: String,
     /// The instances of the resource, usually one.
     pub instances: Vec<TfInstance>,
 }
 
-/// One instance of a resource: its attributes, as Terraform's flatmap.
+/// One instance of a resource: its nested attributes.
 #[derive(Debug, Deserialize)]
 pub struct TfInstance {
-    /// The flatmap of attribute name to value, every value a string.
-    pub attributes: BTreeMap<String, String>,
+    /// The attributes, nested objects and lists, values of any JSON kind.
+    pub attributes: serde_json::Value,
 }
 
 /// A resource as nerpa will declare it.
@@ -69,10 +71,14 @@ pub struct Import {
 }
 
 /// Words that mark an attribute as a secret when they appear in its name.
+///
+/// `token` is deliberately absent: it also names the metadata service's
+/// `*_http_token` settings, which are integers saying whether the service asks
+/// for one, not a token itself. A real token in state is caught by its own
+/// name — `access_token`, `iam_token` — when it is written.
 const SECRET_WORDS: &[&str] = &[
     "password",
     "private_key",
-    "token",
     "secret",
     "access_key",
     "api_key",
@@ -91,21 +97,20 @@ impl Import {
     pub fn read(state: &TfState) -> Result<Self, String> {
         let mut import = Self::default();
         for resource in &state.resources {
+            let managed = resource.mode != "data";
             let known = matches!(
                 resource.resource_type.as_str(),
                 "yandex_compute_instance" | "yandex_vpc_network" | "yandex_vpc_subnet"
             );
             for instance in &resource.instances {
-                if known {
+                if managed && known {
                     import.resources.push(map(resource, instance)?);
                 }
-                for attribute in instance.attributes.keys() {
-                    if secret_name(attribute) {
-                        import.secrets.push(Secret {
-                            resource: format!("{} \"{}\"", resource.resource_type, resource.name),
-                            attribute: attribute.clone(),
-                        });
-                    }
+                for attribute in secrets_in(&instance.attributes) {
+                    import.secrets.push(Secret {
+                        resource: format!("{} \"{}\"", resource.resource_type, resource.name),
+                        attribute,
+                    });
                 }
             }
         }
@@ -156,14 +161,19 @@ impl Import {
 /// Maps one instance of a known resource to a nerpa declaration.
 fn map(resource: &TfResource, instance: &TfInstance) -> Result<Imported, String> {
     let attributes = &instance.attributes;
-    let name = attributes.get("name").ok_or_else(|| {
-        format!(
-            "{} \"{}\": no `name` attribute",
-            resource.resource_type, resource.name
-        )
-    })?;
+    let name = text(attributes, "name", resource)?;
     match resource.resource_type.as_str() {
         "yandex_compute_instance" => {
+            let resources = attributes
+                .get("resources")
+                .and_then(serde_json::Value::as_array)
+                .and_then(|values| values.first())
+                .ok_or_else(|| {
+                    format!(
+                        "{} \"{}\": `resources` is missing or empty",
+                        resource.resource_type, resource.name
+                    )
+                })?;
             let mut declared = BTreeMap::new();
             declared.insert(
                 "zone_id".to_owned(),
@@ -175,11 +185,11 @@ fn map(resource: &TfResource, instance: &TfInstance) -> Result<Imported, String>
             );
             declared.insert(
                 "cores".to_owned(),
-                Value::Integer(integer(attributes, "resources.0.cores", resource)?),
+                Value::Integer(integer(resources, "cores", resource)?),
             );
             declared.insert(
                 "memory_gb".to_owned(),
-                Value::Integer(integer(attributes, "resources.0.memory", resource)?),
+                Value::Integer(integer(resources, "memory", resource)?),
             );
             Ok(Imported {
                 address: format!("yandex:instance.{name}"),
@@ -203,7 +213,7 @@ fn map(resource: &TfResource, instance: &TfInstance) -> Result<Imported, String>
             declared.insert(
                 "v4_cidr_blocks".to_owned(),
                 Value::List(
-                    list(attributes, "v4_cidr_blocks", resource)?
+                    strings(attributes, "v4_cidr_blocks", resource)?
                         .into_iter()
                         .map(Value::Text)
                         .collect(),
@@ -223,51 +233,94 @@ fn map(resource: &TfResource, instance: &TfInstance) -> Result<Imported, String>
 
 /// A required text attribute of a resource.
 fn text(
-    attributes: &BTreeMap<String, String>,
+    attributes: &serde_json::Value,
     key: &str,
     resource: &TfResource,
 ) -> Result<String, String> {
-    attributes.get(key).cloned().ok_or_else(|| {
-        format!(
-            "{} \"{}\": `{key}` is missing",
-            resource.resource_type, resource.name
-        )
-    })
+    attributes
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            format!(
+                "{} \"{}\": `{key}` is missing or not text",
+                resource.resource_type, resource.name
+            )
+        })
 }
 
 /// A required integer attribute of a resource.
 fn integer(
-    attributes: &BTreeMap<String, String>,
+    attributes: &serde_json::Value,
     key: &str,
     resource: &TfResource,
 ) -> Result<i64, String> {
-    let value = text(attributes, key, resource)?;
-    value.parse().map_err(|_| {
-        format!(
-            "{} \"{}\": `{key}` is not an integer",
-            resource.resource_type, resource.name
-        )
-    })
+    attributes
+        .get(key)
+        .and_then(serde_json::Value::as_i64)
+        .ok_or_else(|| {
+            format!(
+                "{} \"{}\": `{key}` is missing or not an integer",
+                resource.resource_type, resource.name
+            )
+        })
 }
 
-/// A flatmap list: `key.#` counts, `key.{i}` names each entry.
-fn list(
-    attributes: &BTreeMap<String, String>,
+/// A required list-of-text attribute of a resource.
+fn strings(
+    attributes: &serde_json::Value,
     key: &str,
     resource: &TfResource,
 ) -> Result<Vec<String>, String> {
-    let count = integer(attributes, &format!("{key}.#"), resource)?;
-    let mut values = Vec::new();
-    for index in 0..count {
-        values.push(text(attributes, &format!("{key}.{index}"), resource)?);
-    }
-    Ok(values)
+    attributes
+        .get(key)
+        .and_then(serde_json::Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .collect()
+        })
+        .ok_or_else(|| {
+            format!(
+                "{} \"{}\": `{key}` is missing or not a list of text",
+                resource.resource_type, resource.name
+            )
+        })
 }
 
 /// Whether an attribute's name says it is a secret.
 fn secret_name(key: &str) -> bool {
     let lower = key.to_lowercase();
     SECRET_WORDS.iter().any(|word| lower.contains(word))
+}
+
+/// Every attribute name in a nested value whose name says it is a secret.
+fn secrets_in(value: &serde_json::Value) -> Vec<String> {
+    let mut found = Vec::new();
+    walk_for_secrets(value, &mut found);
+    found
+}
+
+/// Walks a nested value, collecting secret-named keys.
+fn walk_for_secrets(value: &serde_json::Value, found: &mut Vec<String>) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, value) in map {
+                if secret_name(key) {
+                    found.push(key.clone());
+                }
+                walk_for_secrets(value, found);
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                walk_for_secrets(value, found);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// A nerpa value, written as a Starlark literal.

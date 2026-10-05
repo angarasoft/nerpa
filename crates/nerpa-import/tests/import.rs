@@ -8,16 +8,34 @@ use nerpa_core::Value;
 use nerpa_core::secret::Recorded;
 use nerpa_import::{Import, TfState};
 
-/// A small state: a network, a subnet, an instance, and a database user whose
-/// password sits in the state in clear text.
+/// A small state in the nested format Terraform writes: a data source subnet,
+/// a network, a subnet, an instance, and a database user whose password sits in
+/// the state in clear text.
 fn state() -> TfState {
     serde_json::from_str(
         r#"{
             "version": 4,
-            "terraform_version": "1.5.0",
+            "terraform_version": "1.15.1",
             "serial": 1,
             "lineage": "lineage",
             "resources": [
+                {
+                    "mode": "data",
+                    "type": "yandex_vpc_subnet",
+                    "name": "this",
+                    "provider": "provider[\"registry.terraform.io/yandex-cloud/yandex\"]",
+                    "instances": [
+                        {
+                            "schema_version": 0,
+                            "attributes": {
+                                "name": "bosshub-benchmark-e-subnet",
+                                "network_id": "enp",
+                                "zone": "ru-central1-e",
+                                "v4_cidr_blocks": ["10.0.61.0/24"]
+                            }
+                        }
+                    ]
+                },
                 {
                     "mode": "managed",
                     "type": "yandex_vpc_network",
@@ -40,8 +58,7 @@ fn state() -> TfState {
                                 "name": "db",
                                 "network_id": "id-main",
                                 "zone": "ru-central1-b",
-                                "v4_cidr_blocks.#": "1",
-                                "v4_cidr_blocks.0": "10.0.0.0/24"
+                                "v4_cidr_blocks": ["10.0.0.0/24"]
                             }
                         }
                     ]
@@ -49,7 +66,7 @@ fn state() -> TfState {
                 {
                     "mode": "managed",
                     "type": "yandex_compute_instance",
-                    "name": "db",
+                    "name": "this",
                     "provider": "provider[\"registry.terraform.io/yandex-cloud/yandex\"]",
                     "instances": [
                         {
@@ -59,10 +76,7 @@ fn state() -> TfState {
                                 "name": "db",
                                 "zone": "ru-central1-b",
                                 "platform_id": "standard-v3",
-                                "resources.#": "1",
-                                "resources.0.cores": "2",
-                                "resources.0.memory": "4",
-                                "resources.0.core_fraction": "100"
+                                "resources": [{ "cores": 2, "memory": 4 }]
                             }
                         }
                     ]
