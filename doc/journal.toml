@@ -421,3 +421,7 @@ at = "2026-10-05T05:08:40Z"
 commit = "d31a10ffbfd4e01a0e13ee3ce029e3aa6d7b7250"
 tree = "1001bdbbd1f73a7fff7d3dac77e7c161ecfd144d"
 evidence = "history"
+[[events]]
+event = "closed"
+slice = "s-wave-0-switch"
+at = "2026-10-05T05:09:34Z"
