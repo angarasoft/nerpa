@@ -489,7 +489,10 @@ fn attributes(instance: &WireInstance) -> Attributes {
         Value::Integer(instance.resources.memory / GIB),
     );
     if let Some(interface) = instance.network_interfaces.first() {
-        attributes.insert("subnet_id".to_owned(), Value::Text(interface.subnet_id.clone()));
+        attributes.insert(
+            "subnet_id".to_owned(),
+            Value::Text(interface.subnet_id.clone()),
+        );
     }
     attributes
 }
