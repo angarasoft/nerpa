@@ -41,6 +41,7 @@ use nerpa_core::secret::{Remembered, Secrets};
 use nerpa_core::shards;
 use nerpa_core::state::{Released, State};
 use nerpa_provider_os::Os;
+use nerpa_provider_yandex::{Auth, Http, Yandex};
 
 #[derive(Parser)]
 #[command(
@@ -511,7 +512,19 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
         None => Fleet::empty(),
     };
 
-    let providers = Providers::new().with(Box::new(Os::new()));
+    let mut providers = Providers::new().with(Box::new(Os::new()));
+    // A cloud provider is registered only where the fleet names a cloud; a
+    // configuration that touches no cloud asks for no IAM token and reaches
+    // nothing over HTTP.
+    if let Some(cloud) = fleet.cloud() {
+        providers = providers.with(Box::new(Yandex::new(
+            cloud.folder_id.clone(),
+            "https://compute.api.cloud.yandex.net/compute/v1",
+            "https://vpc.api.cloud.yandex.net/vpc/v1",
+            Auth::IamToken(cloud.iam_token.clone()),
+            Box::new(Http::new(std::time::Duration::from_secs(30))),
+        )));
+    }
 
     // The providers first, so that what they refuse, such as a package reacting,
     // is refused at the line that says it.

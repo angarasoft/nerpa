@@ -59,6 +59,19 @@ pub struct Fleet {
     /// Where who may sign a plan is written down, for a deployment that keeps
     /// the two duties apart (`0009`, `0067`).
     approvers: Option<String>,
+    /// The cloud a run touches, if the document names one.
+    cloud: Option<Cloud>,
+}
+
+/// What the control domain is written about: the cloud folder a run touches,
+/// and how it proves who it is.
+#[derive(Debug, Clone)]
+pub struct Cloud {
+    /// The Yandex Cloud folder.
+    pub folder_id: String,
+    /// An IAM token. A plain string for now; it becomes a secret reference when
+    /// the secret store of `0027` arrives.
+    pub iam_token: String,
 }
 
 /// One machine, and what belongs to it.
@@ -132,6 +145,7 @@ impl Fleet {
 
         let mut fleet = Self {
             approvers: read_approval(&document)?,
+            cloud: read_cloud(&document)?,
             ..Self::default()
         };
         let Some(nodes) = document.get("nodes").and_then(toml::Value::as_table) else {
@@ -265,6 +279,12 @@ impl Fleet {
         self.approvers.as_deref()
     }
 
+    /// The cloud a run touches, if the document names one.
+    #[must_use]
+    pub fn cloud(&self) -> Option<&Cloud> {
+        self.cloud.as_ref()
+    }
+
     /// Everything written down about a machine.
     #[must_use]
     pub(crate) fn values_of(&self, node: &Target) -> BTreeMap<String, CoreValue> {
@@ -292,6 +312,38 @@ impl Fleet {
 ///
 /// The table's fields are a closed set, like a node's: a field silently
 /// ignored would leave a document that says something no run does.
+/// The cloud a run touches, as `[cloud.yandex]`. Its fields are a closed set,
+/// like a node's: a field silently ignored would leave a document that says
+/// something no run does.
+fn read_cloud(document: &toml::Value) -> Result<Option<Cloud>, String> {
+    let Some(cloud) = document.get("cloud").and_then(toml::Value::as_table) else {
+        return Ok(None);
+    };
+    let Some(yandex) = cloud.get("yandex").and_then(toml::Value::as_table) else {
+        return Ok(None);
+    };
+    for (field, _) in yandex {
+        if !matches!(field.as_str(), "folder_id" | "iam_token") {
+            return Err(format!(
+                "cloud.yandex: {field:?} is not a field of the cloud — a run needs its \
+                 `folder_id` and its `iam_token`, and that is the whole of it"
+            ));
+        }
+    }
+    let folder_id = yandex
+        .get("folder_id")
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| "cloud.yandex: `folder_id` is required".to_owned())?;
+    let iam_token = yandex
+        .get("iam_token")
+        .and_then(toml::Value::as_str)
+        .ok_or_else(|| "cloud.yandex: `iam_token` is required".to_owned())?;
+    Ok(Some(Cloud {
+        folder_id: folder_id.to_owned(),
+        iam_token: iam_token.to_owned(),
+    }))
+}
+
 fn read_approval(document: &toml::Value) -> Result<Option<String>, String> {
     let Some(table) = document.get("approval").and_then(toml::Value::as_table) else {
         return Ok(None);
