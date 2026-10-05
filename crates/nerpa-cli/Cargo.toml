@@ -1,5 +1,5 @@
 [package]
-name = "nerpa-cli"
+name = "nerpa"
 description = "The nerpa command"
 version.workspace = true
 edition.workspace = true
