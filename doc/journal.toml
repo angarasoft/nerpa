@@ -676,3 +676,7 @@ commit = "f4db3b5492876357ed885dcd70b0ddcc720400f7"
 tree = "ed7c4849fcd773bf6b7a8e302c33db47be16a0b5"
 mutation_proof = "cargo test -p nerpa-provider-yandex -p nerpa-config -p nerpa-cli"
 anti_vacuum = "nerpa_provider_yandex/src/auth.rs::tests::the_active_profile_yields_its_oauth_token"
+[[events]]
+event = "started"
+work = "w-token-caching"
+at = "2026-10-05T13:14:40Z"
