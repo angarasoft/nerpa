@@ -780,3 +780,7 @@ commit = "7132019049068602b6cf2510f017f46bd003898d"
 tree = "acf0e470b1b8550b183d8fc0a671f3a91eb8b337"
 mutation_proof = "cargo xtask ci"
 anti_vacuum = "cargo dacc msg-check --range 2274c575..HEAD"
+[[events]]
+event = "closed"
+slice = "s-one-branch"
+at = "2026-10-05T15:35:46Z"
