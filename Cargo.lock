@@ -1339,6 +1339,7 @@ dependencies = [
  "nerpa-config",
  "nerpa-core",
  "nerpa-provider-os",
+ "nerpa-provider-yandex",
  "nerpa-transport",
  "serde",
  "serde_json",
