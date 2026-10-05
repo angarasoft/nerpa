@@ -562,14 +562,19 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
 
     let mut providers = Providers::new().with(Box::new(Os::new()));
     // A cloud provider is registered only where the fleet names a cloud; a
-    // configuration that touches no cloud asks for no IAM token and reaches
-    // nothing over HTTP.
+    // configuration that touches no cloud asks for no credential and reaches
+    // nothing over HTTP. Where a cloud is named, the credential is either the
+    // static token the fleet carries or the yc profile (adr-2026-071).
     if let Some(cloud) = fleet.cloud() {
+        let auth = match &cloud.iam_token {
+            Some(token) => Auth::IamToken(token.clone()),
+            None => Auth::YcProfile,
+        };
         providers = providers.with(Box::new(Yandex::new(
             cloud.folder_id.clone(),
             "https://compute.api.cloud.yandex.net/compute/v1",
             "https://vpc.api.cloud.yandex.net/vpc/v1",
-            Auth::IamToken(cloud.iam_token.clone()),
+            auth,
             Box::new(Http::new(std::time::Duration::from_secs(30))),
         )));
     }

@@ -16,6 +16,7 @@ categories.workspace = true
 nerpa-core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde-saphyr = { workspace = true }
 thiserror = { workspace = true }
 ureq = { workspace = true }
 

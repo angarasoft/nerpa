@@ -69,9 +69,10 @@ pub struct Fleet {
 pub struct Cloud {
     /// The Yandex Cloud folder.
     pub folder_id: String,
-    /// An IAM token. A plain string for now; it becomes a secret reference when
-    /// the secret store of `0027` arrives.
-    pub iam_token: String,
+    /// An IAM token, when the run hands one over. Absent, the credential is the
+    /// yc profile (adr-2026-071). A plain string for now; it becomes a secret
+    /// reference when the secret store of `0027` arrives.
+    pub iam_token: Option<String>,
 }
 
 /// One machine, and what belongs to it.
@@ -336,11 +337,16 @@ fn read_cloud(document: &toml::Value) -> Result<Option<Cloud>, String> {
         .ok_or_else(|| "cloud.yandex: `folder_id` is required".to_owned())?;
     let iam_token = yandex
         .get("iam_token")
-        .and_then(toml::Value::as_str)
-        .ok_or_else(|| "cloud.yandex: `iam_token` is required".to_owned())?;
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| "cloud.yandex: `iam_token` must be text".to_owned())
+        })
+        .transpose()?;
     Ok(Some(Cloud {
         folder_id: folder_id.to_owned(),
-        iam_token: iam_token.to_owned(),
+        iam_token,
     }))
 }
 

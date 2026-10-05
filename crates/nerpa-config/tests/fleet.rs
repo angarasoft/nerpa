@@ -457,3 +457,47 @@ fn an_approval_table_that_nobody_may_sign_under_is_refused() {
     let refused = Fleet::read("[approval]\n").unwrap_err();
     assert!(refused.contains("approvers"), "{refused}");
 }
+
+/// The cloud a run touches names its folder; the credential is the static token
+/// when the fleet carries one, and the yc profile when it does not
+/// (adr-2026-071).
+#[test]
+fn a_cloud_reads_with_or_without_a_static_token() {
+    let with_token = Fleet::read(
+        r#"
+[cloud.yandex]
+folder_id = "b1g"
+iam_token = "t1"
+"#,
+    )
+    .expect("a fleet");
+    let cloud = with_token.cloud().expect("a cloud");
+    assert_eq!(cloud.folder_id, "b1g");
+    assert_eq!(cloud.iam_token.as_deref(), Some("t1"));
+
+    let without_token = Fleet::read(
+        r#"
+[cloud.yandex]
+folder_id = "b1g"
+"#,
+    )
+    .expect("a fleet");
+    let cloud = without_token.cloud().expect("a cloud");
+    assert_eq!(cloud.folder_id, "b1g");
+    assert_eq!(cloud.iam_token, None);
+}
+
+/// A credential that is not text is refused rather than read as something it is
+/// not.
+#[test]
+fn a_cloud_token_that_is_not_text_is_refused() {
+    let refused = Fleet::read(
+        r#"
+[cloud.yandex]
+folder_id = "b1g"
+iam_token = 123
+"#,
+    )
+    .unwrap_err();
+    assert!(refused.contains("iam_token"), "{refused}");
+}
