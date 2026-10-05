@@ -5,6 +5,8 @@ without ceremony until the first stage is complete.
 
 ## Unreleased
 
+## 0.3.0
+
 ### Added
 
 - Resource addresses, with a slot that lets two versions of one declaration

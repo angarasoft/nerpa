@@ -1393,7 +1393,7 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
 name = "nerpa-cli"
-version = "0.0.1"
+version = "0.3.0"
 dependencies = [
  "blake3",
  "clap",
@@ -1411,7 +1411,7 @@ dependencies = [
 
 [[package]]
 name = "nerpa-config"
-version = "0.0.1"
+version = "0.3.0"
 dependencies = [
  "allocative",
  "dacc-derive",
@@ -1426,7 +1426,7 @@ dependencies = [
 
 [[package]]
 name = "nerpa-core"
-version = "0.0.1"
+version = "0.3.0"
 dependencies = [
  "base64",
  "blake3",
@@ -1444,7 +1444,7 @@ dependencies = [
 
 [[package]]
 name = "nerpa-doc"
-version = "0.0.1"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "dacc-core",
@@ -1457,7 +1457,7 @@ dependencies = [
 
 [[package]]
 name = "nerpa-executor"
-version = "0.0.1"
+version = "0.3.0"
 dependencies = [
  "dacc-derive",
  "nerpa-proto",
@@ -1466,7 +1466,7 @@ dependencies = [
 
 [[package]]
 name = "nerpa-import"
-version = "0.0.1"
+version = "0.3.0"
 dependencies = [
  "nerpa-core",
  "serde",
@@ -1475,7 +1475,7 @@ dependencies = [
 
 [[package]]
 name = "nerpa-proto"
-version = "0.0.1"
+version = "0.3.0"
 dependencies = [
  "blake3",
  "ciborium",
@@ -1487,7 +1487,7 @@ dependencies = [
 
 [[package]]
 name = "nerpa-provider-os"
-version = "0.0.1"
+version = "0.3.0"
 dependencies = [
  "dacc-derive",
  "nerpa-core",
@@ -1499,7 +1499,7 @@ dependencies = [
 
 [[package]]
 name = "nerpa-provider-yandex"
-version = "0.0.1"
+version = "0.3.0"
 dependencies = [
  "chrono",
  "nerpa-core",
@@ -1512,7 +1512,7 @@ dependencies = [
 
 [[package]]
 name = "nerpa-transport"
-version = "0.0.1"
+version = "0.3.0"
 dependencies = [
  "blake3",
  "dacc-derive",
@@ -2818,7 +2818,7 @@ checksum = "3ad82d2a33cdc9674dc7465672f271e096168fcdbe0f799d9e6db8c5892679dc"
 
 [[package]]
 name = "xtask"
-version = "0.0.1"
+version = "0.3.0"
 dependencies = [
  "dacc-derive",
  "toml",

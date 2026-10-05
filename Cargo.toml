@@ -15,7 +15,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.1"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.98.1"
 license = "Apache-2.0"
@@ -36,14 +36,14 @@ categories = ["command-line-utilities", "config", "development-tools"]
 # The version is here as well as in the package because a path dependency without
 # one is a wildcard, and a wildcard cannot be published. Two places to keep in
 # step on a release, which the release script does.
-nerpa-config = { path = "crates/nerpa-config", version = "=0.0.1" }
-nerpa-core = { path = "crates/nerpa-core", version = "=0.0.1" }
-nerpa-executor = { path = "crates/nerpa-executor", version = "=0.0.1" }
-nerpa-proto = { path = "crates/nerpa-proto", version = "=0.0.1" }
-nerpa-transport = { path = "crates/nerpa-transport", version = "=0.0.1" }
-nerpa-provider-os = { path = "crates/nerpa-provider-os", version = "=0.0.1" }
-nerpa-provider-yandex = { path = "crates/nerpa-provider-yandex", version = "=0.0.1" }
-nerpa-import = { path = "crates/nerpa-import", version = "=0.0.1" }
+nerpa-config = { path = "crates/nerpa-config", version = "=0.3.0" }
+nerpa-core = { path = "crates/nerpa-core", version = "=0.3.0" }
+nerpa-executor = { path = "crates/nerpa-executor", version = "=0.3.0" }
+nerpa-proto = { path = "crates/nerpa-proto", version = "=0.3.0" }
+nerpa-transport = { path = "crates/nerpa-transport", version = "=0.3.0" }
+nerpa-provider-os = { path = "crates/nerpa-provider-os", version = "=0.3.0" }
+nerpa-provider-yandex = { path = "crates/nerpa-provider-yandex", version = "=0.3.0" }
+nerpa-import = { path = "crates/nerpa-import", version = "=0.3.0" }
 
 # dacc: the methodology the registry runs on, and the pilot that tests it as
 # the first project outside dacc itself. Published on crates.io, so the tree
