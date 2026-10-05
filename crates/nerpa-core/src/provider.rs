@@ -380,6 +380,30 @@ pub trait Provider: Send + Sync {
         became: &[Answered],
     ) -> Result<Concluded, ProviderError>;
 
+    /// Performs a control-domain change itself.
+    ///
+    /// A control resource has no machine, so there is no executor to send
+    /// operations to: the provider makes the API call(s) and reports what the
+    /// resource became. The engine writes the mark before calling this and
+    /// records the conclusion after, which is the control form of the machine
+    /// path's `mark → send → record`.
+    ///
+    /// A provider whose kinds all live on a machine never overrides this: the
+    /// default refuses, because reaching for an API it does not have is a
+    /// provider confused about which domain its kinds are in.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError`] when nothing was changed — a stale world the
+    /// provider refused to act on, a declaration it cannot make, or an answer
+    /// that shows the change did not take.
+    fn act(&self, change: &Prepared<'_>) -> Result<Concluded, ProviderError> {
+        Err(ProviderError::UnknownKind {
+            provider: self.name().clone(),
+            address: change.address.clone(),
+        })
+    }
+
     /// What the next run does with this change if a run marked it and stopped
     /// before recording it.
     ///

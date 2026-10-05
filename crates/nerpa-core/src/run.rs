@@ -400,6 +400,36 @@ pub fn apply(
                 shown: &shown,
             };
 
+            if address.target().is_none() {
+                // A control resource has no machine and no executor: the
+                // provider acts itself, and the mark still goes down first and
+                // the conclusion after (p0004). Nothing is sent, so no write is
+                // confirmed by an answer.
+                let confirmed = BTreeSet::new();
+                let result = marked_and_acted(provider, change, &changing, state, record)?;
+                let Some(result) = result else {
+                    state.forget(address);
+                    state.settle(address);
+                    record(state).map_err(RunError::Record)?;
+                    changed += 1;
+                    continue;
+                };
+                wrote(
+                    state,
+                    &mut observed,
+                    change,
+                    &Reported {
+                        result: &result,
+                        desired: &desired,
+                        confirmed: &confirmed,
+                    },
+                    secrets,
+                    record,
+                )?;
+                changed += 1;
+                continue;
+            }
+
             let planned = marked_and_prepared(provider, change, &changing, state, record)?;
             let (became, confirmed) = match carried_out(
                 planned,
@@ -1023,6 +1053,47 @@ fn marked_and_prepared(
     };
     match provider.prepare(&prepared) {
         Ok(planned) => Ok(planned),
+        Err(refusal) => {
+            state.settle(address);
+            record(state).map_err(RunError::Record)?;
+            Err(refusal.into())
+        }
+    }
+}
+
+/// Writes the mark, then asks a control provider to make the change itself.
+///
+/// The control form of [`marked_and_prepared`]: there is no machine and no
+/// executor, so the provider performs the call and reports what the resource
+/// became. The mark still goes down first and the conclusion is recorded after,
+/// the same durability as the machine path — `mark → act → record` instead of
+/// `mark → send → record` (p0004).
+fn marked_and_acted(
+    provider: &dyn Provider,
+    change: &Change,
+    changing: &Changing<'_>,
+    state: &mut State,
+    record: &mut dyn FnMut(&State) -> Result<(), String>,
+) -> Result<Option<Attributes>, RunError> {
+    let address = change.address();
+    state.mark(address.clone(), marking(change, changing, provider));
+    record(state).map_err(RunError::Record)?;
+
+    let prepared = Prepared {
+        address,
+        kind: changing.kind,
+        roused: changing.roused,
+        // Nothing marks a change as sent again until an entry can say so
+        // (RFC 0001 §5.6).
+        resent: change.is_resent(),
+        desired: changing.desired,
+        recorded: changing.recorded,
+        facts: changing.facts,
+        secret: changing.secret,
+    };
+    match provider.act(&prepared) {
+        Ok(Concluded::Gone) => Ok(None),
+        Ok(Concluded::Became(result)) => Ok(Some(result)),
         Err(refusal) => {
             state.settle(address);
             record(state).map_err(RunError::Record)?;
