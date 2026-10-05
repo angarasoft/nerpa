@@ -563,3 +563,7 @@ work = "w-dynamic-inventory"
 at = "2026-10-05T10:48:05Z"
 commit = "b2d460141914ad6aa7329c465b62a4e21cad8c89"
 tree = "85187bb52f4b303f68bf675c526eb77f504e5224"
+[[events]]
+event = "started"
+work = "w-tfstate-nested"
+at = "2026-10-05T11:01:30Z"
