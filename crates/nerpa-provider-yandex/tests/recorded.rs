@@ -45,7 +45,7 @@ fn an_instance_reads_a_recorded_list() {
         body: None,
         response: Response {
             status: 200,
-            body: r#"{"instances":[{"id":"id-db","name":"db","zoneId":"ru-central1-b","platformId":"standard-v3","resources":{"cores":2,"memory":2147483648},"networkInterfaces":[{"subnetId":"id-subnet"}]}]}"#.to_owned(),
+            body: r#"{"instances":[{"id":"id-db","name":"db","zoneId":"ru-central1-b","platformId":"standard-v3","resources":{"cores":"2","memory":"2147483648"},"networkInterfaces":[{"subnetId":"id-subnet"}]}]}"#.to_owned(),
         },
     });
 

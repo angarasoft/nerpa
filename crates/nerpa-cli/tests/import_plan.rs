@@ -103,8 +103,8 @@ fn provider() -> Yandex {
             response: Response {
                 status: 200,
                 body: r#"{"instances":[
-                    {"id":"id-alpine","name":"nerpa-alpine","zoneId":"ru-central1-e","platformId":"standard-v3","resources":{"cores":2,"memory":2147483648},"networkInterfaces":[{"subnetId":"ajcjde8o8cphncu85tuq"}]},
-                    {"id":"id-test","name":"nerpa-test","zoneId":"ru-central1-e","platformId":"standard-v3","resources":{"cores":2,"memory":2147483648},"networkInterfaces":[{"subnetId":"ajcjde8o8cphncu85tuq"}]}
+                    {"id":"id-alpine","name":"nerpa-alpine","zoneId":"ru-central1-e","platformId":"standard-v3","resources":{"cores":"2","memory":"2147483648"},"networkInterfaces":[{"subnetId":"ajcjde8o8cphncu85tuq"}]},
+                    {"id":"id-test","name":"nerpa-test","zoneId":"ru-central1-e","platformId":"standard-v3","resources":{"cores":"2","memory":"2147483648"},"networkInterfaces":[{"subnetId":"ajcjde8o8cphncu85tuq"}]}
                 ]}"#
                 .to_owned(),
             },

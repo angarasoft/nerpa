@@ -389,8 +389,40 @@ struct WireInterface {
 /// What an instance is made of.
 #[derive(Debug, Deserialize, Serialize)]
 struct WireResources {
+    #[serde(with = "int64")]
     cores: i64,
+    #[serde(with = "int64")]
     memory: i64,
+}
+
+/// A Yandex Cloud int64 crosses JSON as text, because a JSON number would not
+/// survive the value's precision. A hand-written fixture may still write a
+/// number, so both are read; it is always written as text.
+mod int64 {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub(crate) fn deserialize<'de, D>(deserializer: D) -> Result<i64, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum AsInt64 {
+            Text(String),
+            Number(i64),
+        }
+        match AsInt64::deserialize(deserializer)? {
+            AsInt64::Text(text) => text.parse().map_err(serde::de::Error::custom),
+            AsInt64::Number(number) => Ok(number),
+        }
+    }
+
+    pub(crate) fn serialize<S>(value: &i64, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        value.to_string().serialize(serializer)
+    }
 }
 
 /// The answer to a list call.
