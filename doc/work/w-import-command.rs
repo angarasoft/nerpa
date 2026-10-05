@@ -3,7 +3,7 @@ use dacc_core::{taxon, BlastRadius, NonEmptyStr};
 use dacc_work::WorkOrigin;
 
 dacc_work::work!("w-import-command",
-    title: "A nerpa import command turns a Terraform state into configuration and state",
+    title: NonEmptyStr::new("A nerpa import command turns a Terraform state into configuration and state"),
     slice: crate::slice::s_stage_3_cloud,
     origin: WorkOrigin::Toil {
         justification: NonEmptyStr::new(
