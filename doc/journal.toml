@@ -753,3 +753,7 @@ commit = "ba7e723c8076f35215127b2dcd57f37e9a7db205"
 tree = "a11d09c267d004d91426e80173fa6b164dd4722e"
 mutation_proof = "cargo dacc msg-check --range 2274c575..HEAD"
 anti_vacuum = "cargo dacc msg-check --range 2274c575..HEAD"
+[[events]]
+event = "closed"
+slice = "s-ci-msg-check"
+at = "2026-10-05T15:21:10Z"
