@@ -29,14 +29,14 @@ dacc_knowledge::adr!(
 
         `iam_token` becomes optional in the fleet: present, it is the static IAM
         token for CI and tests; absent, the credential is the yc profile. The config
-        file is read with a full YAML parser — `serde_yaml_ng`, the maintained
-        serde-YAML fork — taken as a workspace dependency and reused by later YAML
-        readers rather than a one-off line extractor.
+        file is read with a full YAML parser — `serde-saphyr`, the pure-Rust serde
+        serializer over the `saphyr` parser — taken as a workspace dependency and
+        reused by later YAML readers rather than a one-off line extractor.
     ",
     trade_offs: &[
         "Native exchange against shelling out to `yc iam create-token --format json`: the shell-out parses JSON and reuses yc's profile logic, but keeps the CLI as a runtime dependency and spawns a process; the native path parses YAML and does one POST. The native path wins for a tool that runs where yc may not be installed.",
         "A personal OAuth token against a service-account key: the OAuth token is what yc already holds, so it costs nothing new but is a personal, long-lived credential; a service-account key is the automation-grade shape but needs JWT signing (a new dependency) and is a separate later work, already marked in the code.",
-        "YAML parser choice: `serde_yaml_ng` is the maintained serde-YAML fork and fits the serde-heavy tree, but pulls `unsafe-libyaml` (C); `serde-saphyr` is pure Rust and panic-free. The serde fork is chosen for drop-in familiarity, and the pure-Rust crate is the fallback if the C dependency is rejected.",
+        "YAML parser choice: `serde-saphyr` is pure Rust, panic-free and serde-compatible, and the tree already favours dependencies without a C compiler (ureq over rustls, webpki-roots for cert data); `serde_yaml_ng` is the maintained serde-YAML fork but pulls `unsafe-libyaml`, a C library. The pure-Rust crate is chosen, and nothing needs the serde_yaml API, so there is no compatibility to keep.",
     ],
     constraints: &[
         "The OAuth token is read and exchanged at once, and never stored; only the short-lived IAM token is used for the run.",
