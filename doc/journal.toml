@@ -425,3 +425,7 @@ evidence = "history"
 event = "closed"
 slice = "s-wave-0-switch"
 at = "2026-10-05T05:09:34Z"
+[[events]]
+event = "closed"
+slice = "s-wave-1-decisions"
+at = "2026-10-05T05:09:45Z"
