@@ -699,3 +699,7 @@ commit = "0477879ee2f360ee19f8588a6035d696c2f7e360"
 tree = "e162756a6b1aa93ee9973ad75950c40c58f2ead9"
 mutation_proof = "cargo test -p nerpa-provider-yandex"
 anti_vacuum = "nerpa_provider_yandex/src/auth.rs::tests::a_fresh_token_is_reused_without_resolving_again"
+[[events]]
+event = "closed"
+slice = "s-stage-3-cloud"
+at = "2026-10-05T14:12:04Z"
