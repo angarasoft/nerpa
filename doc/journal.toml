@@ -757,3 +757,7 @@ anti_vacuum = "cargo dacc msg-check --range 2274c575..HEAD"
 event = "closed"
 slice = "s-ci-msg-check"
 at = "2026-10-05T15:21:10Z"
+[[events]]
+event = "started"
+work = "w-one-branch"
+at = "2026-10-05T15:34:14Z"
