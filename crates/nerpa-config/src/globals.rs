@@ -138,6 +138,15 @@ pub(crate) fn nerpa(builder: &mut GlobalsBuilder) {
             .parse()
             .map_err(|error| starlark::Error::new_value(Rejected::Address(error)))?;
 
+        // A resource that creates a node registers it here: a cloud instance is
+        // a machine as well as a resource, and a file on it should not have to
+        // name the instance twice (w-dynamic-inventory).
+        if store.schema().creates_node_for(&parsed) {
+            let target = Target::new(parsed.name().as_str())
+                .map_err(|error| starlark::Error::new_value(Rejected::Address(error)))?;
+            store.add_node(target, Some(parsed.clone()));
+        }
+
         let mut resource = Resource::new(parsed.clone());
         if let Some(entries) = DictRef::from_value(attributes) {
             for (key, item) in entries.iter() {

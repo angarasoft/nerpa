@@ -597,6 +597,7 @@ impl Provider for Yandex {
         let instance = nerpa_core::Kind::new("instance").expect("a literal kind");
         let subnet = nerpa_core::Kind::new("subnet").expect("a literal kind");
         Schema::new()
+            .creates_node(self.name.clone(), instance.clone())
             .immutable(self.name.clone(), instance.clone(), "zone_id")
             .immutable(self.name.clone(), instance, "platform_id")
             .immutable(self.name.clone(), subnet.clone(), "network_id")

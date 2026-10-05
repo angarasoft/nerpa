@@ -37,6 +37,7 @@ pub struct Schema {
     identities: BTreeMap<(Provider, Kind), (String, String)>,
     unreactive: BTreeSet<(Provider, Kind)>,
     modes: BTreeMap<(Provider, Kind), BTreeSet<String>>,
+    creates_node: BTreeSet<(Provider, Kind)>,
 }
 
 impl Schema {
@@ -180,6 +181,24 @@ impl Schema {
             .contains(&(address.provider().clone(), address.kind().clone()))
     }
 
+    /// Declares that this kind creates a node named by the resource's name.
+    ///
+    /// A cloud instance is a machine as well as a resource; the schema carries
+    /// that, so declaring the resource registers the node it brings into
+    /// existence rather than asking for the same thing twice.
+    #[must_use]
+    pub fn creates_node(mut self, provider: Provider, kind: Kind) -> Self {
+        self.creates_node.insert((provider, kind));
+        self
+    }
+
+    /// Whether this resource creates a node.
+    #[must_use]
+    pub fn creates_node_for(&self, address: &Address) -> bool {
+        self.creates_node
+            .contains(&(address.provider().clone(), address.kind().clone()))
+    }
+
     /// Whether this attribute describes the resource's making rather than its
     /// state.
     #[must_use]
@@ -215,6 +234,7 @@ impl Schema {
         for (kind, attributes) in other.modes {
             self.modes.entry(kind).or_default().extend(attributes);
         }
+        self.creates_node.extend(other.creates_node);
         self
     }
 
