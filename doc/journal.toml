@@ -703,3 +703,7 @@ anti_vacuum = "nerpa_provider_yandex/src/auth.rs::tests::a_fresh_token_is_reused
 event = "closed"
 slice = "s-stage-3-cloud"
 at = "2026-10-05T14:12:04Z"
+[[events]]
+event = "started"
+work = "w-release-0-3"
+at = "2026-10-05T15:00:34Z"
