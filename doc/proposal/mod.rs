@@ -60,5 +60,14 @@ pub mod p0002;
 #[path = "p0003.rs"]
 pub mod p0003;
 
+/// Control-domain apply: a provider that acts without a machine. Draft.
+#[path = "p0004.rs"]
+pub mod p0004;
+
 /// Every proposal, in order. Kept by hand until the scan learns the local type.
-pub static ALL_PROPOSALS: &[&Proposal] = &[&p0001::PROPOSAL, &p0002::PROPOSAL, &p0003::PROPOSAL];
+pub static ALL_PROPOSALS: &[&Proposal] = &[
+    &p0001::PROPOSAL,
+    &p0002::PROPOSAL,
+    &p0003::PROPOSAL,
+    &p0004::PROPOSAL,
+];
