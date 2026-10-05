@@ -417,6 +417,10 @@ mod int64 {
         }
     }
 
+    #[allow(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde's `with` calls the serializer with a reference"
+    )]
     pub(crate) fn serialize<S>(value: &i64, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
