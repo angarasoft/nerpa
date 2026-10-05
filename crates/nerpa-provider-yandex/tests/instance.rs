@@ -10,7 +10,7 @@ use nerpa_core::run::{apply, observe};
 use nerpa_core::schema::Schema;
 use nerpa_core::secret::{Key, Remembered, Secrets};
 use nerpa_core::state::State;
-use nerpa_core::{ChangeKind, Graph, Resource};
+use nerpa_core::{ChangeKind, Graph, Resource, Value};
 use nerpa_provider_yandex::Yandex;
 
 fn plan(
@@ -69,6 +69,98 @@ fn an_instance_converges_against_the_fake() {
     )
     .expect("applied");
     assert!(state.get(&instance).is_some(), "the instance was recorded");
+
+    let observed = observe(&graph, &providers, &machines, &state).expect("observed");
+    let second =
+        plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    assert_eq!(
+        second.changes().count(),
+        0,
+        "a second run has nothing to do"
+    );
+}
+
+#[test]
+fn a_network_converges_against_the_fake() {
+    let network = address("yandex:network.main");
+    let mut graph = Graph::new();
+    graph
+        .insert(Resource::new(network.clone()))
+        .expect("a resource");
+
+    let mut state = State::new();
+    let providers = Providers::new().with(Box::new(Yandex::fake()));
+    let machines = Machines::new();
+
+    let observed = observe(&graph, &providers, &machines, &state).expect("observed");
+    let first = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    assert_eq!(
+        first.stages()[0].changes()[0].kind(),
+        ChangeKind::Create,
+        "a network not out there is created"
+    );
+
+    apply(
+        &first,
+        &providers,
+        &machines,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |_| Ok(()),
+    )
+    .expect("applied");
+    assert!(state.get(&network).is_some(), "the network was recorded");
+
+    let observed = observe(&graph, &providers, &machines, &state).expect("observed");
+    let second =
+        plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    assert_eq!(
+        second.changes().count(),
+        0,
+        "a second run has nothing to do"
+    );
+}
+
+#[test]
+fn a_subnet_converges_against_the_fake() {
+    let subnet = address("yandex:subnet.db");
+    let mut graph = Graph::new();
+    graph
+        .insert(
+            Resource::new(subnet.clone())
+                .with("network_id", "id-main")
+                .with("zone_id", "ru-central1-b")
+                .with(
+                    "v4_cidr_blocks",
+                    Value::List(vec![Value::Text("10.0.0.0/24".to_owned())]),
+                ),
+        )
+        .expect("a resource");
+
+    let mut state = State::new();
+    let providers = Providers::new().with(Box::new(Yandex::fake()));
+    let machines = Machines::new();
+
+    let observed = observe(&graph, &providers, &machines, &state).expect("observed");
+    let first = plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    assert_eq!(
+        first.stages()[0].changes()[0].kind(),
+        ChangeKind::Create,
+        "a subnet not out there is created"
+    );
+
+    apply(
+        &first,
+        &providers,
+        &machines,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |_| Ok(()),
+    )
+    .expect("applied");
+    assert!(state.get(&subnet).is_some(), "the subnet was recorded");
 
     let observed = observe(&graph, &providers, &machines, &state).expect("observed");
     let second =
