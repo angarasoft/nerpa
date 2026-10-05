@@ -653,3 +653,7 @@ commit = "68465bb21e43521c44d1b761d31d7c8cc7662708"
 tree = "4b2a412adfc75704c58f55b9a5c7381a53c678f2"
 red_before = "nerpa_provider_yandex/tests/recorded.rs::an_instance_reads_a_recorded_list"
 mutation_proof = "cargo test -p nerpa-provider-yandex -p nerpa-cli"
+[[events]]
+event = "started"
+work = "w-yc-credential"
+at = "2026-10-05T12:43:09Z"
