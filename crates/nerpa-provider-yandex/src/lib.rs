@@ -7,6 +7,7 @@
 
 mod api;
 mod auth;
+mod record;
 
 use std::collections::BTreeMap;
 
@@ -22,6 +23,7 @@ use serde::{Deserialize, Serialize};
 
 pub use api::{Api, ApiError, Http, Response};
 pub use auth::Auth;
+pub use record::{Exchange, Recorded};
 
 /// One gibibyte: Yandex Cloud counts memory in bytes, a person counts in GiB.
 const GIB: i64 = 1024 * 1024 * 1024;
