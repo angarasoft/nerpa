@@ -6,9 +6,11 @@
 //! state held in clear text — Terraform's state is flat and unencrypted, and a
 //! password in it is a password anybody with the file can read.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use nerpa_core::Value;
+use nerpa_core::secret::Recorded;
+use nerpa_core::state::{Record, State};
 use serde::Deserialize;
 
 /// A Terraform state document, in the flatmap `attributes` shape.
@@ -127,6 +129,27 @@ impl Import {
             let _ = writeln!(out, "}})");
         }
         out
+    }
+
+    /// The state that records what was imported: each resource, with its
+    /// attributes as plain values. No secret among them — the import names
+    /// secrets rather than carrying them into state.
+    ///
+    /// # Errors
+    ///
+    /// Returns a message when an address the import produced does not parse,
+    /// which would mean the mapping named something the address grammar rejects.
+    pub fn state(&self) -> Result<State, String> {
+        let mut state = State::new();
+        for resource in &self.resources {
+            let address: nerpa_core::Address = resource
+                .address
+                .parse()
+                .map_err(|error| format!("{}: {error}", resource.address))?;
+            let recording = Recorded::all(resource.attributes.clone());
+            state.record(address, Record::new(recording, BTreeSet::new()));
+        }
+        Ok(state)
     }
 }
 
