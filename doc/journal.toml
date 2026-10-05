@@ -630,3 +630,7 @@ commit = "90a79b5ec0d71b744f47f45846f0759cd63384c0"
 tree = "01bbfe101511954fa668d87db9b8f14db2ee2d16"
 mutation_proof = "cargo test -p nerpa-cli --test import_plan"
 anti_vacuum = "nerpa_cli/tests/import_plan.rs::an_imported_configuration_plans_to_nothing"
+[[events]]
+event = "started"
+work = "w-yandex-int64"
+at = "2026-10-05T12:10:34Z"
