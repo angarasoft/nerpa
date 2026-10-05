@@ -839,7 +839,7 @@ impl Api for Memory {
         // Only instances update in place; networks and subnets replace.
         let patch: PatchInstance =
             serde_json::from_str(body).map_err(|error| ApiError::Transport(error.to_string()))?;
-        let id = url.rsplit('/').next().unwrap_or_default();
+        let id = url.rsplit('/').next().unwrap_or("");
         let mut instances = self.instances.lock().map_err(|_| poisoned())?;
         if let Some(instance) = instances.values_mut().find(|instance| instance.id == id) {
             instance.resources = patch.resources_spec;
@@ -851,7 +851,7 @@ impl Api for Memory {
     }
 
     fn delete(&self, url: &str, _headers: &[(&str, &str)]) -> Result<Response, ApiError> {
-        let id = url.rsplit('/').next().unwrap_or_default();
+        let id = url.rsplit('/').next().unwrap_or("");
         match list_kind(url) {
             "networks" => {
                 self.networks
