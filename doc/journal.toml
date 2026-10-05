@@ -429,3 +429,7 @@ at = "2026-10-05T05:09:34Z"
 event = "closed"
 slice = "s-wave-1-decisions"
 at = "2026-10-05T05:09:45Z"
+[[events]]
+event = "closed"
+slice = "s-wave-2-plan"
+at = "2026-10-05T05:09:50Z"
