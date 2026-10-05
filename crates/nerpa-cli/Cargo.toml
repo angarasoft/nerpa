@@ -41,6 +41,12 @@ tempfile = { workspace = true }
 # The approval tests assemble an approval by hand — the bypass a person with a
 # text editor has — and a plan document is JSON.
 serde_json = { workspace = true }
+# The import-to-plan exit test drives the same crates the command does, as a
+# library rather than a process, so a recorded exchange can stand in for a cloud.
+nerpa-config = { workspace = true }
+nerpa-core = { workspace = true }
+nerpa-import = { workspace = true }
+nerpa-provider-yandex = { workspace = true }
 
 [lints]
 workspace = true
