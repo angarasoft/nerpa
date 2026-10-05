@@ -726,3 +726,7 @@ commit = "a16d8e248c97e85dcd624f393b10da77980aee43"
 tree = "2a1bada65dae362e3faba6611eda177a2e4c2f3d"
 mutation_proof = "cargo xtask ci"
 anti_vacuum = "nerpa_config/tests/evaluate.rs::a_configuration_that_asks_for_this_build_runs"
+[[events]]
+event = "closed"
+slice = "s-release-0-3"
+at = "2026-10-05T15:07:16Z"
