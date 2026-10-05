@@ -8,6 +8,7 @@ members = [
   "crates/nerpa-transport",
   "crates/nerpa-proto",
   "crates/nerpa-provider-os",
+  "crates/nerpa-provider-yandex",
   "xtask",
   "doc",
 ]
@@ -40,6 +41,7 @@ nerpa-executor = { path = "crates/nerpa-executor", version = "=0.0.1" }
 nerpa-proto = { path = "crates/nerpa-proto", version = "=0.0.1" }
 nerpa-transport = { path = "crates/nerpa-transport", version = "=0.0.1" }
 nerpa-provider-os = { path = "crates/nerpa-provider-os", version = "=0.0.1" }
+nerpa-provider-yandex = { path = "crates/nerpa-provider-yandex", version = "=0.0.1" }
 
 # dacc: the methodology the registry runs on, and the pilot that tests it as
 # the first project outside dacc itself. Published on crates.io, so the tree
@@ -83,6 +85,10 @@ serde_json = "1.0"
 # file's contents are not doubled in transit, and it does not carry JSON's
 # inability to say "these are bytes".
 ciborium = "0.2"
+# HTTP for the control domain: a blocking client for a synchronous engine
+# (0031 chose threads over async). ureq is HTTP/1.1 over rustls, carries no
+# tokio, and lives inside the provider crate — see adr-2026-070.
+ureq = { version = "3", features = ["json"] }
 # What makes `Vec<u8>` a CBOR byte string rather than an array of numbers. Serde
 # has no way to tell them apart on its own, so the property CBOR was chosen for
 # has to be asked for by name.

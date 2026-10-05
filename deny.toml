@@ -19,6 +19,9 @@ allow = [
   "BSD-2-Clause",
   "BSD-3-Clause",
   "ISC",
+  # Mozilla's root certificate data, carried by `webpki-roots` for rustls
+  # (reached through ureq). A permissive license over data, not code.
+  "CDLA-Permissive-2.0",
   "Unicode-3.0",
   "Zlib",
   # Boost, not the Business Source License — permissive, OSI approved, FSF free.
