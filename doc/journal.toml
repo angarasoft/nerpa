@@ -458,3 +458,7 @@ work = "w-control-apply"
 at = "2026-10-05T07:41:05Z"
 commit = "c703e32ba4ca70102cdd31211d883e0ef4739257"
 tree = "9b2fa141bfaa3c4057f6cd3964eab4311417cb4f"
+[[events]]
+event = "started"
+work = "w-yandex-provider"
+at = "2026-10-05T08:46:02Z"
