@@ -584,3 +584,7 @@ work = "w-tfstate-nested"
 at = "2026-10-05T11:06:35Z"
 commit = "4cd801d63649e4006c2326036abe775aaf642da6"
 tree = "82dd645ceb50f782a3b2ac18ce1713e2fd2ae45a"
+[[events]]
+event = "started"
+work = "w-instance-network"
+at = "2026-10-05T11:28:47Z"
