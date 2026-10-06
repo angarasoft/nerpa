@@ -46,10 +46,22 @@
 //! [approval]
 //! approvers = "/etc/nerpa/approvers"
 //! ```
+//!
+//! # Who may touch what
+//!
+//! The grants the fleet issued: an identity to what it may touch. A run whose
+//! `--as` names an identity here carries this grant, and the engine refuses a
+//! change that reaches outside it (`0009`, `0072`). A fleet that names none
+//! issued no grant, and a machine it granted no grant refuses to act.
+//!
+//! ```toml
+//! [grants]
+//! web-ops = "kind=instance;target=web-01,web-02;op=create,update,delete"
+//! ```
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use nerpa_core::{Target, Value as CoreValue};
+use nerpa_core::{Grant, Target, Value as CoreValue};
 
 /// What is written down about the machines.
 #[derive(Debug, Default, Clone)]
@@ -59,6 +71,9 @@ pub struct Fleet {
     /// Where who may sign a plan is written down, for a deployment that keeps
     /// the two duties apart (`0009`, `0067`).
     approvers: Option<String>,
+    /// The grants this fleet issued: an identity to what it may touch
+    /// (`0009`, `0072`).
+    grants: BTreeMap<String, Grant>,
     /// The cloud a run touches, if the document names one.
     cloud: Option<Cloud>,
 }
@@ -146,6 +161,7 @@ impl Fleet {
 
         let mut fleet = Self {
             approvers: read_approval(&document)?,
+            grants: read_grants(&document)?,
             cloud: read_cloud(&document)?,
             ..Self::default()
         };
@@ -286,6 +302,12 @@ impl Fleet {
         self.cloud.as_ref()
     }
 
+    /// The grant this fleet issued to an identity, if it issued one (`0072`).
+    #[must_use]
+    pub fn grant(&self, who: &str) -> Option<&Grant> {
+        self.grants.get(who)
+    }
+
     /// Everything written down about a machine.
     #[must_use]
     pub(crate) fn values_of(&self, node: &Target) -> BTreeMap<String, CoreValue> {
@@ -370,6 +392,25 @@ fn read_approval(document: &toml::Value) -> Result<Option<String>, String> {
             Err("approval: say who may sign — `approvers = \"/etc/nerpa/approvers\"`".to_owned())
         }
     }
+}
+
+/// The grants this fleet issued: an identity to what it may touch (`0072`).
+fn read_grants(document: &toml::Value) -> Result<BTreeMap<String, Grant>, String> {
+    let Some(table) = document.get("grants").and_then(toml::Value::as_table) else {
+        return Ok(BTreeMap::new());
+    };
+    table
+        .iter()
+        .map(|(who, granted)| {
+            let granted = granted
+                .as_str()
+                .ok_or_else(|| format!("grants: `{who}` has to be a grant, not a table"))?;
+            let grant = granted
+                .parse::<Grant>()
+                .map_err(|problem| format!("grants: `{who}`: {problem}"))?;
+            Ok((who.clone(), grant))
+        })
+        .collect()
 }
 
 /// How a machine says it is reached.

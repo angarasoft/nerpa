@@ -562,6 +562,24 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
         None => Fleet::empty(),
     };
 
+    // A machine's grant is what the fleet issued it (0072), not what it types.
+    // The actor was made above over `--as-scope`, which release and signing
+    // need no more of; here, where a plan is about to be made, the issued grant
+    // replaces it, and a second grant typed beside it is refused.
+    let actor = match fleet.grant(who) {
+        Some(issued) => {
+            if arguments.actor_scope != "all" {
+                return Err(format!(
+                    "{who} has a grant in the fleet, and `--as-scope` names what was \
+                     issued: a machine's grant is issued, not typed (0072)"
+                ));
+            }
+            Actor::new(who, issued.clone(), arguments.actor_expiry.clone())
+                .map_err(|error| error.to_string())?
+        }
+        None => actor,
+    };
+
     let mut providers = Providers::new().with(Box::new(Os::new()));
     // A cloud provider is registered only where the fleet names a cloud; a
     // configuration that touches no cloud asks for no credential and reaches

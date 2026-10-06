@@ -501,3 +501,60 @@ iam_token = 123
     .unwrap_err();
     assert!(refused.contains("iam_token"), "{refused}");
 }
+
+/// The fleet names the grant it issued an identity, and the run reads it back
+/// as the structured grant that limits it (`0072`).
+#[test]
+fn the_fleet_names_the_grant_it_issued() {
+    let fleet = Fleet::read(
+        r#"
+[grants]
+web-ops = "kind=instance;target=web-01,web-02;op=create,update,delete"
+"#,
+    )
+    .expect("a fleet");
+
+    let grant = fleet.grant("web-ops").expect("an issued grant");
+    assert!(grant.allows(
+        &address("yandex:instance.db@web-01"),
+        nerpa_core::ChangeKind::Create
+    ));
+    assert!(!grant.allows(
+        &address("yandex:instance.db@web-03"),
+        nerpa_core::ChangeKind::Create
+    ));
+    assert!(!grant.allows(
+        &address("yandex:instance.db@web-01"),
+        nerpa_core::ChangeKind::Replace
+    ));
+    assert_eq!(fleet.grant("nobody"), None);
+}
+
+/// A grant that does not parse is refused where the fleet is read, naming the
+/// identity it was written under.
+#[test]
+fn a_grant_that_does_not_parse_is_refused() {
+    let refused = Fleet::read(
+        r#"
+[grants]
+web-ops = "kind=instance;bogus=value"
+"#,
+    )
+    .unwrap_err();
+    assert!(refused.contains("web-ops"), "{refused}");
+    assert!(refused.contains("bogus"), "{refused}");
+}
+
+/// A grant written as a table is refused rather than read as a string it is
+/// not.
+#[test]
+fn a_grant_that_is_not_a_string_is_refused() {
+    let refused = Fleet::read(
+        r#"
+[grants.web-ops]
+kind = "instance"
+"#,
+    )
+    .unwrap_err();
+    assert!(refused.contains("web-ops"), "{refused}");
+}

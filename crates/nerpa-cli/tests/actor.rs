@@ -56,6 +56,80 @@ fn a_run_journal_says_who_acted() {
     );
 }
 
+/// A machine acts over the grant the fleet issued it (`0072`): the journal
+/// says who acted and over what, and the grant is the fleet's, not the flag's.
+#[test]
+fn a_machine_acts_over_the_grant_the_fleet_issued_it() {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path();
+    std::fs::write(root.join("main.star"), "node(\"localhost\")\n").unwrap();
+    std::fs::write(
+        root.join("fleet.toml"),
+        "[grants]\nweb-ops = \"kind=instance;op=create\"\n",
+    )
+    .unwrap();
+    let state = root.join("state.json");
+
+    let said = Command::new(env!("CARGO_BIN_EXE_nerpa"))
+        .args(["plan", "--as", "web-ops", "--fleet"])
+        .arg(root.join("fleet.toml"))
+        .arg("--state")
+        .arg(&state)
+        .arg("-f")
+        .arg(root.join("main.star"))
+        .output()
+        .unwrap();
+    assert!(
+        said.status.success(),
+        "{}",
+        String::from_utf8_lossy(&said.stderr)
+    );
+
+    let journal = std::fs::read_to_string(root.join("state.json.journal")).unwrap();
+    assert!(
+        journal.contains("as web-ops over kind=instance;op=create"),
+        "{journal}"
+    );
+}
+
+/// A machine's grant is issued, not typed (`0072`): naming one beside the
+/// fleet's grant is refused rather than silently ignored.
+#[test]
+fn a_machine_that_types_its_own_grant_beside_the_issued_one_is_refused() {
+    let scratch = tempfile::tempdir().unwrap();
+    let root = scratch.path();
+    std::fs::write(root.join("main.star"), "node(\"localhost\")\n").unwrap();
+    std::fs::write(
+        root.join("fleet.toml"),
+        "[grants]\nweb-ops = \"kind=instance;op=create\"\n",
+    )
+    .unwrap();
+
+    let said = Command::new(env!("CARGO_BIN_EXE_nerpa"))
+        .args([
+            "plan",
+            "--as",
+            "web-ops",
+            "--as-scope",
+            "kind=file",
+            "--fleet",
+        ])
+        .arg(root.join("fleet.toml"))
+        .arg("--state")
+        .arg(root.join("state.json"))
+        .arg("-f")
+        .arg(root.join("main.star"))
+        .output()
+        .unwrap();
+    assert!(
+        !said.status.success(),
+        "a machine that types its own grant beside the issued one must be refused"
+    );
+    let problem = String::from_utf8_lossy(&said.stderr);
+    assert!(problem.contains("web-ops"), "{problem}");
+    assert!(problem.contains("issued"), "{problem}");
+}
+
 /// `--as-expiry` is a boundary, not a label (review v0013's minor-1): an
 /// identity whose expiry has passed does not run, and the refusal names it.
 #[test]
