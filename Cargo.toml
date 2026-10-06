@@ -9,6 +9,7 @@ members = [
   "crates/nerpa-transport",
   "crates/nerpa-proto",
   "crates/nerpa-provider-os",
+  "crates/nerpa-provider-wasm",
   "crates/nerpa-provider-yandex",
   "crates/nerpa-import",
   "xtask",
@@ -44,6 +45,7 @@ nerpa-executor = { path = "crates/nerpa-executor", version = "=0.4.0" }
 nerpa-proto = { path = "crates/nerpa-proto", version = "=0.4.0" }
 nerpa-transport = { path = "crates/nerpa-transport", version = "=0.4.0" }
 nerpa-provider-os = { path = "crates/nerpa-provider-os", version = "=0.4.0" }
+nerpa-provider-wasm = { path = "crates/nerpa-provider-wasm", version = "=0.4.0" }
 nerpa-provider-yandex = { path = "crates/nerpa-provider-yandex", version = "=0.4.0" }
 nerpa-import = { path = "crates/nerpa-import", version = "=0.4.0" }
 
@@ -117,6 +119,8 @@ getrandom = "0.4"
 # Bytes in a human-readable state file. JSON has no way to say "these are
 # bytes", and an array of numbers cannot be told apart from a list of integers.
 base64 = "0.23"
+# WASM components, for third-party providers (adr-2026-0004).
+wasmtime = "49"
 # `flock`, and nothing else from it. A lock held by the kernel is released when
 # the process ends however it ends, which a lock file's existence cannot do: a
 # run that was killed left a file that refused every later run until somebody

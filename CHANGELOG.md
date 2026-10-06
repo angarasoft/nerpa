@@ -11,6 +11,9 @@ without ceremony until the first stage is complete.
   evaluates the configuration, reads the world, and plans and applies over the
   typed plan, taking the opened machines as input. The CLI wraps it
   (adr-2026-073).
+- Third-party providers as WASM components in `nerpa-provider-wasm`: a
+  component and its manifest load beside the in-tree providers, and the
+  manifest's kinds enter the schema (adr-2026-0004).
 
 ### Changed
 
