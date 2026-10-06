@@ -1,0 +1,26 @@
+[package]
+name = "nerpa-engine"
+description = "The nerpa run as a library: plan and apply over the typed plan"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+nerpa-config = { workspace = true }
+nerpa-core = { workspace = true }
+nerpa-provider-os = { workspace = true }
+nerpa-provider-yandex = { workspace = true }
+
+[dev-dependencies]
+nerpa-transport = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
