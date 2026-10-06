@@ -884,3 +884,7 @@ commit = "b84d950f95c33fe44de5e369f65f038c299b32a0"
 tree = "d522c7e25f92bb39f723da5c7ddac313b95f852c"
 mutation_proof = "cargo test -p nerpa-core --test control_apply --test plan_stable"
 anti_vacuum = "nerpa_core/tests/control_apply.rs::a_plan_reaching_outside_the_grant_is_refused"
+[[events]]
+event = "started"
+work = "w-machine-identity"
+at = "2026-10-06T07:25:50Z"
