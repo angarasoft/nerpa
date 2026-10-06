@@ -108,7 +108,8 @@ fn ci() -> Result<(), String> {
     book::check()?;
     docs::check()?;
     agents()?;
-    deny()
+    deny()?;
+    semver()
 }
 
 /// AGENTS.md is generated, and a generated file nobody re-generates is a
@@ -150,9 +151,8 @@ fn deny() -> Result<(), String> {
 
 /// The semver of the public API against the last published version.
 ///
-/// Joins `ci` once the first version is published: before that there is no
-/// baseline to compare against (adr-2026-014). Until then it is reachable by
-/// hand and by CI's publish step.
+/// In `ci` from the first publish: the baseline exists, and a breaking change to
+/// a published API is a gate failure rather than a surprise (adr-2026-014).
 fn semver() -> Result<(), String> {
     shell::cargo_tool(
         "semver-checks",

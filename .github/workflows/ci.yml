@@ -34,6 +34,7 @@ jobs:
       # place the version is decided, and a second one would drift from it.
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@cargo-deny
+      - uses: taiki-e/install-action@cargo-semver-checks
 
       # The same revision Cargo.toml pins; a second copy of the revision would
       # drift from the first. The CLI is installed at exactly that revision, not
