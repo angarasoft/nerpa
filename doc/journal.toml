@@ -834,3 +834,7 @@ commit = "372b087c55802bfab577fbc82283f02735e2e335"
 tree = "60045fecc17b0474a99a0ea48058310ed9183d5c"
 mutation_proof = "cargo xtask ci"
 anti_vacuum = "cargo xtask semver"
+[[events]]
+event = "closed"
+slice = "s-semver-gate"
+at = "2026-10-06T05:46:42Z"
