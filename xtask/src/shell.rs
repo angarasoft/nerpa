@@ -12,6 +12,30 @@ pub(crate) fn root() -> PathBuf {
         .to_path_buf()
 }
 
+/// Where cargo puts build output.
+///
+/// `.cargo/config.toml` points cargo beside the sources in `.cargo-target`, and
+/// the tasks that read built binaries back must follow the same setting. Reading
+/// it here rather than hardcoding a directory in each task keeps one place to
+/// change, which is what `budget` did not have when the directory moved away
+/// from `target/`.
+pub(crate) fn target_dir() -> PathBuf {
+    let config = root().join(".cargo/config.toml");
+    let dir = std::fs::read_to_string(&config)
+        .ok()
+        .and_then(|text| toml::from_str::<toml::Table>(&text).ok())
+        .and_then(|parsed| {
+            parsed
+                .get("build")
+                .and_then(toml::Value::as_table)
+                .and_then(|build| build.get("target-dir"))
+                .and_then(toml::Value::as_str)
+                .map(str::to_owned)
+        })
+        .unwrap_or_else(|| "target".to_owned());
+    root().join(dir)
+}
+
 /// Runs git and hands back what it printed.
 ///
 /// Separate from [`cargo`] because the output is the answer here rather than a

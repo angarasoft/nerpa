@@ -163,13 +163,17 @@ fn measure(resources: usize) -> Result<f64, String> {
     let state = directory.join("budget.state.json");
     let _ = fs::remove_file(&state);
 
-    let binary: PathBuf = shell::root().join("target/release/nerpa");
+    let binary: PathBuf = shell::target_dir().join("release/nerpa");
     let mut command = std::process::Command::new(&binary);
     command
         .arg("-f")
         .arg(&source)
         .arg("--state")
         .arg(&state)
+        // A run needs an actor identity (`INV-TRUST-001`), and this one is the
+        // harness measuring itself, so the name says what it is.
+        .arg("--as")
+        .arg("budget@example.invalid")
         .arg("plan")
         .stdout(std::process::Stdio::null());
 

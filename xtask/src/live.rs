@@ -84,13 +84,13 @@ fn build() -> Result<PathBuf, String> {
     let stage = staging();
     fs::create_dir_all(&stage).map_err(|error| format!("{}: {error}", stage.display()))?;
 
-    let root = shell::root();
+    let target = shell::target_dir();
     let placed = [
-        ("nerpa", root.join("target/release/nerpa")),
-        ("nerpa-executor", root.join("target/release/nerpa-executor")),
+        ("nerpa", target.join("release/nerpa")),
+        ("nerpa-executor", target.join("release/nerpa-executor")),
         (
             "nerpa-executor.static",
-            root.join("target/x86_64-unknown-linux-musl/release/nerpa-executor"),
+            target.join("x86_64-unknown-linux-musl/release/nerpa-executor"),
         ),
     ];
     for (name, from) in placed {
