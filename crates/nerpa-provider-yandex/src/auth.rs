@@ -246,7 +246,7 @@ mod tests {
     #[test]
     fn an_oauth_token_exchanges_for_an_iam_token() {
         let api = Replay {
-            body: r#"{"iamToken":"t1","expiresAt":"2026-10-06T00:00:00Z"}"#,
+            body: r#"{"iamToken":"t1","expiresAt":"2999-01-01T00:00:00Z"}"#,
         };
         let (token, expires_at) = exchange_oauth(&api, "oauth").unwrap();
         assert_eq!(token, "t1");
