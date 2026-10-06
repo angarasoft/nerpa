@@ -4,6 +4,7 @@ members = [
   "crates/nerpa-cli",
   "crates/nerpa-config",
   "crates/nerpa-core",
+  "crates/nerpa-engine",
   "crates/nerpa-executor",
   "crates/nerpa-transport",
   "crates/nerpa-proto",
@@ -38,6 +39,7 @@ categories = ["command-line-utilities", "config", "development-tools"]
 # step on a release, which the release script does.
 nerpa-config = { path = "crates/nerpa-config", version = "=0.4.0" }
 nerpa-core = { path = "crates/nerpa-core", version = "=0.4.0" }
+nerpa-engine = { path = "crates/nerpa-engine", version = "=0.4.0" }
 nerpa-executor = { path = "crates/nerpa-executor", version = "=0.4.0" }
 nerpa-proto = { path = "crates/nerpa-proto", version = "=0.4.0" }
 nerpa-transport = { path = "crates/nerpa-transport", version = "=0.4.0" }

@@ -33,15 +33,12 @@ use clap::{Parser, Subcommand};
 use nerpa_config::fleet::{Fleet, Route};
 use nerpa_core::address::{Address, Target};
 use nerpa_core::plan::{ChangeKind, Plan};
-use nerpa_core::planner;
-use nerpa_core::provider::{Machines, Providers, Reach};
-use nerpa_core::run;
+use nerpa_core::provider::{Machines, Reach};
 use nerpa_core::secret::{Remembered, Secrets};
 use nerpa_core::shards;
 use nerpa_core::state::{Released, State};
 use nerpa_core::{Actor, Grant};
-use nerpa_provider_os::Os;
-use nerpa_provider_yandex::{Auth, Http, Yandex};
+use nerpa_engine::Engine;
 
 #[derive(Parser)]
 #[command(
@@ -580,33 +577,13 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
         None => actor,
     };
 
-    let mut providers = Providers::new().with(Box::new(Os::new()));
-    // A cloud provider is registered only where the fleet names a cloud; a
-    // configuration that touches no cloud asks for no credential and reaches
-    // nothing over HTTP. Where a cloud is named, the credential is either the
-    // static token the fleet carries or the yc profile (adr-2026-071).
-    if let Some(cloud) = fleet.cloud() {
-        let auth = match &cloud.iam_token {
-            Some(token) => Auth::IamToken(token.clone()),
-            None => Auth::YcProfile,
-        };
-        providers = providers.with(Box::new(Yandex::new(
-            cloud.folder_id.clone(),
-            "https://compute.api.cloud.yandex.net/compute/v1",
-            "https://vpc.api.cloud.yandex.net/vpc/v1",
-            auth,
-            Box::new(Http::new(std::time::Duration::from_secs(30))),
-        )));
-    }
-
-    // The providers first, so that what they refuse, such as a package reacting,
-    // is refused at the line that says it.
-    let graph = nerpa_config::evaluate_with(
+    // The engine registers the providers and evaluates the configuration, so
+    // what a provider refuses is refused at the line that says it.
+    let engine = Engine::assemble(
         &arguments.file.display().to_string(),
         &source,
-        Box::new(nerpa_config::template::Directory::at(root)),
-        fleet.clone(),
-        providers.schema(),
+        &root,
+        &fleet,
     )
     .map_err(|error| error.to_string())?;
 
@@ -635,13 +612,14 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     // One connection per machine, opened before anything is read and closed
     // when the run ends. The executor is looked for beside this program: an
     // install puts them together, and a build leaves them together too.
-    let machines = reachable(&graph, &fleet)?;
+    let machines = reachable(engine.graph(), &fleet)?;
 
-    let observed =
-        run::observe(&graph, &providers, &machines, &state).map_err(|error| error.to_string())?;
-    let plan = planner::plan(&graph, &observed, &state, &providers.schema(), secrets)
-        .map_err(|error| error.to_string())?
-        .attributed_to(actor.clone());
+    let observed = engine
+        .observe(&machines, &state)
+        .map_err(|error| error.to_string())?;
+    let plan = engine
+        .plan(&observed, &state, secrets, actor.clone())
+        .map_err(|error| error.to_string())?;
 
     // Where the fleet names who may sign, an apply runs only over a plan a
     // third party has signed (`0009`). Checked before the plan is printed and
@@ -712,9 +690,8 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     // leave them unowned for ever.
     let mut written =
         |state: &State| shards::save(&directory, state, &key).map_err(|error| error.to_string());
-    let applied = run::apply(
+    let applied = engine.apply(
         &plan,
-        &providers,
         &machines,
         &observed,
         &mut state,

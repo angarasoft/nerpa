@@ -5,6 +5,13 @@ without ceremony until the first stage is complete.
 
 ## Unreleased
 
+### Added
+
+- The run as a library in `nerpa-engine`: the engine registers the providers,
+  evaluates the configuration, reads the world, and plans and applies over the
+  typed plan, taking the opened machines as input. The CLI wraps it
+  (adr-2026-073).
+
 ### Changed
 
 - An actor's scope is a grant now — `kind=a,b;target=c;op=d,e` — carried in the

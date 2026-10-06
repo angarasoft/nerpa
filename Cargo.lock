@@ -1400,8 +1400,8 @@ dependencies = [
  "dacc-derive",
  "nerpa-config",
  "nerpa-core",
+ "nerpa-engine",
  "nerpa-import",
- "nerpa-provider-os",
  "nerpa-provider-yandex",
  "nerpa-transport",
  "serde",
@@ -1453,6 +1453,18 @@ dependencies = [
  "dacc-knowledge",
  "dacc-scan",
  "dacc-work",
+]
+
+[[package]]
+name = "nerpa-engine"
+version = "0.4.0"
+dependencies = [
+ "nerpa-config",
+ "nerpa-core",
+ "nerpa-provider-os",
+ "nerpa-provider-yandex",
+ "nerpa-transport",
+ "thiserror",
 ]
 
 [[package]]
