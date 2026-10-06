@@ -5,6 +5,12 @@ without ceremony until the first stage is complete.
 
 ## Unreleased
 
+### Changed
+
+- An actor's scope is a grant now — `kind=a,b;target=c;op=d,e` — carried in the
+  plan as `grant` and covered by the plan hash. A plan signed before this change
+  does not verify after it (adr-2026-009).
+
 ## 0.3.0
 
 ### Added

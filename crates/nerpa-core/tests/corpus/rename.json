@@ -1,7 +1,7 @@
 {
   "actor": {
     "who": "tester",
-    "scope": "run"
+    "grant": "all"
   },
   "stages": [],
   "unreachable": [],
@@ -31,5 +31,5 @@
     "outdated": 0,
     "nodes": []
   },
-  "digest": "35c72f6ea48cb9f8b4a64699c2a6d534bc7a4b8b2dc53f5ab6c770650e6252fe"
+  "digest": "e0fd561afb252b416715fa0a90c5cf65bac90dc8fa7cfb34e523acd4de4cce80"
 }

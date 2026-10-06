@@ -32,7 +32,9 @@ fn plan(
     secrets: Secrets<'_>,
 ) -> Result<nerpa_core::Plan, nerpa_core::planner::PlanError> {
     nerpa_core::planner::plan(graph, observed, state, schema, secrets).map(|planned| {
-        planned.attributed_to(nerpa_core::Actor::new("tester", "run", None).expect("an actor"))
+        planned.attributed_to(
+            nerpa_core::Actor::new("tester", nerpa_core::Grant::default(), None).expect("an actor"),
+        )
     })
 }
 
@@ -173,5 +175,47 @@ fn a_control_resource_converges_through_act() {
         second.changes().count(),
         0,
         "a second run has nothing to do"
+    );
+}
+
+/// A grant that names a different kind refuses the run before anything is sent
+/// (adr-2026-009): the engine checks the grant, not the thing being limited.
+#[test]
+fn a_plan_reaching_outside_the_grant_is_refused() {
+    let instance = address("yandex:instance.db");
+    let mut graph = Graph::new();
+    graph
+        .insert(
+            Resource::new(instance.clone())
+                .with("zone", "ru-central1-b")
+                .with("cores", 8),
+        )
+        .expect("a resource");
+
+    let mut state = State::new();
+    let providers = Providers::new().with(Box::new(Cloud::default()));
+    let machines = Machines::new();
+
+    let observed = observe(&graph, &providers, &machines, &state).expect("observed");
+    let planned =
+        nerpa_core::planner::plan(&graph, &observed, &state, &providers.schema(), secrets())
+            .expect("plannable");
+    // A grant that allows files but not instances.
+    let grant: nerpa_core::Grant = "kind=file".parse().expect("a grant");
+    let planned =
+        planned.attributed_to(nerpa_core::Actor::new("tester", grant, None).expect("an actor"));
+
+    let refused = apply(
+        &planned,
+        &providers,
+        &machines,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |_| Ok(()),
+    );
+    assert!(
+        matches!(refused, Err(nerpa_core::run::RunError::OutOfGrant { .. })),
+        "an out-of-grant change is refused before it reaches a machine"
     );
 }

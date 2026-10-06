@@ -1048,7 +1048,7 @@ impl Plan {
 /// one that was, so no two actors encode to the same bytes.
 fn encode_actor(actor: &Actor, out: &mut Vec<u8>) {
     value::text(actor.who(), out);
-    value::text(actor.scope(), out);
+    actor.grant().encode(out);
     match actor.expiry() {
         None => out.push(0),
         Some(expiry) => {

@@ -139,11 +139,11 @@ fn the_number_of_a_fixed_plan_is_written_down() {
 fn whose_plan_it_is_moves_the_number() {
     let nobody = one(&[("path", "/etc/motd")]).digest().expect("hashable");
     let alice = one(&[("path", "/etc/motd")])
-        .attributed_to(Actor::new("alice", "run", None).unwrap())
+        .attributed_to(Actor::new("alice", nerpa_core::Grant::default(), None).unwrap())
         .digest()
         .expect("hashable");
     let bob = one(&[("path", "/etc/motd")])
-        .attributed_to(Actor::new("bob", "run", None).unwrap())
+        .attributed_to(Actor::new("bob", nerpa_core::Grant::default(), None).unwrap())
         .digest()
         .expect("hashable");
     assert_ne!(nobody, alice, "whose plan it is");

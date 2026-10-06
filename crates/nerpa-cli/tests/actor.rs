@@ -51,7 +51,7 @@ fn a_run_journal_says_who_acted() {
     let journal = std::fs::read_to_string(root.join("state.json.journal")).unwrap();
     assert!(journal.contains("plan "), "{journal}");
     assert!(
-        journal.contains("as alice@example.com over run"),
+        journal.contains("as alice@example.com over all"),
         "{journal}"
     );
 }

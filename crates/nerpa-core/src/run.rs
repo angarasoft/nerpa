@@ -302,6 +302,17 @@ pub fn apply(
         "a run proceeds only with an actor identity, and this plan has none \
          (INV-TRUST-001): attribute it with `Plan::attributed_to` first"
     );
+    // A grant limits the run, and the engine checks it rather than the thing
+    // being limited (adr-2026-009): a change that reaches outside the grant is
+    // refused before anything is sent.
+    if let Some(actor) = plan.actor()
+        && let Some(refused) = actor.grant().refuses(plan)
+    {
+        return Err(RunError::OutOfGrant {
+            address: refused.address().clone(),
+            kind: refused.kind(),
+        });
+    }
     let mut observed = known.clone();
     let mut changed = 0usize;
     let mut adopted = false;
@@ -1352,6 +1363,17 @@ pub enum RunError {
     /// A provider could not do what was asked of it.
     #[error(transparent)]
     Provider(#[from] ProviderError),
+    /// A change reaches outside what the run's grant allows (adr-2026-009).
+    ///
+    /// Checked by the engine before anything is sent, so a deliberately
+    /// over-reaching request never reaches a machine.
+    #[error("{address}: a {kind:?} reaches outside the grant")]
+    OutOfGrant {
+        /// The change that was refused.
+        address: Address,
+        /// What it would have done.
+        kind: ChangeKind,
+    },
     /// A secret a change needed could not be fetched.
     #[error(transparent)]
     Secret(#[from] FetchError),

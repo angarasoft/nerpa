@@ -67,7 +67,9 @@ fn check(corpus: &str, golden: &str, graph: &Graph, observed: &Observed, state: 
         .expect("plannable")
         // A run's plan is somebody's plan (`INV-TRUST-001`), and the corpus
         // pins what that somebody sees.
-        .attributed_to(nerpa_core::Actor::new("tester", "run", None).expect("an actor"));
+        .attributed_to(
+            nerpa_core::Actor::new("tester", nerpa_core::Grant::default(), None).expect("an actor"),
+        );
     let actual = serde_json::to_string_pretty(&planned).expect("serializes");
     if std::env::var("NERPA_CORPUS").as_deref() == Ok("write") {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

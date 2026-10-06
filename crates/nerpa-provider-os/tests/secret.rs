@@ -32,7 +32,9 @@ fn plan(
     secrets: Secrets<'_>,
 ) -> Result<nerpa_core::Plan, nerpa_core::planner::PlanError> {
     nerpa_core::planner::plan(graph, observed, state, schema, secrets).map(|planned| {
-        planned.attributed_to(nerpa_core::Actor::new("tester", "run", None).expect("an actor"))
+        planned.attributed_to(
+            nerpa_core::Actor::new("tester", nerpa_core::Grant::default(), None).expect("an actor"),
+        )
     })
 }
 

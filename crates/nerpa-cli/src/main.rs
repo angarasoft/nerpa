@@ -31,7 +31,6 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
 use nerpa_config::fleet::{Fleet, Route};
-use nerpa_core::Actor;
 use nerpa_core::address::{Address, Target};
 use nerpa_core::plan::{ChangeKind, Plan};
 use nerpa_core::planner;
@@ -40,6 +39,7 @@ use nerpa_core::run;
 use nerpa_core::secret::{Remembered, Secrets};
 use nerpa_core::shards;
 use nerpa_core::state::{Released, State};
+use nerpa_core::{Actor, Grant};
 use nerpa_provider_os::Os;
 use nerpa_provider_yandex::{Auth, Http, Yandex};
 
@@ -71,11 +71,12 @@ struct Arguments {
     #[arg(long = "as", value_name = "WHO", global = true)]
     actor: Option<String>,
 
-    /// What this actor may touch. Carried now; a grant checks it later.
+    /// The grant that limits what this actor may touch: kinds, targets and
+    /// operations, written `kind=a,b;target=c;op=d,e` (adr-2026-009).
     #[arg(
         long = "as-scope",
-        value_name = "SCOPE",
-        default_value = "run",
+        value_name = "GRANT",
+        default_value = "all",
         global = true
     )]
     actor_scope: String,
@@ -492,7 +493,8 @@ fn run_task(arguments: &Arguments) -> Result<(), String> {
     // Refused here rather than by clap, because a global argument cannot be
     // required and the refusal has to name the flag anyway.
     let who = arguments.actor.as_deref().ok_or_else(no_actor_refused)?;
-    let actor = Actor::new(who, &arguments.actor_scope, arguments.actor_expiry.clone())
+    let grant = arguments.actor_scope.parse::<Grant>()?;
+    let actor = Actor::new(who, grant, arguments.actor_expiry.clone())
         .map_err(|error| error.to_string())?;
 
     // Before the configuration is read, because releasing a machine is about
