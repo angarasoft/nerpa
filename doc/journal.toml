@@ -861,3 +861,7 @@ commit = "8f38af743b2580f6d87446c24e93211d1a4c3b11"
 tree = "cf2fb3c626889afa7f7ba056b21386bfb6a03619"
 mutation_proof = "cargo test -p nerpa-core --lib grant"
 anti_vacuum = "nerpa_core/src/grant.rs::tests::a_grant_refuses_a_kind_it_does_not_name"
+[[events]]
+event = "started"
+work = "w-grant-in-run"
+at = "2026-10-06T06:13:41Z"
