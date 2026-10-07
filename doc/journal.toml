@@ -1145,3 +1145,7 @@ tree = "33f3f2a1314f84f8451a51f8fa941e6bc463f693"
 event = "closed"
 slice = "s-plan-summarises-content"
 at = "2026-10-07T07:25:26Z"
+[[events]]
+event = "started"
+work = "w-planner-decomposed"
+at = "2026-10-07T07:58:08Z"
