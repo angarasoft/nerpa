@@ -380,6 +380,99 @@ fn inline_targets(line: &str) -> Vec<&str> {
     found
 }
 
+/// The contents of inline code spans on a line, as paths a reader follows.
+///
+/// The opposite of [`outside_code`]: where that blanks the spans, this keeps
+/// only what a span says, and only when it says a path into `doc/` or `docs/` —
+/// the one kind of inline code a reader follows with their eyes.
+fn code_paths(line: &str) -> Vec<String> {
+    let chars: Vec<char> = line.chars().collect();
+    let mut found = Vec::new();
+    let mut at = 0usize;
+    let mut open = 0usize;
+    let mut content = String::new();
+    while let Some(ch) = chars.get(at).copied() {
+        if ch == '`' {
+            let mut run = 0;
+            while chars.get(at + run) == Some(&'`') {
+                run += 1;
+            }
+            if open == 0 {
+                open = run;
+                content.clear();
+            } else if run == open {
+                open = 0;
+                let token = content.trim();
+                if !token.contains(' ') && (token.starts_with("doc/") || token.starts_with("docs/"))
+                {
+                    found.push(token.to_owned());
+                }
+                content.clear();
+            } else {
+                for _ in 0..run {
+                    content.push('`');
+                }
+            }
+            at += run;
+        } else {
+            if open != 0 {
+                content.push(ch);
+            }
+            at += 1;
+        }
+    }
+    found
+}
+
+/// The same path with the compiled registry and the prose swapped at the root.
+fn swapped(path: &str) -> Option<String> {
+    path.strip_prefix("doc/")
+        .map(|rest| format!("docs/{rest}"))
+        .or_else(|| path.strip_prefix("docs/").map(|rest| format!("doc/{rest}")))
+}
+
+/// A path written as inline code that confuses `doc/` and `docs/`.
+///
+/// The compiled registry (`doc/`) and the prose beside it (`docs/`) are one
+/// letter apart, so a path into the wrong one still reads as a place to look.
+/// Markdown links are already refused as broken routes; this catches the inline
+/// spelling, where a link would be noise — `` `docs/MAP.md` `` names a place and
+/// a reader goes there. A path whose one-letter sibling is what is really there
+/// is refused, naming both. A path whose sibling is not there either — a stale
+/// name the registry swallowed, quoted by the watchlist — is left alone: the
+/// watchlist exists to record what happened, and describing it is not a route.
+fn confused_paths(pages: &[Page], present: &BTreeSet<String>) -> Vec<String> {
+    let mut complaints = Vec::new();
+    for (page, text) in pages {
+        let mut fenced = false;
+        for (number, line) in text.lines().enumerate() {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+                fenced = !fenced;
+                continue;
+            }
+            if fenced {
+                continue;
+            }
+            for token in code_paths(line) {
+                let path = token.trim_end_matches('/');
+                if path.is_empty() || present.contains(path) {
+                    continue;
+                }
+                if let Some(sibling) = swapped(path)
+                    && present.contains(sibling.as_str())
+                {
+                    complaints.push(format!(
+                        "{page}:{}: `{path}` is not there, but `{sibling}` is — the compiled registry is `doc/` and the prose is `docs/`",
+                        number + 1
+                    ));
+                }
+            }
+        }
+    }
+    complaints
+}
+
 /// What the written documentation is made of, as far as a link is concerned.
 #[derive(Debug)]
 struct Written {
@@ -462,8 +555,12 @@ pub(crate) fn check() -> Result<(), String> {
     if !complaints.is_empty() {
         return Err(complaints.join("\n"));
     }
+    let complaints = confused_paths(&pages, &present);
+    if !complaints.is_empty() {
+        return Err(complaints.join("\n"));
+    }
     eprintln!(
-        "  written: {} pages, every section placed and every route resolving",
+        "  written: {} pages, every section placed, every route resolving, and no doc/ docs/ confusion",
         pages.len()
     );
 
@@ -480,7 +577,8 @@ pub(crate) fn check() -> Result<(), String> {
 )]
 mod tests {
     use super::{
-        architecture, audit_links, decision_related_rfcs, resolve, routes, skipped, spec_decided_by,
+        architecture, audit_links, code_paths, confused_paths, decision_related_rfcs, resolve,
+        routes, skipped, spec_decided_by, swapped,
     };
     use std::collections::{BTreeMap, BTreeSet};
 
@@ -674,6 +772,66 @@ mod tests {
         )];
         let present = BTreeSet::from(["docs/decisions/0005-a.md".to_owned()]);
         assert_eq!(routes(&pages, &present), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_confused_path_is_refused_naming_both() {
+        let pages = vec![(
+            "docs/MAP.md".to_owned(),
+            "The registry is `doc/MAP.md`.\n".to_owned(),
+        )];
+        let present = BTreeSet::from(["docs/MAP.md".to_owned()]);
+        let complaints = confused_paths(&pages, &present);
+        assert_eq!(complaints.len(), 1, "{complaints:?}");
+        assert!(complaints[0].contains("doc/MAP.md"), "{complaints:?}");
+        assert!(complaints[0].contains("docs/MAP.md"), "{complaints:?}");
+    }
+
+    #[test]
+    fn a_path_that_is_there_is_quiet() {
+        let pages = vec![(
+            "docs/MAP.md".to_owned(),
+            "See `docs/MAP.md` and `doc/adr/`.\n".to_owned(),
+        )];
+        let present = BTreeSet::from(["docs/MAP.md".to_owned(), "doc/adr".to_owned()]);
+        assert_eq!(confused_paths(&pages, &present), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_stale_path_whose_sibling_is_not_there_either_is_left_alone() {
+        // The watchlist quotes `docs/invariants.toml` to record what happened,
+        // and neither spelling is there now — this is history, not a route.
+        let pages = vec![(
+            "docs/WATCHLIST.md".to_owned(),
+            "RULES.md pointed at `docs/invariants.toml`.\n".to_owned(),
+        )];
+        assert_eq!(
+            confused_paths(&pages, &BTreeSet::new()),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn a_confused_path_in_a_code_block_is_not_a_route() {
+        let pages = vec![(
+            "docs/a.md".to_owned(),
+            "```\n`doc/MAP.md`\n```\n".to_owned(),
+        )];
+        let present = BTreeSet::from(["docs/MAP.md".to_owned()]);
+        assert_eq!(confused_paths(&pages, &present), Vec::<String>::new());
+    }
+
+    #[test]
+    fn code_paths_keep_only_doc_and_docs_paths() {
+        let paths = code_paths("see `docs/MAP.md` and `doc/adr/` and `cargo dacc map`");
+        assert_eq!(paths, vec!["docs/MAP.md".to_owned(), "doc/adr/".to_owned()]);
+    }
+
+    #[test]
+    fn swapped_exchanges_the_two_roots() {
+        assert_eq!(swapped("doc/MAP.md").as_deref(), Some("docs/MAP.md"));
+        assert_eq!(swapped("docs/MAP.md").as_deref(), Some("doc/MAP.md"));
+        assert_eq!(swapped("README.md"), None);
     }
 
     #[test]
