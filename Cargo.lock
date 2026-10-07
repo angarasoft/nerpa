@@ -1924,6 +1924,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.21",
  "toml",
+ "ureq",
  "wasmtime",
  "wat",
  "wit-component 0.261.0",

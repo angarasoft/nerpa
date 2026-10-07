@@ -6,6 +6,8 @@
 //!
 //! ```toml
 //! name = "example"
+//! token = "the-credential-the-host-holds"
+//! hosts = ["api.example.com"]
 //!
 //! [kind.file]
 //! immutable = ["path"]
@@ -34,6 +36,14 @@ pub struct Manifest {
     /// One table per resource kind, keyed by the kind name.
     #[serde(default)]
     kind: BTreeMap<String, KindManifest>,
+    /// The credential the component spends through `request`. Held by the host
+    /// and handed to the component only as an opaque handle, never the value.
+    #[serde(default)]
+    token: Option<String>,
+    /// The hosts the component's requests may reach. A request to any other
+    /// host is refused before it is made.
+    #[serde(default)]
+    hosts: Vec<String>,
 }
 
 /// One resource kind and how its attributes behave.
@@ -87,6 +97,17 @@ impl Manifest {
     /// name.
     pub fn name(&self) -> Result<Provider, String> {
         Provider::new(&self.name).map_err(|error| error.to_string())
+    }
+
+    /// The credential the component spends through `request`, when the manifest
+    /// declares one.
+    pub fn token(&self) -> Option<&str> {
+        self.token.as_deref()
+    }
+
+    /// The hosts the component's requests may reach.
+    pub fn hosts(&self) -> &[String] {
+        &self.hosts
     }
 
     /// The schema this manifest declares, keyed by kind.

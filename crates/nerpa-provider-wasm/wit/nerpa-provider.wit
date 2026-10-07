@@ -262,4 +262,23 @@ variant answer {
     /// declares and attaches credentials itself, so the provider never holds
     /// either.
     import reach: func(question: ask) -> result<answer, string>;
+
+    /// A credential the host holds and the component spends, never reads.
+    /// The component gets an opaque handle and passes it to `request`; only
+    /// the host sees the value.
+    resource credential;
+
+    /// The answer to a `request`.
+    record response {
+        status: u16,
+        body: list<u8>,
+    }
+
+    /// The component asks the host for the credential handle. The host
+    /// resolves the handle to the value it alone holds.
+    import credential-handle: func() -> credential;
+
+    /// Spend the credential on one request. The host restricts the host and
+    /// attaches the value itself, so the component never reads either.
+    import request: func(credential: borrow<credential>, url: string) -> result<response, string>;
 }

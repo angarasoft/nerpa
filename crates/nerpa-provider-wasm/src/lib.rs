@@ -74,9 +74,31 @@ fn current_reach() -> &'static dyn Reach {
     })
 }
 
-/// The host state behind the component's `reach` import. The state itself is
-/// empty; the reach it answers with lives in [`REACH`].
-struct Host;
+/// The host state behind the component's imports. It holds the manifest's
+/// credential and the hosts the component may reach, and tracks the credential
+/// handles it has handed out so `request` can resolve one back to the value the
+/// component never sees.
+struct Host {
+    /// The credential value the host alone holds; `None` when the manifest
+    /// declares none.
+    token: Option<String>,
+    /// The hosts the component's requests may reach.
+    hosts: Vec<String>,
+    /// The value behind each credential handle, indexed by the handle's rep.
+    /// A spent handle is `None`.
+    credentials: Vec<Option<String>>,
+}
+
+impl Host {
+    /// The host state for one instantiation.
+    fn new(token: Option<String>, hosts: Vec<String>) -> Self {
+        Self {
+            token,
+            hosts,
+            credentials: Vec::new(),
+        }
+    }
+}
 
 impl bindings::ProviderImports for Host {
     fn reach(&mut self, question: bindings::Ask) -> Result<bindings::Answer, String> {
@@ -86,6 +108,69 @@ impl bindings::ProviderImports for Host {
             .map_err(|error| error.to_string())?;
         Ok(convert::answer_to_wit(&answer))
     }
+
+    fn credential_handle(&mut self) -> wasmtime::component::Resource<bindings::Credential> {
+        let rep = u32::try_from(self.credentials.len())
+            .expect("a credential table cannot reach u32::MAX entries");
+        self.credentials.push(self.token.clone());
+        wasmtime::component::Resource::new_own(rep)
+    }
+
+    fn request(
+        &mut self,
+        credential: wasmtime::component::Resource<bindings::Credential>,
+        url: String,
+    ) -> Result<bindings::Response, String> {
+        let token = self
+            .credentials
+            .get(usize::try_from(credential.rep()).expect("a u32 handle fits in usize"))
+            .and_then(Option::as_ref)
+            .ok_or_else(|| "the credential handle is spent".to_owned())?;
+
+        // Refuse a host the manifest did not declare, before anything is sent.
+        let host = host_of(&url).ok_or_else(|| format!("not a URL: {url}"))?;
+        if !self.hosts.iter().any(|allowed| allowed == host) {
+            return Err(format!("the manifest does not allow reaching {host}"));
+        }
+
+        // Spend the credential on the request, attaching the value the component
+        // never holds.
+        let mut response = ureq::Agent::new_with_defaults()
+            .get(&url)
+            .header("Authorization", &format!("Bearer {token}"))
+            .call()
+            .map_err(|error| error.to_string())?;
+        let status = response.status().as_u16();
+        let body = response
+            .body_mut()
+            .read_to_vec()
+            .map_err(|error| error.to_string())?;
+        Ok(bindings::Response { status, body })
+    }
+}
+
+impl bindings::HostCredential for Host {
+    fn drop(
+        &mut self,
+        credential: wasmtime::component::Resource<bindings::Credential>,
+    ) -> wasmtime::Result<()> {
+        if let Some(slot) = self
+            .credentials
+            .get_mut(usize::try_from(credential.rep()).expect("a u32 handle fits in usize"))
+        {
+            *slot = None;
+        }
+        Ok(())
+    }
+}
+
+/// The authority of a URL, without the scheme, port, path or query: the host a
+/// `request` is checked against.
+fn host_of(url: &str) -> Option<&str> {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    rest.split(['/', ':', '?', '#'])
+        .next()
+        .filter(|host| !host.is_empty())
 }
 
 /// An address under this provider's name, for failures that have no address of
@@ -132,6 +217,10 @@ pub struct Wasm {
     name: Provider,
     schema: Schema,
     engine: Engine,
+    /// The credential the host holds for the component, from the manifest.
+    token: Option<String>,
+    /// The hosts the component's requests may reach, from the manifest.
+    hosts: Vec<String>,
     /// The loaded component. `None` in the fake, which touches nothing.
     component: Option<Component>,
 }
@@ -157,6 +246,8 @@ impl Wasm {
             name: manifest.name().map_err(WasmError::Schema)?,
             schema: manifest.schema().map_err(WasmError::Schema)?,
             engine,
+            token: manifest.token().map(str::to_owned),
+            hosts: manifest.hosts().to_vec(),
             component: Some(component),
         })
     }
@@ -174,7 +265,10 @@ impl Wasm {
         let mut linker = Linker::new(&self.engine);
         bindings::Provider::add_to_linker::<Host, HasSelf<Host>>(&mut linker, |state| state)
             .map_err(|error| error.to_string())?;
-        let mut store = Store::new(&self.engine, Host);
+        let mut store = Store::new(
+            &self.engine,
+            Host::new(self.token.clone(), self.hosts.clone()),
+        );
         let instance = bindings::Provider::instantiate(&mut store, component, &linker)
             .map_err(|error| error.to_string())?;
         Ok((store, instance))
@@ -305,6 +399,8 @@ impl ProviderTrait for Wasm {
             name: Provider::new("wasm").expect("`wasm` is a valid provider name"),
             schema: Schema::new(),
             engine: Engine::default(),
+            token: None,
+            hosts: Vec::new(),
             component: None,
         }
     }
