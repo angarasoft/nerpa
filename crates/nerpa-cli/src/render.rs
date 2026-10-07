@@ -337,7 +337,7 @@ fn action(kind: ChangeKind) -> &'static str {
 /// approving the change actually needs.
 fn shown(after: &Confidence) -> String {
     match after {
-        Confidence::Known(value) => value.to_string(),
+        Confidence::Known(value) => summarized(value),
         Confidence::Unknown(reference) => format!("unknown until apply, from {reference}"),
         Confidence::Secret(sealed) => format!("(secret from {})", sealed.source()),
         // Every value it could take, because a person can approve a set and
@@ -419,7 +419,7 @@ fn one(change: &Change) -> String {
     for delta in change.deltas() {
         let before = delta
             .before()
-            .map_or_else(|| "—".to_owned(), ToString::to_string);
+            .map_or_else(|| "—".to_owned(), summarized_recorded);
         // A secret that was already there and is changing: the fact is the whole
         // report, because the value is the thing being withheld. See 0027.
         let after = match (delta.before(), delta.after()) {
@@ -467,6 +467,42 @@ fn one(change: &Change) -> String {
 /// How much of a file a plan prints before it stops being something anybody
 /// reads.
 const SHOWN_LINES: usize = 40;
+
+/// How long one line may run before it is summarised, because a plan is read at
+/// three in the morning and a megabyte of certificate is not read at all.
+const SHOWN_CHARS: usize = 120;
+
+/// A value, or a summary of it. `Value::Bytes` already prints its own length,
+/// so this is the one shape that did not: a text past [`SHOWN_CHARS`] is cut to
+/// a prefix and a byte count rather than printed whole.
+fn summarized(value: &Value) -> String {
+    match value {
+        Value::Text(text) if text.len() > SHOWN_CHARS => {
+            let prefix: String = text.chars().take(SHOWN_CHARS).collect();
+            format!("{prefix:?} … ({} bytes)", text.len())
+        }
+        other => other.to_string(),
+    }
+}
+
+/// A value as state recorded it, summarised the same way.
+fn summarized_recorded(recorded: &Recorded) -> String {
+    match recorded {
+        Recorded::Plain(value) => summarized(value),
+        Recorded::Secret(_) => "(secret)".to_owned(),
+        other => other.to_string(),
+    }
+}
+
+/// One line, cut to [`SHOWN_CHARS`] with a byte count past it.
+fn clip(line: &str) -> String {
+    if line.len() <= SHOWN_CHARS {
+        line.to_owned()
+    } else {
+        let prefix: String = line.chars().take(SHOWN_CHARS).collect();
+        format!("{prefix}… ({} bytes)", line.len())
+    }
+}
 
 /// The text of a value, if it is text.
 fn text_of(value: Option<&Value>) -> Option<&str> {
@@ -516,7 +552,7 @@ fn lines_of(text: &str) -> String {
     }
     let all: Vec<&str> = text.lines().collect();
     for line in all.iter().take(SHOWN_LINES) {
-        let _ = writeln!(out, "                   │ {line}");
+        let _ = writeln!(out, "                   │ {}", clip(line));
     }
     if let Some(rest) = all.len().checked_sub(SHOWN_LINES).filter(|rest| *rest > 0) {
         let _ = writeln!(out, "                   │ … and {rest} more lines");
@@ -603,7 +639,7 @@ fn diff_of(was: &str, becomes: &str) -> String {
         .copied()
         .collect();
     for line in before.iter().rev() {
-        let _ = writeln!(out, "                   │   {line}");
+        let _ = writeln!(out, "                   │   {}", clip(line));
     }
     // Bounded as a whole block is: a diff of a megabyte of certificate is as
     // unreadable as the file twice.
@@ -611,10 +647,10 @@ fn diff_of(was: &str, becomes: &str) -> String {
     let shown_added = added.len().min(SHOWN_LINES - shown_removed);
     let hidden = (removed.len() - shown_removed) + (added.len() - shown_added);
     for line in removed.iter().take(shown_removed) {
-        let _ = writeln!(out, "                   │ - {line}");
+        let _ = writeln!(out, "                   │ - {}", clip(line));
     }
     for line in added.iter().take(shown_added) {
-        let _ = writeln!(out, "                   │ + {line}");
+        let _ = writeln!(out, "                   │ + {}", clip(line));
     }
     if hidden > 0 {
         let _ = writeln!(
@@ -623,7 +659,7 @@ fn diff_of(was: &str, becomes: &str) -> String {
         );
     }
     for line in new.iter().skip(new_end).take(DIFF_CONTEXT) {
-        let _ = writeln!(out, "                   │   {line}");
+        let _ = writeln!(out, "                   │   {}", clip(line));
     }
     out
 }
@@ -823,6 +859,28 @@ mod tests {
     fn a_creation_prints_the_whole_block_not_a_diff() {
         let blocks = super::underneath(None, Some("one\ntwo\nthree\n"));
         assert_eq!(blocks.len(), 1, "one side is a block, not a diff");
+    }
+    #[test]
+    fn a_long_text_value_is_summarised_not_printed_whole() {
+        let big = "x".repeat(super::SHOWN_CHARS * 10);
+        let summary = super::summarized(&Value::Text(big.clone()));
+        assert!(summary.contains("bytes"), "the length is said: {summary}");
+        assert!(
+            !summary.contains(&big),
+            "the whole text is not in the plan: {summary}"
+        );
+        assert!(summary.len() < big.len(), "it is shorter: {summary}");
+
+        let short = super::summarized(&Value::Text("listen 80".to_owned()));
+        assert_eq!(short, "\"listen 80\"", "a short value is itself");
+    }
+    #[test]
+    fn a_long_line_is_clipped_to_a_length() {
+        let big = "y".repeat(super::SHOWN_CHARS + 5);
+        let clipped = super::clip(&big);
+        assert!(clipped.contains("bytes"), "{clipped}");
+        assert!(!clipped.contains(&big), "not whole: {clipped}");
+        assert_eq!(super::clip("short"), "short", "a short line is itself");
     }
     #[test]
     fn a_secret_is_shown_as_where_it_comes_from() {
