@@ -1920,6 +1920,7 @@ dependencies = [
  "ciborium",
  "nerpa-core",
  "nerpa-proto",
+ "nerpa-transport",
  "scoped-tls",
  "serde",
  "thiserror 2.0.21",

@@ -89,6 +89,6 @@ fn prepare_returns_the_operations_the_component_declares() {
     else {
         panic!("expected a file operation: {planned:?}");
     };
-    assert_eq!(path, "/tmp/nerpa-wasm-created");
+    assert_eq!(path, "/tmp/note", "the operation names the declared path");
     assert_eq!(content, b"made by the wasm provider\n");
 }

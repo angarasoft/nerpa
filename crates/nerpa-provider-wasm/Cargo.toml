@@ -25,6 +25,7 @@ ureq = { workspace = true }
 wasmtime = { workspace = true }
 
 [dev-dependencies]
+nerpa-transport = { workspace = true }
 wat = "1"
 wit-component = "0.261"
 wit-parser = "0.261"
