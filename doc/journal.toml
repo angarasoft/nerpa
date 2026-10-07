@@ -1170,3 +1170,7 @@ tree = "053ee5ea0f60a1cc8ddc9543b7513e4b619b8cde"
 event = "closed"
 slice = "s-planner-decomposed"
 at = "2026-10-07T08:18:01Z"
+[[events]]
+event = "started"
+work = "w-watchlist-settled"
+at = "2026-10-07T08:50:07Z"
