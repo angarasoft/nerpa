@@ -4,9 +4,10 @@
 // Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use nerpa_core::secret::{Digest, Key, Recorded, Remembered, SecretStore, Source};
+use nerpa_core::state::Record;
 use nerpa_core::value::Value;
 
 fn key(byte: u8) -> Key {
@@ -127,6 +128,33 @@ fn a_recorded_secret_shows_that_it_is_one_and_nothing_more() {
     let ordinary = Recorded::Plain(text("/etc/motd"));
     assert!(!ordinary.is_secret());
     assert_eq!(ordinary.plain(), Some(&text("/etc/motd")));
+}
+
+/// A provider reading a resource back from state — to remove it, or to find it
+/// where it was left — is handed the locator, never a secret. State held a
+/// digest, not a value, and `Record::locator` drops the digests.
+#[test]
+#[dacc_derive::doc_anchor(id = "a-record-handed-back-to-a-provider-holds-no-secret")]
+fn a_record_handed_back_to_a_provider_holds_no_secret() {
+    let mut attributes = BTreeMap::new();
+    attributes.insert("path".to_owned(), Recorded::Plain(text("/etc/motd")));
+    attributes.insert(
+        "content".to_owned(),
+        Recorded::Secret(Digest::of(&key(1), &text("hunter2"))),
+    );
+    let record = Record::new(attributes, BTreeSet::new());
+
+    let locator = record.locator();
+
+    assert_eq!(
+        locator.get("path"),
+        Some(&text("/etc/motd")),
+        "the locator carries what finds the resource"
+    );
+    assert!(
+        !locator.contains_key("content"),
+        "the locator never carries a secret, because state never held one: {locator:?}"
+    );
 }
 
 #[test]
