@@ -46,7 +46,7 @@ fn present(path: &str, length: usize) -> String {
 
 #[dacc_derive::doc_anchor(id = "inv-delivery-001-2")]
 /// The command that puts the executor at `path` from its standard input, whole or
-/// not at all.
+/// not at all, and sweeps every executor this machine no longer needs.
 ///
 /// Written beside, under a name of its own for each attempt, counted, and only
 /// then moved into place. `cat` takes an input that ends early for the end of the
@@ -59,11 +59,19 @@ fn present(path: &str, length: usize) -> String {
 /// without this each attempt left another part of a binary behind for good. A copy
 /// another session is writing at that moment goes on writing to a file with no
 /// name, and its own move finds nothing, which it reports.
+///
+/// The sweep at the end is the same idea for whole executors: once the new one
+/// is under its name, every other `nerpa-executor-*` is removed, so a long-lived
+/// machine holds one executor rather than one per build it was ever converged by
+/// (W-008). It cannot fail the copy — `rm -f` succeeds whether the file is there
+/// or not — so a machine that holds only the new executor and one that held none
+/// both count as swept.
 fn copy(path: &str, length: usize) -> String {
     format!(
         "mkdir -p .cache/nerpa && rm -f {path}.part.* && partial={path}.part.$$ && cat > \"$partial\" \
          && test \"$(($(wc -c < \"$partial\")))\" -eq {length} \
          && chmod +x \"$partial\" && mv \"$partial\" {path} \
+         && for old in .cache/nerpa/nerpa-executor-*; do [ \"$old\" = \"{path}\" ] || rm -f \"$old\"; done \
          || {{ rm -f \"$partial\"; exit 1; }}"
     )
 }
@@ -568,6 +576,37 @@ mod tests {
             left.is_empty(),
             "and nothing of the earlier attempt is left: {left:?}"
         );
+    }
+
+    /// A machine converged by several builds holds only the latest: the copy
+    /// sweeps the executors it replaces. W-008 watched nothing delete them, so a
+    /// long-lived machine accumulated one per build it was ever converged by.
+    #[test]
+    fn a_copy_sweeps_the_executors_it_replaces() {
+        let dir = tempfile::tempdir().expect("a scratch directory");
+        let path = named("0123456789abcdef");
+        let cache = dir.path().join(".cache/nerpa");
+        std::fs::create_dir_all(&cache).expect("made");
+        std::fs::write(cache.join("nerpa-executor-aaaaaaaaaaaaaaaa"), [1_u8; 64])
+            .expect("an old executor");
+        std::fs::write(
+            cache.join("nerpa-executor-bbbbbbbbbbbbbbbb.part.7"),
+            [2_u8; 64],
+        )
+        .expect("an old partial");
+
+        let whole = vec![7_u8; 8192];
+        assert!(
+            far_side(dir.path(), &copy(&path, whole.len()), &whole),
+            "the copy is put in place"
+        );
+
+        let left: Vec<String> = std::fs::read_dir(&cache)
+            .expect("the directory")
+            .filter_map(|entry| Some(entry.ok()?.file_name().to_string_lossy().into_owned()))
+            .collect();
+        assert_eq!(left, vec!["nerpa-executor-0123456789abcdef".to_owned()]);
+        assert!(dir.path().join(&path).exists(), "the new one stays");
     }
 
     /// And a short copy already under the name, left by a delivery before this,
