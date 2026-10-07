@@ -1066,3 +1066,7 @@ work = "w-invariants-second-read"
 at = "2026-10-07T06:41:49Z"
 commit = "3d807d77f47148cabfd0537546aca4186c3760e4"
 tree = "f00e9889a51168f5181aef3fb8883e93cc89d889"
+[[events]]
+event = "closed"
+slice = "s-invariants-second-read"
+at = "2026-10-07T06:41:54Z"
