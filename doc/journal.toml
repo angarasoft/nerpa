@@ -1041,3 +1041,7 @@ work = "w-wasm-applies"
 at = "2026-10-07T04:57:41Z"
 commit = "098d7485129eb467af635c8cb93ecca715bc1cc4"
 tree = "629b6f4e4a92758dedd99df7de1c756002ac4447"
+[[events]]
+event = "closed"
+slice = "s-stage-6-others"
+at = "2026-10-07T05:26:29Z"
