@@ -1141,3 +1141,7 @@ work = "w-plan-summarises-content"
 at = "2026-10-07T07:25:26Z"
 commit = "dc7ed70b72ce5dfa33eef5e362362f1eafefa65e"
 tree = "33f3f2a1314f84f8451a51f8fa941e6bc463f693"
+[[events]]
+event = "closed"
+slice = "s-plan-summarises-content"
+at = "2026-10-07T07:25:26Z"
