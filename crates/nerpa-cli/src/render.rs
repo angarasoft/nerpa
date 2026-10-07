@@ -433,7 +433,8 @@ fn one(change: &Change) -> String {
         };
         // A file's contents on one escaped line defeat the reason they are
         // rendered before anything happens. Anything with a newline in it goes
-        // underneath, as itself.
+        // underneath, as itself — and a change goes as a diff, so the eye lands
+        // on what moved rather than the file twice.
         let blocks = underneath(block_of(delta.before()), after_block(delta));
 
         if blocks.is_empty() {
@@ -446,10 +447,19 @@ fn one(change: &Change) -> String {
         }
 
         let _ = writeln!(out, "               ~ {}{cause}", delta.name());
-        for (label, text) in blocks {
-            let _ = writeln!(out, "                 {label}:");
-            out.push_str(&lines_of(text));
-        }
+        // Both sides: a diff, so the eye lands on what moved rather than the
+        // file printed twice. One side: the block itself.
+        let rendered = if let (Some(was), Some(becomes)) = (blocks.first(), blocks.get(1)) {
+            diff_of(was.1, becomes.1)
+        } else {
+            let mut side = String::new();
+            for (label, text) in blocks {
+                let _ = writeln!(side, "                 {label}:");
+                side.push_str(&lines_of(text));
+            }
+            side
+        };
+        out.push_str(&rendered);
     }
     out
 }
@@ -517,6 +527,103 @@ fn lines_of(text: &str) -> String {
     // the file was cut off, because the end is exactly what was cut.
     if !text.ends_with('\n') {
         let _ = writeln!(out, "                   ↳ no newline at the end");
+    }
+    out
+}
+
+/// How many unchanged lines frame a change in a diff, so the reader knows where
+/// it is.
+const DIFF_CONTEXT: usize = 3;
+
+/// A line diff of the two sides of a change, in place of both files printed
+/// whole. The common prefix and suffix are trimmed — the unchanged lines nobody
+/// needs to see twice — and the changed middle is marked `-` and `+`, framed by
+/// a little context. The one difference a line diff cannot show, the final
+/// newline, is said outright rather than left to two blocks that look alike.
+fn diff_of(was: &str, becomes: &str) -> String {
+    // No change to show. The planner never produces a delta for identical
+    // sides, so this is the defensive answer rather than a rendered case.
+    if was == becomes {
+        return String::new();
+    }
+
+    let old: Vec<&str> = was.lines().collect();
+    let new: Vec<&str> = becomes.lines().collect();
+
+    let start = old
+        .iter()
+        .zip(new.iter())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let suffix = old
+        .iter()
+        .skip(start)
+        .rev()
+        .zip(new.iter().skip(start).rev())
+        .take_while(|(a, b)| a == b)
+        .count();
+    let old_end = old.len() - suffix;
+    let new_end = new.len() - suffix;
+
+    // The lines are the same and only the final newline differs: the diff is
+    // empty, so the difference has to be said rather than left invisible.
+    if old_end == start && new_end == start {
+        let mut out = String::new();
+        if !was.ends_with('\n') {
+            let _ = writeln!(out, "                   ↳ was without its final newline");
+        }
+        if !becomes.ends_with('\n') {
+            let _ = writeln!(
+                out,
+                "                   ↳ becomes without its final newline"
+            );
+        }
+        return out;
+    }
+
+    let removed: Vec<&str> = old
+        .iter()
+        .skip(start)
+        .take(old_end - start)
+        .copied()
+        .collect();
+    let added: Vec<&str> = new
+        .iter()
+        .skip(start)
+        .take(new_end - start)
+        .copied()
+        .collect();
+
+    let mut out = String::new();
+    let before: Vec<&str> = old
+        .iter()
+        .take(start)
+        .rev()
+        .take(DIFF_CONTEXT)
+        .copied()
+        .collect();
+    for line in before.iter().rev() {
+        let _ = writeln!(out, "                   │   {line}");
+    }
+    // Bounded as a whole block is: a diff of a megabyte of certificate is as
+    // unreadable as the file twice.
+    let shown_removed = removed.len().min(SHOWN_LINES / 2);
+    let shown_added = added.len().min(SHOWN_LINES - shown_removed);
+    let hidden = (removed.len() - shown_removed) + (added.len() - shown_added);
+    for line in removed.iter().take(shown_removed) {
+        let _ = writeln!(out, "                   │ - {line}");
+    }
+    for line in added.iter().take(shown_added) {
+        let _ = writeln!(out, "                   │ + {line}");
+    }
+    if hidden > 0 {
+        let _ = writeln!(
+            out,
+            "                   │ … and {hidden} more changed lines"
+        );
+    }
+    for line in new.iter().skip(new_end).take(DIFF_CONTEXT) {
+        let _ = writeln!(out, "                   │   {line}");
     }
     out
 }
@@ -680,6 +787,42 @@ mod tests {
             cut.contains("more lines") && cut.contains("no newline at the end"),
             "the end is what was cut, so it is said regardless: {cut}"
         );
+    }
+    #[test]
+    fn a_one_line_change_prints_a_diff_not_the_file_twice() {
+        let was = (0..100)
+            .map(|at| format!("line {at}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let becomes = was.replacen("line 50", "line fifty", 1);
+        let diff = super::diff_of(&was, &becomes);
+
+        assert!(diff.contains("- line 50"), "{diff}");
+        assert!(diff.contains("+ line fifty"), "{diff}");
+        assert!(
+            !diff.contains("│ line 49") && !diff.contains("│ line 51"),
+            "the unchanged neighbours are not printed as themselves, only as context: {diff}"
+        );
+        assert!(
+            diff.lines().count() <= super::DIFF_CONTEXT * 2 + 2,
+            "a one-line change is a few lines, not two hundred: {diff}"
+        );
+    }
+    #[test]
+    fn a_diff_of_identical_lines_that_lost_a_newline_says_so() {
+        let diff = super::diff_of("rtcsync\nmakestep 1.0 7", "rtcsync\nmakestep 1.0 7\n");
+        assert!(
+            diff.contains("was without its final newline"),
+            "the only difference is said rather than left to two alike blocks: {diff}"
+        );
+
+        let same = super::diff_of("rtcsync\nmakestep 1.0 7\n", "rtcsync\nmakestep 1.0 7\n");
+        assert!(same.is_empty(), "identical files diff to nothing: {same}");
+    }
+    #[test]
+    fn a_creation_prints_the_whole_block_not_a_diff() {
+        let blocks = super::underneath(None, Some("one\ntwo\nthree\n"));
+        assert_eq!(blocks.len(), 1, "one side is a block, not a diff");
     }
     #[test]
     fn a_secret_is_shown_as_where_it_comes_from() {
