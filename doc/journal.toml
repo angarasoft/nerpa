@@ -1191,3 +1191,7 @@ work = "w-watchlist-settled"
 at = "2026-10-07T08:56:28Z"
 commit = "33a3c3db8a61e21e31ebdbf32f9e0342b3cc5961"
 tree = "d5b8dba420b3ecd8848d94a82c4da085176068c2"
+[[events]]
+event = "closed"
+slice = "s-watchlist-settled"
+at = "2026-10-07T08:56:28Z"
