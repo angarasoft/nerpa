@@ -36,6 +36,12 @@ impl Facts<'_> {
         self.said.get(name).map(String::as_str)
     }
 
+    /// Everything the machine said, for a provider that reads them all.
+    #[must_use]
+    pub fn all(&self) -> &BTreeMap<String, String> {
+        self.said
+    }
+
     /// Whether nothing is known about the machine at all.
     #[must_use]
     pub fn is_empty(&self) -> bool {

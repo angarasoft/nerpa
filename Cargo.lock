@@ -1917,7 +1917,10 @@ dependencies = [
 name = "nerpa-provider-wasm"
 version = "0.4.0"
 dependencies = [
+ "ciborium",
  "nerpa-core",
+ "nerpa-proto",
+ "scoped-tls",
  "serde",
  "thiserror 2.0.21",
  "toml",
@@ -2595,6 +2598,12 @@ dependencies = [
  "serde_json",
  "syn 1.0.109",
 ]
+
+[[package]]
+name = "scoped-tls"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1cf6437eb19a8f4a6cc0f7dca544973b0b78843adbfeb3683d1a94a0024a294"
 
 [[package]]
 name = "scopeguard"
