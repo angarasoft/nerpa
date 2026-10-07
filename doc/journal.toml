@@ -1166,3 +1166,7 @@ work = "w-planner-decomposed"
 at = "2026-10-07T08:17:56Z"
 commit = "2e1a20db41334849f798ae2a35fd8d378da2fbb6"
 tree = "053ee5ea0f60a1cc8ddc9543b7513e4b619b8cde"
+[[events]]
+event = "closed"
+slice = "s-planner-decomposed"
+at = "2026-10-07T08:18:01Z"
