@@ -1091,3 +1091,7 @@ work = "w-plan-diff"
 at = "2026-10-07T07:00:00Z"
 commit = "98a15897d09d85fd02830133600a324a8812c538"
 tree = "4421faed4ab2a1cf5beb82c6b531e3b63c212925"
+[[events]]
+event = "closed"
+slice = "s-plan-prints-a-diff"
+at = "2026-10-07T07:00:05Z"
