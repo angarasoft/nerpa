@@ -10,6 +10,18 @@ use nerpa_core::address::address;
 use nerpa_core::provider::{Provider as ProviderTrait, Providers};
 use nerpa_provider_wasm::{Manifest, Wasm};
 
+/// The WIT interface parses: a malformed `.wit` is a compile-time error of the
+/// host bindings, so this pins the file itself.
+#[test]
+fn the_wit_interface_parses() {
+    let text = fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/wit/nerpa-provider.wit"
+    ))
+    .expect("the wit file");
+    wit_parser::UnresolvedPackageGroup::parse("nerpa-provider.wit", &text).expect("a parse");
+}
+
 /// A directory that removes itself, so a failing test cannot leave litter behind.
 struct Scratch(PathBuf);
 

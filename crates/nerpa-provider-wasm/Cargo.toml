@@ -23,6 +23,7 @@ wasmtime = { workspace = true }
 [dev-dependencies]
 wat = "1"
 wit-component = "0.261"
+wit-parser = "0.261"
 
 [lints]
 workspace = true

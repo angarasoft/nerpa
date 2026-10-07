@@ -1,0 +1,265 @@
+/// The interface a third-party provider implements, and what it asks of the
+/// engine in return. The types mirror the in-tree provider and wire types
+/// (adr-2026-0004): a WASM provider receives credentials as handles and reaches
+/// only the hosts its manifest declares.
+package nerpa:provider;
+
+world provider {
+/// A settled attribute value. Ordered, because a plan is hashed and two runs
+/// that produce the same attributes must produce the same bytes.
+///
+/// Carried as CBOR bytes rather than as a recursive WIT type: the value is a
+/// tree (lists and maps hold values), and the WIT type system forbids the
+/// cycle. Both ends encode and decode with the same `nerpa_core::Value` codec.
+type value = list<u8>;
+
+type attributes = list<tuple<string, value>>;
+
+/// The identity of one resource, as the engine writes it.
+record address {
+    provider: string,
+    kind: string,
+    name: string,
+    slot: option<string>,
+    target: option<string>,
+}
+
+/// What a machine said about itself, as name-value pairs.
+type facts = list<tuple<string, string>>;
+
+/// One resource to look at, and what is known about where to find it.
+record reading {
+    address: address,
+    locator: attributes,
+}
+
+/// Something that was true when the plan was made and has to still be true.
+record premise {
+    observation: observation,
+    digest: list<u8>,
+}
+
+/// What reading a batch came back with.
+record read-result {
+    attributes: list<tuple<address, attributes>>,
+    premise: list<tuple<address, list<premise>>>,
+}
+
+/// The kinds of change that send something to a machine.
+variant sending {
+    create,
+    update,
+    replace,
+    delete,
+    react,
+}
+
+/// What the next run does with a change a run marked and never recorded.
+enum afterwards {
+    read,
+    send-again,
+}
+
+/// What a provider is asked to make happen.
+record prepared {
+    address: address,
+    kind: sending,
+    roused: bool,
+    resent: bool,
+    /// Settled values, secrets included; empty for a removal.
+    desired: attributes,
+    /// Which of those names are secrets — the names, never the values.
+    secret: list<string>,
+    /// What state recorded, for a replacement and a removal.
+    recorded: option<attributes>,
+    facts: facts,
+}
+
+/// The operations one change is made of.
+record planned {
+    operations: list<operation>,
+    /// For a replacement, how many of the operations remove what was there.
+    forget-after: option<u32>,
+    /// For each operation that writes, the attributes its answer confirms.
+    carries: list<tuple<u32, list<string>>>,
+}
+
+/// What a provider is told when its change is over.
+record concluding {
+    address: address,
+    kind: sending,
+    roused: bool,
+    facts: facts,
+    /// Settled values that are not secrets.
+    plain: attributes,
+    secret: list<string>,
+}
+
+/// One operation's answer, as the engine hands it to a provider.
+variant answered {
+    saw(seen),
+    written,
+}
+
+/// What a change turned out to be.
+variant concluded {
+    became(attributes),
+    gone,
+}
+
+/// What a program is asked to say.
+record output {
+    program: string,
+    arguments: list<string>,
+}
+
+/// What a sealed observation looks at: everything but another seal, because one
+/// seal inside another is refused.
+variant sealed-of {
+    path(string),
+    contents(string),
+    output(output),
+}
+
+/// Something the engine wants looked at.
+variant observation {
+    /// What is at this path.
+    path(string),
+    /// What this path holds, following a link to get there.
+    contents(string),
+    /// What this program says when it is run.
+    output(output),
+    /// What another observation found, sealed for this machine.
+    sealed(sealed-of),
+}
+
+/// What a program said when it was run.
+record said {
+    status: s32,
+    out: list<u8>,
+    complaint: list<u8>,
+}
+
+/// What a private process did, without what it said.
+record private {
+    status: s32,
+    sealed: list<u8>,
+}
+
+/// What one observation found.
+variant seen {
+    nothing,
+    entry(entry),
+    said(said),
+    sealed(list<u8>),
+    private(private),
+    digest(list<u8>),
+}
+
+/// A file, as reading found it.
+record file-entry {
+    content: list<u8>,
+    mode: u32,
+}
+
+/// What is at a path.
+variant entry {
+    directory(u32),
+    file(file-entry),
+    symlink(string),
+}
+
+/// A directory, with these permissions.
+record directory-operation {
+    path: string,
+    mode: u32,
+}
+
+/// A file, with these contents and permissions.
+record file-operation {
+    path: string,
+    content: list<u8>,
+    mode: u32,
+    secret: bool,
+}
+
+/// Run a program, and take what it does as the change.
+record process-operation {
+    program: string,
+    arguments: list<string>,
+    stdin: list<u8>,
+    private: bool,
+    expect: list<s32>,
+}
+
+/// One thing to make true on a machine.
+variant operation {
+    directory(directory-operation),
+    file(file-operation),
+    process(process-operation),
+    remove(string),
+}
+
+/// Where a batch stopped.
+variant at {
+    before,
+    premise(u32),
+    operation(u32),
+    observation(u32),
+}
+
+/// What to look at, in one journey.
+record look {
+    observations: list<observation>,
+    seal: option<list<u8>>,
+}
+
+/// What to make true, in order.
+record perform {
+    plan: option<list<u8>>,
+    premise: list<premise>,
+    operations: list<operation>,
+    seal: option<list<u8>>,
+}
+
+/// What the provider asks the machine, through the engine.
+variant ask {
+    look(look),
+    perform(perform),
+    fingerprint,
+    build,
+}
+
+/// It could not be done, and this is as far as it got.
+record failed {
+    at: at,
+    problem: string,
+}
+
+/// What the machine answered.
+variant answer {
+    found(list<seen>),
+    done(list<seen>),
+    moved(u32),
+    fingerprint(string),
+    build(string),
+    failed(failed),
+}
+
+    /// Reads what a batch of resources look like now.
+    export read: func(batch: list<reading>, facts: facts) -> result<read-result, string>;
+
+    /// The operations that make one change, and what their answers confirm.
+    export prepare: func(change: prepared) -> result<planned, string>;
+
+    /// What the change became, from the answers to its own operations.
+    export conclude: func(change: concluding, became: list<answered>) -> result<concluded, string>;
+
+    /// What the next run does with a change a run marked and never recorded.
+    export afterwards: func(address: address, kind: sending) -> afterwards;
+
+    /// Reach a machine. The engine restricts this to the hosts the manifest
+    /// declares and attaches credentials itself, so the provider never holds
+    /// either.
+    import reach: func(question: ask) -> result<answer, string>;
+}
