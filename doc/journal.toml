@@ -1116,3 +1116,7 @@ work = "w-executor-sweep"
 at = "2026-10-07T07:06:47Z"
 commit = "7ae6e5a8977b02039c79600daa2ff9bf049712ef"
 tree = "ffeb1d9047e3541d46b95133816c91e121b755f4"
+[[events]]
+event = "closed"
+slice = "s-executor-swept"
+at = "2026-10-07T07:06:47Z"
