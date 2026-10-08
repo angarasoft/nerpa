@@ -72,4 +72,5 @@ the sort of thing that gets discovered as untrue.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

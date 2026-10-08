@@ -64,4 +64,5 @@ dacc_knowledge::adr!(
     breaking: Breaking::No,
     code_refs: &[crate::anchor::plan_approval],
     related_rfcs: &[],
+    introduces_norm: false,
 );

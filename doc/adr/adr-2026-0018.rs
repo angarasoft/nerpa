@@ -74,4 +74,5 @@ watching it pass when it should have failed.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

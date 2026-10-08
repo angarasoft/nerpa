@@ -35,4 +35,5 @@ dacc_knowledge::rfc!(
     authors: nonempty_str!["Anishchuk Sergei"],
     decided_at: dacc_core::date!(2026, 9, 28),
     decided_by: &[crate::adr::adr_2026_050],
+    introduces_norm: false,
 );

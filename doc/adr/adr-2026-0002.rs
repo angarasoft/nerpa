@@ -39,4 +39,5 @@ outside the author's machine.
     breaking: Breaking::No,
     code_refs: &[crate::anchor::address],
     related_rfcs: &[],
+    introduces_norm: false,
 );

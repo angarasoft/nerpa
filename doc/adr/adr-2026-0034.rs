@@ -94,4 +94,5 @@ many large files, and paid on every apply whether anything moved or not.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

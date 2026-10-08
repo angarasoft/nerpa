@@ -35,4 +35,5 @@ execution one. See `0006`.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

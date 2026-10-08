@@ -35,4 +35,5 @@ dacc_knowledge::rfc!(
         crate::adr::adr_2026_0012,
         crate::adr::adr_2026_0019,
     ],
+    introduces_norm: false,
 );

@@ -41,4 +41,5 @@ graph, and that is what gets reviewed, hashed and signed — not the source.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

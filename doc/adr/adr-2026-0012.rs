@@ -45,4 +45,5 @@ compatibility surface that has to be versioned like any other.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

@@ -42,4 +42,5 @@ inside its schemas does.
     breaking: Breaking::No,
     code_refs: &[crate::anchor::provider_trait],
     related_rfcs: &[],
+    introduces_norm: true,
 );

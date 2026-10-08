@@ -45,4 +45,5 @@ next run, and two ways for a run to end with nothing written down.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

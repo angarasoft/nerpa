@@ -51,4 +51,5 @@ correct, but it will feel obstructive until people see why.
     breaking: Breaking::No,
     code_refs: &[crate::anchor::state_format],
     related_rfcs: &[],
+    introduces_norm: true,
 );

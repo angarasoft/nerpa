@@ -50,4 +50,5 @@ protocol is now a compatibility surface that has to be versioned.
     breaking: Breaking::No,
     code_refs: &[crate::anchor::wire_protocol],
     related_rfcs: &[crate::rfc::rfc_2026_003],
+    introduces_norm: false,
 );

@@ -92,4 +92,5 @@ not a run whose state can be inferred — it has to be re-read.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

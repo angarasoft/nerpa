@@ -46,4 +46,5 @@ in the changelog whether or not the public API moved.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

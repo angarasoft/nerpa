@@ -75,4 +75,5 @@ mechanism helps exactly where the possibilities are enumerable and nowhere else.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

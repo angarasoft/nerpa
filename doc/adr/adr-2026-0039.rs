@@ -107,4 +107,5 @@ only refuses to pretend that delivering into a writable directory solved it.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

@@ -68,4 +68,5 @@ know about, and a plan that adopts has a number it did not have before.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

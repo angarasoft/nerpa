@@ -44,4 +44,5 @@ that cannot be added afterwards, which is why it is here from the first patch.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

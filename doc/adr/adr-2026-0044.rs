@@ -45,4 +45,5 @@ it works.
     breaking: Breaking::No,
     code_refs: &[crate::anchor::operation],
     related_rfcs: &[],
+    introduces_norm: false,
 );

@@ -81,4 +81,5 @@ a name used to travel on its own.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

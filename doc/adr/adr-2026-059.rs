@@ -34,4 +34,5 @@ dacc_knowledge::adr!(
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[crate::rfc::rfc_2026_002],
+    introduces_norm: true,
 );

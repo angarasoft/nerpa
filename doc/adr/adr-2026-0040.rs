@@ -114,4 +114,5 @@ builds a nerpa accepts rather than which one it carries — a list, not a name.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[crate::rfc::rfc_2026_003],
+    introduces_norm: false,
 );

@@ -49,4 +49,5 @@ become schema the provider author has to get right.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

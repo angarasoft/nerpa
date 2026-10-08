@@ -77,4 +77,5 @@ pretending otherwise here would be the beginning of a second tool.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

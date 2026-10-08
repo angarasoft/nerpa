@@ -62,4 +62,5 @@ when its inventory came from a read and when that read happened.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

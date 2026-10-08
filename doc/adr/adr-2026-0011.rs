@@ -43,4 +43,5 @@ therefore prints the age of the data it used, which is not optional.
     breaking: Breaking::No,
     code_refs: &[],
     related_rfcs: &[],
+    introduces_norm: false,
 );

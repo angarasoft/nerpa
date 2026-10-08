@@ -52,13 +52,13 @@ nerpa-import = { path = "crates/nerpa-import", version = "=0.4.0" }
 # dacc: the methodology the registry runs on, and the pilot that tests it as
 # the first project outside dacc itself. Published on crates.io, so the tree
 # names a version rather than a revision.
-dacc-core = "0.5.2"
-dacc-knowledge = "0.5.2"
-dacc-work = "0.5.2"
-dacc-scan = "0.5.2"
-dacc-derive = "0.5.2"
+dacc-core = "0.6.0"
+dacc-knowledge = "0.6.0"
+dacc-work = "0.6.0"
+dacc-scan = "0.6.0"
+dacc-derive = "0.6.0"
 # The journal fold, read by the guarantee test that walks the events.
-dacc-journal = "0.5.2"
+dacc-journal = "0.6.0"
 # Dates for decision records. Arrives with dacc; named here so the tree sees
 # one version of it rather than two.
 chrono = { version = "0.4.32", default-features = false, features = ["std"] }
