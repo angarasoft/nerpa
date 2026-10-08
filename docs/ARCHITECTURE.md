@@ -320,7 +320,7 @@ daemon to keep alive, no key to rotate on two hundred machines. The cost is that
 this machine has to know `emerge` from `apt`, that parsing output has no local
 give, and that a value which only exists after an operation costs a round trip.
 
-## What the wire may be asked — `0033` · partly built
+## What the wire may be asked — `0033` · built
 
 The operation set is small enough to freeze because it is general, and general
 means it includes running a program: installing a package *is* running `emerge`.
@@ -334,7 +334,9 @@ plan that cannot say what a script will change. The distinction is not whether a
 process runs — Ansible's `package` module runs `apt-get` — but who wrote the
 command and whether the plan describes its effect.
 
-The wire carries it and the executor runs it; no provider emits one yet.
+The wire carries it and the executor runs it, and the providers emit it where a
+task *is* a program — installing a package is running `emerge`, and starting a
+service is running `systemctl`.
 
 Protocol 5 tightened what may come back. A file write is answered with a digest
 of what the path holds afterwards rather than with its contents, sealed for the
@@ -532,7 +534,7 @@ A WASM provider receives credentials as a handle rather than a value and can
 reach only the hosts its manifest declares. Provider schemas are harvested from
 Terraform as data at build time; the binaries they came from are never shipped.
 
-## Zero trust — `0009` · partly built
+## Zero trust — `0009` · built
 
 A run carries an actor identity; static keys are not a mode. Built: `--as`
 carries who acts — with the scope and expiry a grant will check — into the
@@ -551,9 +553,10 @@ carries the plan it approves. The mechanism is `0067`: an OpenSSH signature,
 made and verified with `ssh-keygen`, and nerpa reads no private key. The
 replay `0009` feared is refused from two directions: a change the plan covers
 moves the number, and one only the premise saw is refused where the work
-happens, naming what moved (`INV-PREMISE-001`). Not built: a grant limiting a
-run to named kinds, targets and operations with an expiry, checked by the
-engine. State holds references and digests, never secret values.
+happens, naming what moved (`INV-PREMISE-001`). Built: a grant limits a run to named
+kinds, targets and operations, and the engine refuses before sending anything
+the grant does not allow — the actor carries the scope and expiry the grant
+checks. State holds references and digests, never secret values.
 
 ## Secrets — `0027` · partly built
 
