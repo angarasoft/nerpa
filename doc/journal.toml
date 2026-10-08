@@ -1195,3 +1195,7 @@ tree = "d5b8dba420b3ecd8848d94a82c4da085176068c2"
 event = "closed"
 slice = "s-watchlist-settled"
 at = "2026-10-07T08:56:28Z"
+[[events]]
+event = "started"
+work = "w-fleet-scale-observed"
+at = "2026-10-08T08:48:20Z"
