@@ -19,7 +19,7 @@ members = [
 [workspace.package]
 version = "0.4.0"
 edition = "2024"
-rust-version = "1.98.1"
+rust-version = "1.99"
 license = "Apache-2.0"
 authors = ["Anishchuk Sergei <anishukserg@gmail.com>"]
 # The public home, under the project's own organisation rather than a personal
@@ -187,6 +187,12 @@ cast_lossless = "deny"
 # something worse, and `must_use_candidate` wants an attribute on every getter.
 module_name_repetitions = "allow"
 must_use_candidate = "allow"
+
+# `assert!(x.is_empty())` says what it means; the suggested `assert_eq!(x,
+# [] as [String; 0])` pins a type into a test for a failure message the line
+# number already points at. The clearer spelling wins, as it does for
+# `unwrap_or_default` above.
+assert_is_empty = "allow"
 
 # Clippy suggests `unwrap_or_default()` wherever a fallback happens to be a
 # default, and rule 7's third sentence calls that shape worse than either bare
