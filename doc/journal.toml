@@ -1216,3 +1216,7 @@ work = "w-fleet-scale-observed"
 at = "2026-10-08T08:51:23Z"
 commit = "5133bb44fd8b59e259ee7c8e03956b33b84ca198"
 tree = "f86adf42ecd90aca0764aed320556fa1d44cd8dd"
+[[events]]
+event = "closed"
+slice = "s-fleet-scale"
+at = "2026-10-08T08:51:23Z"
