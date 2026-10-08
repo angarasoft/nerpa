@@ -1241,3 +1241,7 @@ work = "w-readme-reflects-registry"
 at = "2026-10-08T13:43:17Z"
 commit = "9cf7555094cf3ef3e5f3046fe67bcfa6613e79ff"
 tree = "ca76132d5ba44469e894682baffd5385e463b5cf"
+[[events]]
+event = "closed"
+slice = "s-readme-reflects-registry"
+at = "2026-10-08T13:43:17Z"
