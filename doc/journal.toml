@@ -1220,3 +1220,7 @@ tree = "f86adf42ecd90aca0764aed320556fa1d44cd8dd"
 event = "closed"
 slice = "s-fleet-scale"
 at = "2026-10-08T08:51:23Z"
+[[events]]
+event = "started"
+work = "w-readme-reflects-registry"
+at = "2026-10-08T13:40:18Z"
