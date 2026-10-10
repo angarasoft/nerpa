@@ -75,6 +75,7 @@ to say which.
     authors: nonempty_str!["Anishchuk Sergei"],
     decided_at: dacc_core::date!(2026, 9, 6),
     breaking: Breaking::No,
+    introduces_norm: false,
     code_refs: &[],
     related_rfcs: &[],
 );

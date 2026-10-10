@@ -80,6 +80,7 @@ dacc_knowledge::adr!(
     authors: nonempty_str!["Anishchuk Sergei"],
     decided_at: dacc_core::date!(2026, 10, 3),
     breaking: Breaking::No,
+    introduces_norm: false,
     code_refs: &[],
     related_rfcs: &[crate::rfc::rfc_2026_001],
 );

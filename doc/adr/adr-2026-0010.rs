@@ -48,6 +48,7 @@ protocol is now a compatibility surface that has to be versioned.
     authors: nonempty_str!["Anishchuk Sergei"],
     decided_at: dacc_core::date!(2026, 9, 4),
     breaking: Breaking::No,
+    introduces_norm: false,
     code_refs: &[crate::anchor::wire_protocol],
     related_rfcs: &[crate::rfc::rfc_2026_003],
 );

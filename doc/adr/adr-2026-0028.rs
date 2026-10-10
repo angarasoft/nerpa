@@ -61,6 +61,7 @@ files it has no business knowing about.
     authors: nonempty_str!["Anishchuk Sergei"],
     decided_at: dacc_core::date!(2026, 9, 5),
     breaking: Breaking::No,
+    introduces_norm: false,
     code_refs: &[],
     related_rfcs: &[],
 );

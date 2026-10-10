@@ -934,6 +934,13 @@ without ceremony until the first stage is complete.
 
 ### Changed
 
+- The registry rides on dacc 0.6.0: the six dacc crates, and the CLI the gate
+  installs at the one version line `Cargo.toml` carries, move off 0.5.2. Every
+  decision and specification now carries its `introduces_norm` marker (none
+  declared yet — the classification into norms is a separate work item), and an
+  executor admission profile exists so a landing names the executor who has the
+  right.
+
 - The registry rides on dacc 0.5.2: the six dacc crates, and the CLI the gate
   installs at the one version line `Cargo.toml` carries, move off 0.5.0.
 

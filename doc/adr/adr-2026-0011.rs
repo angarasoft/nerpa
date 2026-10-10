@@ -41,6 +41,7 @@ therefore prints the age of the data it used, which is not optional.
     authors: nonempty_str!["Anishchuk Sergei"],
     decided_at: dacc_core::date!(2026, 9, 4),
     breaking: Breaking::No,
+    introduces_norm: false,
     code_refs: &[],
     related_rfcs: &[],
 );

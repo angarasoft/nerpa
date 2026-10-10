@@ -42,6 +42,7 @@ step 1's accepted cost.
     authors: nonempty_str!["Anishchuk Sergei"],
     decided_at: dacc_core::date!(2026, 9, 17),
     breaking: Breaking::No,
+    introduces_norm: false,
     code_refs: &[],
     related_rfcs: &[],
 );

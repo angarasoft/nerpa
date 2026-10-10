@@ -105,6 +105,7 @@ only refuses to pretend that delivering into a writable directory solved it.
     authors: nonempty_str!["Anishchuk Sergei"],
     decided_at: dacc_core::date!(2026, 9, 10),
     breaking: Breaking::No,
+    introduces_norm: false,
     code_refs: &[],
     related_rfcs: &[],
 );
