@@ -18,8 +18,8 @@ this file is fresh. Do not edit it by hand — the generator is the source.
 
 - Every change has a basis in the plan: a work item with an origin.
 - `cargo dacc work next [--format json]` admits the next task under the
-  journal lock and writes its `started` event; the `wip_limit` setting
-  refuses overflow with the `wip-limit` code.
+  journal lock and writes its `started` event; the `verification_capacity`
+  setting refuses overflow with the `wip-limit` code.
 - Commits go through `cargo dacc commit -F <message-file> -- <paths>`: the
   subject is `[TYPE](scope): summary`, and the trailer is
   `Dacc-Work: w-slug`.
