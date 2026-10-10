@@ -458,3 +458,7 @@ work = "w-attest-wave-history"
 at = "2026-10-10T05:27:10Z"
 commit = "ff19e4b6b1ad292743a710c91735615f9623a629"
 tree = "ec31344b2ce83f7a9a6422fe228b0636d7411f53"
+[[events]]
+event = "closed"
+slice = "s-attest-wave-history"
+at = "2026-10-10T11:13:50Z"
