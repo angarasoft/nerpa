@@ -1177,6 +1177,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nerpa-provider-yandex"
+version = "0.0.1"
+dependencies = [
+ "dacc-derive",
+ "nerpa-core",
+]
+
+[[package]]
 name = "nerpa-transport"
 version = "0.0.1"
 dependencies = [
