@@ -8,6 +8,12 @@ all-features = true
 [advisories]
 unmaintained = "workspace"
 yanked = "deny"
+ignore = [
+    # rsa's PKCS#1 v1.5 is not constant-time (Marvin Attack), but the provider
+    # signs a JWT locally, once per token exchange, never on a network-observable
+    # path — the timing observation the advisory describes cannot happen there.
+    { id = "RUSTSEC-2023-0071", reason = "the provider signs a JWT locally, not on a network-observable path" },
+]
 
 [licenses]
 version = 2
@@ -26,6 +32,9 @@ allow = [
   # its REPL. Not feature-gated upstream, so the only alternatives were allowing
   # it or not using Starlark.
   "BSL-1.0",
+  # Root certificates are data, not code; webpki-roots carries them under the
+  # Community Data License Agreement, which exists for exactly that.
+  "CDLA-Permissive-2.0",
 ]
 
 [bans]
