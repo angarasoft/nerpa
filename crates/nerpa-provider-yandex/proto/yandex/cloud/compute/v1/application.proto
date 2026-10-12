@@ -1,0 +1,71 @@
+syntax = "proto3";
+
+package yandex.cloud.compute.v1;
+
+option go_package = "github.com/yandex-cloud/go-genproto/yandex/cloud/compute/v1;compute";
+option java_package = "yandex.cloud.api.compute.v1";
+
+message Secret {
+  // ID of the secret.
+  // The length must be less than or equal to 50.
+  // This field is required.
+  string id = 1;
+
+  // Name of the key.
+  // The length must be less than or equal to 256.
+  // This field is required.
+  string key = 2;
+
+  // Version of the secret.
+  // The length must be less than or equal to 50.
+  string version_id = 3;
+}
+
+message ContainerSolutionSpec {
+  // ID of the product.
+  // The length must be less than or equal to 50.
+  // This field is required.
+  string product_id = 1;
+
+  // A list of the secrets.
+  // The length of each map key must be less than or equal to 100.
+  // The number of elements must be less than or equal to 100.
+  map<string, Secret> secrets = 2;
+
+  // A list of the environmets.
+  // The length of each map key must be less than or equal to 100.
+  // The length of each map value must be less than or equal to 10000.
+  // The number of elements must be less than or equal to 100.
+  map<string, string> environment = 3;
+}
+
+message BackupSpec {
+  // If true, backup is enabled.
+  bool enabled = 1;
+
+  // A list of policy IDs to apply after resource registration.
+  // The length of each element must be between 1 and 50.
+  // The number of elements must be less than or equal to 50.
+  repeated string initial_policy_ids = 2;
+
+  // If true, recovery from backup starts on instance.
+  bool recovery_from_backup = 3;
+
+  // ID of the backup to recover from.
+  // The length must be less than or equal to 100.
+  string backup_id = 4;
+
+  // ID of the instance registration for cloud backup agent installation.
+  // The length must be less than or equal to 100.
+  string instance_registration_id = 5;
+}
+
+message Application {
+  oneof container {
+    // Container specification.
+    ContainerSolutionSpec container_solution = 1;
+  }
+
+  // Backup settings.
+  BackupSpec cloudbackup = 2;
+}

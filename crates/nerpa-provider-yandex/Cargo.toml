@@ -16,12 +16,18 @@ categories.workspace = true
 base64 = { workspace = true }
 dacc-derive = { workspace = true }
 nerpa-core = { workspace = true }
+prost = "0.14"
+prost-types = "0.14"
 rsa = "0.9"
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { version = "0.10", features = ["oid"] }
 thiserror = { workspace = true }
+tonic = "0.14"
 ureq = { version = "2", features = ["json"] }
+
+[build-dependencies]
+tonic-prost-build = "0.14"
 
 [lints]
 workspace = true
