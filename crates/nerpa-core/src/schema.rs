@@ -331,10 +331,18 @@ mod tests {
 
     #[test]
     fn monotonic_and_stop_to_change_are_asked_by_name() {
-        let provider = Provider::new("yandex").unwrap();
+        let provider = Provider::new("yandex").expect("a valid provider name");
         let schema = Schema::new()
-            .monotonic(provider.clone(), Kind::new("disk").unwrap(), "size")
-            .stop_to_change(provider, Kind::new("instance").unwrap(), "cores");
+            .monotonic(
+                provider.clone(),
+                Kind::new("disk").expect("a valid kind"),
+                "size",
+            )
+            .stop_to_change(
+                provider,
+                Kind::new("instance").expect("a valid kind"),
+                "cores",
+            );
 
         let disk = address("yandex:disk.data");
         let instance = address("yandex:instance.db");
@@ -347,9 +355,17 @@ mod tests {
 
     #[test]
     fn merge_carries_the_two_new_kinds() {
-        let provider = Provider::new("yandex").unwrap();
-        let one = Schema::new().monotonic(provider.clone(), Kind::new("disk").unwrap(), "size");
-        let two = Schema::new().stop_to_change(provider, Kind::new("instance").unwrap(), "cores");
+        let provider = Provider::new("yandex").expect("a valid provider name");
+        let one = Schema::new().monotonic(
+            provider.clone(),
+            Kind::new("disk").expect("a valid kind"),
+            "size",
+        );
+        let two = Schema::new().stop_to_change(
+            provider,
+            Kind::new("instance").expect("a valid kind"),
+            "cores",
+        );
 
         let merged = one.merge(two);
 
