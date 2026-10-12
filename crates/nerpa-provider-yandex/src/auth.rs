@@ -74,6 +74,10 @@ struct JwtClaims<'a> {
 /// `now` and `ttl` are seconds since the epoch, handed in so the signature is
 /// deterministic and testable rather than read from a clock the test would have
 /// to control.
+///
+/// # Errors
+///
+/// Returns [`AuthError::Key`] when the key cannot be read or signed.
 pub fn signed_jwt(key: &ServiceAccountKey, now: u64, ttl: u64) -> Result<String, AuthError> {
     let header = URL_SAFE_NO_PAD.encode(
         serde_json::to_vec(&JwtHeader {
@@ -106,6 +110,11 @@ pub fn signed_jwt(key: &ServiceAccountKey, now: u64, ttl: u64) -> Result<String,
 }
 
 /// Exchanges a signed JWT for a short-lived IAM token.
+///
+/// # Errors
+///
+/// Returns [`AuthError::Exchange`] when the endpoint refuses the JWT or the
+/// answer is not a token.
 pub fn token_for(jwt: &str) -> Result<IamToken, AuthError> {
     let response = ureq::post(IAM_TOKEN_URL)
         .send_json(serde_json::json!({ "jwt": jwt }))
@@ -141,10 +150,13 @@ mod tests {
 
         let jwt = signed_jwt(&key, 1_700_000_000, 3_600).expect("signed");
 
-        let parts: Vec<&str> = jwt.split('.').collect();
-        assert_eq!(parts.len(), 3, "header.claims.signature");
-        let signing_input = format!("{}.{}", parts[0], parts[1]);
-        let signature = URL_SAFE_NO_PAD.decode(parts[2]).expect("base64");
+        let mut parts = jwt.split('.');
+        let header = parts.next().expect("a header");
+        let claims = parts.next().expect("claims");
+        let signature = parts.next().expect("a signature");
+        assert!(parts.next().is_none(), "exactly three parts");
+        let signing_input = format!("{header}.{claims}");
+        let signature = URL_SAFE_NO_PAD.decode(signature).expect("base64");
         let signature = Signature::try_from(signature.as_slice()).expect("a signature");
 
         let verifying = VerifyingKey::<Sha256>::new(public);

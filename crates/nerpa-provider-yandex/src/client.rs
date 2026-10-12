@@ -61,7 +61,11 @@ impl std::fmt::Debug for Client {
 
 impl Client {
     /// Connects to the endpoint and carries the token in every request.
-    pub fn connect(endpoint: &str, token: IamToken) -> Result<Self, ClientError> {
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ClientError::Connect`] when the endpoint cannot be reached.
+    pub fn connect(endpoint: &str, token: &IamToken) -> Result<Self, ClientError> {
         let runtime =
             tokio::runtime::Runtime::new().map_err(|e| ClientError::Connect(e.to_string()))?;
         let endpoint = Endpoint::from_shared(endpoint.to_owned())
