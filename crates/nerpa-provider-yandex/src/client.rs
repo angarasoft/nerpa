@@ -81,7 +81,10 @@ impl Client {
     /// This is the sync-to-async bridge: the [`Provider`](nerpa_core::provider::Provider)
     /// trait is synchronous, and tonic is not, so the provider's methods run
     /// their gRPC calls through here.
-    #[allow(dead_code, reason = "the provider's read and prepare use it; they arrive in w-yc-provider")]
+    #[allow(
+        dead_code,
+        reason = "the provider's read and prepare use it; they arrive in w-yc-provider"
+    )]
     pub(crate) fn block_on<F: Future>(&self, future: F) -> F::Output {
         self.runtime.block_on(future)
     }
@@ -95,7 +98,8 @@ impl Client {
     /// The instance service, with the token injected.
     pub fn instances(
         &self,
-    ) -> InstanceServiceClient<tonic::service::interceptor::InterceptedService<Channel, Bearer>> {
+    ) -> InstanceServiceClient<tonic::service::interceptor::InterceptedService<Channel, Bearer>>
+    {
         InstanceServiceClient::with_interceptor(self.channel.clone(), self.bearer())
     }
 
@@ -109,7 +113,8 @@ impl Client {
     /// The network service, with the token injected.
     pub fn networks(
         &self,
-    ) -> NetworkServiceClient<tonic::service::interceptor::InterceptedService<Channel, Bearer>> {
+    ) -> NetworkServiceClient<tonic::service::interceptor::InterceptedService<Channel, Bearer>>
+    {
         NetworkServiceClient::with_interceptor(self.channel.clone(), self.bearer())
     }
 

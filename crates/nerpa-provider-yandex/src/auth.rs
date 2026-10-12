@@ -5,12 +5,12 @@
 //! what it carries afterwards is the token, which expires. The signing is done
 //! here, by hand, so every byte that is signed is visible and testable.
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use rsa::RsaPrivateKey;
 use rsa::pkcs1v15::SigningKey;
 use rsa::pkcs8::DecodePrivateKey;
 use rsa::signature::{SignatureEncoding, Signer};
-use rsa::RsaPrivateKey;
 use serde::Serialize;
 use sha2::Sha256;
 
@@ -118,11 +118,11 @@ pub fn token_for(jwt: &str) -> Result<IamToken, AuthError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rsa::RsaPublicKey;
     use rsa::pkcs1v15::{Signature, VerifyingKey};
     use rsa::pkcs8::EncodePrivateKey;
     use rsa::rand_core::OsRng;
     use rsa::signature::DigestVerifier;
-    use rsa::RsaPublicKey;
     use sha2::Digest;
 
     #[test]

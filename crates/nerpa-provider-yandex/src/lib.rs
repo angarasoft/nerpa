@@ -39,7 +39,7 @@ pub mod client;
     unreachable_pub,
     unsafe_code,
     unused_lifetimes,
-    unused_qualifications,
+    unused_qualifications
 )]
 pub mod yandex {
     pub mod cloud {
@@ -90,7 +90,7 @@ pub mod yandex {
     unreachable_pub,
     unsafe_code,
     unused_lifetimes,
-    unused_qualifications,
+    unused_qualifications
 )]
 pub mod google {
     pub mod api {
