@@ -276,7 +276,10 @@ impl Schema {
             self.monotonic.entry(kind).or_default().extend(attributes);
         }
         for (kind, attributes) in other.stop_to_change {
-            self.stop_to_change.entry(kind).or_default().extend(attributes);
+            self.stop_to_change
+                .entry(kind)
+                .or_default()
+                .extend(attributes);
         }
         self
     }
@@ -324,7 +327,7 @@ pub fn mode_of_value(value: &Value) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::address::{address, Kind, Provider};
+    use crate::address::{Kind, Provider, address};
 
     #[test]
     fn monotonic_and_stop_to_change_are_asked_by_name() {
