@@ -39,7 +39,11 @@ pub mod client;
     unreachable_pub,
     unsafe_code,
     unused_lifetimes,
-    unused_qualifications
+    unused_qualifications,
+    rustdoc::broken_intra_doc_links,
+    rustdoc::invalid_html_tags,
+    rustdoc::private_intra_doc_links,
+    rustdoc::unescaped_backticks
 )]
 pub mod yandex {
     pub mod cloud {
@@ -90,7 +94,11 @@ pub mod yandex {
     unreachable_pub,
     unsafe_code,
     unused_lifetimes,
-    unused_qualifications
+    unused_qualifications,
+    rustdoc::broken_intra_doc_links,
+    rustdoc::invalid_html_tags,
+    rustdoc::private_intra_doc_links,
+    rustdoc::unescaped_backticks
 )]
 pub mod google {
     pub mod api {
