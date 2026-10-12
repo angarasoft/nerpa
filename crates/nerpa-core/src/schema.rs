@@ -37,6 +37,8 @@ pub struct Schema {
     identities: BTreeMap<(Provider, Kind), (String, String)>,
     unreactive: BTreeSet<(Provider, Kind)>,
     modes: BTreeMap<(Provider, Kind), BTreeSet<String>>,
+    monotonic: BTreeMap<(Provider, Kind), BTreeSet<String>>,
+    stop_to_change: BTreeMap<(Provider, Kind), BTreeSet<String>>,
 }
 
 impl Schema {
@@ -160,6 +162,61 @@ impl Schema {
             .is_some_and(|names| names.contains(attribute))
     }
 
+    /// Declares that this attribute may only grow, never shrink.
+    ///
+    /// A disk can be enlarged but not shrunk. A declared value below what is
+    /// there is refused while planning rather than proposed as a change the
+    /// cloud would refuse anyway; a value above it is a normal change.
+    #[must_use]
+    pub fn monotonic(
+        mut self,
+        provider: Provider,
+        kind: Kind,
+        attribute: impl Into<String>,
+    ) -> Self {
+        self.monotonic
+            .entry((provider, kind))
+            .or_default()
+            .insert(attribute.into());
+        self
+    }
+
+    /// Whether this attribute of this resource may only grow.
+    #[must_use]
+    pub fn grows_only(&self, address: &Address, attribute: &str) -> bool {
+        self.monotonic
+            .get(&(address.provider().clone(), address.kind().clone()))
+            .is_some_and(|names| names.contains(attribute))
+    }
+
+    /// Declares that changing this attribute requires the resource to be
+    /// stopped first.
+    ///
+    /// A running instance's cores and memory cannot be changed in place: the
+    /// cloud refuses. The change is proposed with the stop it requires, so the
+    /// provider stops, applies and starts rather than failing mid-run.
+    #[must_use]
+    pub fn stop_to_change(
+        mut self,
+        provider: Provider,
+        kind: Kind,
+        attribute: impl Into<String>,
+    ) -> Self {
+        self.stop_to_change
+            .entry((provider, kind))
+            .or_default()
+            .insert(attribute.into());
+        self
+    }
+
+    /// Whether changing this attribute of this resource requires a stop first.
+    #[must_use]
+    pub fn requires_stop(&self, address: &Address, attribute: &str) -> bool {
+        self.stop_to_change
+            .get(&(address.provider().clone(), address.kind().clone()))
+            .is_some_and(|names| names.contains(attribute))
+    }
+
     /// Declares that this kind cannot react to anything.
     ///
     /// A reaction is something a change elsewhere asks a resource to do again: a
@@ -215,6 +272,12 @@ impl Schema {
         for (kind, attributes) in other.modes {
             self.modes.entry(kind).or_default().extend(attributes);
         }
+        for (kind, attributes) in other.monotonic {
+            self.monotonic.entry(kind).or_default().extend(attributes);
+        }
+        for (kind, attributes) in other.stop_to_change {
+            self.stop_to_change.entry(kind).or_default().extend(attributes);
+        }
         self
     }
 
@@ -255,5 +318,39 @@ pub fn mode_of_value(value: &Value) -> Option<u32> {
     match value {
         Value::Text(written) => mode_of(written),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::address::{address, Kind, Provider};
+
+    #[test]
+    fn monotonic_and_stop_to_change_are_asked_by_name() {
+        let provider = Provider::new("yandex").unwrap();
+        let schema = Schema::new()
+            .monotonic(provider.clone(), Kind::new("disk").unwrap(), "size")
+            .stop_to_change(provider, Kind::new("instance").unwrap(), "cores");
+
+        let disk = address("yandex:disk.data");
+        let instance = address("yandex:instance.db");
+
+        assert!(schema.grows_only(&disk, "size"));
+        assert!(!schema.grows_only(&disk, "type"));
+        assert!(schema.requires_stop(&instance, "cores"));
+        assert!(!schema.requires_stop(&instance, "zone"));
+    }
+
+    #[test]
+    fn merge_carries_the_two_new_kinds() {
+        let provider = Provider::new("yandex").unwrap();
+        let one = Schema::new().monotonic(provider.clone(), Kind::new("disk").unwrap(), "size");
+        let two = Schema::new().stop_to_change(provider, Kind::new("instance").unwrap(), "cores");
+
+        let merged = one.merge(two);
+
+        assert!(merged.grows_only(&address("yandex:disk.data"), "size"));
+        assert!(merged.requires_stop(&address("yandex:instance.db"), "cores"));
     }
 }
