@@ -23,7 +23,16 @@ pub struct Yandex {
 
 impl Yandex {
     /// The provider, answering to `yandex` in an address.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `yandex` is somehow not a valid provider name, which would mean
+    /// the address grammar had changed underneath this crate.
     #[must_use]
+    #[allow(
+        clippy::expect_used,
+        reason = "a literal that stopped parsing is a bug here"
+    )]
     pub fn new() -> Self {
         Self {
             name: ProviderName::new("yandex").expect("`yandex` is a valid provider name"),
