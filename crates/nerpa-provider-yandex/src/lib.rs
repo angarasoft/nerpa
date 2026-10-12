@@ -15,6 +15,8 @@ use nerpa_core::provider::{
 };
 use nerpa_core::schema::Schema;
 
+pub mod auth;
+
 /// The Yandex Cloud provider, answering to `yandex` in an address.
 #[derive(Debug)]
 pub struct Yandex {

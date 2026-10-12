@@ -13,8 +13,15 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+base64 = { workspace = true }
 dacc-derive = { workspace = true }
 nerpa-core = { workspace = true }
+rsa = "0.9"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { version = "0.10", features = ["oid"] }
+thiserror = { workspace = true }
+ureq = { version = "2", features = ["json"] }
 
 [lints]
 workspace = true
