@@ -14,5 +14,5 @@ But a path that differs by distribution is a *value*, and refusing that outright
 
 A machine that says something no branch accounts for is refused, not defaulted. A silent default is a machine configured as though it were a different one, which is worse than a machine that is not configured."#,
     enforced_by: &[crate::anchor::inv_fact_001_1, crate::anchor::inv_fact_001_2, crate::anchor::planner_resolve],
-    tests: &[crate::anchor::a_value_may_be_chosen_by_what_a_machine_turns_out_to_be, crate::anchor::a_value_chosen_by_a_fact_settles_from_the_machine],
+    tests: &[crate::anchor::a_value_may_be_chosen_by_what_a_machine_turns_out_to_be, crate::anchor::a_value_chosen_by_a_fact_settles_from_the_machine, crate::anchor::a_fact_cannot_decide_whether_a_resource_exists, crate::anchor::a_fact_refuses_to_be_a_condition_on_its_own, crate::anchor::a_machine_that_says_something_unaccounted_for_is_refused],
 );
