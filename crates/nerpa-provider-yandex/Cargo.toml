@@ -23,7 +23,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { version = "0.10", features = ["oid"] }
 thiserror = { workspace = true }
+tokio = { version = "1", features = ["rt-multi-thread"] }
 tonic = "0.14"
+tonic-prost = "0.14"
 ureq = { version = "2", features = ["json"] }
 
 [build-dependencies]

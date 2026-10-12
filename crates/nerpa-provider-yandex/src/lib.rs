@@ -16,6 +16,90 @@ use nerpa_core::provider::{
 use nerpa_core::schema::Schema;
 
 pub mod auth;
+pub mod client;
+
+/// The generated Yandex Cloud proto types and service clients.
+#[allow(
+    clippy::all,
+    clippy::as_conversions,
+    clippy::cast_lossless,
+    clippy::cast_possible_truncation,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::pedantic,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::unwrap_used,
+    elided_lifetimes_in_paths,
+    missing_debug_implementations,
+    missing_docs,
+    single_use_lifetimes,
+    trivial_casts,
+    trivial_numeric_casts,
+    unreachable_pub,
+    unsafe_code,
+    unused_lifetimes,
+    unused_qualifications,
+)]
+pub mod yandex {
+    pub mod cloud {
+        include!(concat!(env!("OUT_DIR"), "/yandex.cloud.rs"));
+        pub mod access {
+            include!(concat!(env!("OUT_DIR"), "/yandex.cloud.access.rs"));
+        }
+        pub mod api {
+            include!(concat!(env!("OUT_DIR"), "/yandex.cloud.api.rs"));
+        }
+        pub mod compute {
+            pub mod v1 {
+                include!(concat!(env!("OUT_DIR"), "/yandex.cloud.compute.v1.rs"));
+            }
+        }
+        pub mod operation {
+            include!(concat!(env!("OUT_DIR"), "/yandex.cloud.operation.rs"));
+        }
+        pub mod reference {
+            include!(concat!(env!("OUT_DIR"), "/yandex.cloud.reference.rs"));
+        }
+        pub mod vpc {
+            pub mod v1 {
+                include!(concat!(env!("OUT_DIR"), "/yandex.cloud.vpc.v1.rs"));
+            }
+        }
+    }
+}
+
+/// The generated google proto types the Yandex protos import.
+#[allow(
+    clippy::all,
+    clippy::as_conversions,
+    clippy::cast_lossless,
+    clippy::cast_possible_truncation,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::pedantic,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::unwrap_used,
+    elided_lifetimes_in_paths,
+    missing_debug_implementations,
+    missing_docs,
+    single_use_lifetimes,
+    trivial_casts,
+    trivial_numeric_casts,
+    unreachable_pub,
+    unsafe_code,
+    unused_lifetimes,
+    unused_qualifications,
+)]
+pub mod google {
+    pub mod api {
+        include!(concat!(env!("OUT_DIR"), "/google.api.rs"));
+    }
+    pub mod rpc {
+        include!(concat!(env!("OUT_DIR"), "/google.rpc.rs"));
+    }
+}
 
 /// The Yandex Cloud provider, answering to `yandex` in an address.
 #[derive(Debug)]
