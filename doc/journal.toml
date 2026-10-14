@@ -613,3 +613,7 @@ work = "w-yc-review-registry"
 at = "2026-10-14T17:50:32Z"
 commit = "4e59afd0e25b887b1f3708b31b2f1ec9e7b23392"
 tree = "65ad590174f4de33600349a1905912bcf99c9973"
+[[events]]
+event = "started"
+work = "w-adr-yc-credentials"
+at = "2026-10-14T18:06:41Z"
