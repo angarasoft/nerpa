@@ -8,7 +8,7 @@ dacc_work::work!("w-yc-provider",
     origin: WorkOrigin::Toil {
         justification: NonEmptyStr::new("The point of the provider is convergence: declared, created; differing, corrected; gone, removed; and the second plan is empty. An immutable attribute differing means replacement, a birth attribute differing is reported and never acted on."),
     },
-    taxon: taxon!(Subsystem, Core),
+    taxon: taxon!(Subsystem, Yandex),
     radius: BlastRadius::Crate,
     outcome: NonEmptyStr::new("A declared yandex:instance and its disk, network, subnet and security group converge: the plan after apply is empty, an immutable change replaces, and a birth change is reported without acting."),
 );
