@@ -678,3 +678,7 @@ at = "2026-10-18T13:34:18Z"
 commit = "eb89b426be30a1f62cfa7e84d29d50908ee17253"
 tree = "153f66ebbbbdc3832f8601ccc4758499a114fd82"
 red_before = "a_signed_jwt_carries_the_algorithm_the_endpoint_accepts"
+[[events]]
+event = "started"
+work = "w-yc-credentials-held"
+at = "2026-10-18T14:14:38Z"
