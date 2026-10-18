@@ -699,3 +699,7 @@ work = "w-yc-credentials-held"
 at = "2026-10-18T14:26:19Z"
 commit = "7153086ddd539da64bae7ce81e779bd5b509fd76"
 tree = "8cf1bf3223a035c4f83839d6ec0c4b214ad05a4f"
+[[events]]
+event = "started"
+work = "w-yc-provider"
+at = "2026-10-18T16:46:38Z"
