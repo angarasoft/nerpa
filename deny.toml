@@ -8,12 +8,6 @@ all-features = true
 [advisories]
 unmaintained = "workspace"
 yanked = "deny"
-ignore = [
-    # rsa's PKCS#1 v1.5 is not constant-time (Marvin Attack), but the provider
-    # signs a JWT locally, once per token exchange, never on a network-observable
-    # path — the timing observation the advisory describes cannot happen there.
-    { id = "RUSTSEC-2023-0071", reason = "the provider signs a JWT locally, not on a network-observable path" },
-]
 
 [licenses]
 version = 2
