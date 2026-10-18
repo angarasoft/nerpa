@@ -136,13 +136,32 @@ impl Confidence {
     }
 }
 
+/// How one attribute's difference is realized.
+///
+/// One marker rather than two booleans, because the three ways are exclusive:
+/// a replacement makes a stop moot, and a change in place needs neither.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum DeltaKind {
+    /// The resource stays and the attribute changes where it is.
+    InPlace,
+    /// The change is valid only while the resource is stopped. The plan
+    /// carries the stop it requires, and the provider stops, changes and
+    /// starts rather than failing mid-run.
+    StopThenChange,
+    /// The attribute cannot change in place: the resource goes and a new one
+    /// takes its address.
+    Replace,
+}
+
 /// One attribute changing.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct AttributeDelta {
     name: String,
     before: Option<Recorded>,
     after: Confidence,
-    forces_replacement: bool,
+    kind: DeltaKind,
 }
 
 impl AttributeDelta {
@@ -150,13 +169,13 @@ impl AttributeDelta {
         name: String,
         before: Option<Recorded>,
         after: Confidence,
-        forces_replacement: bool,
+        kind: DeltaKind,
     ) -> Self {
         Self {
             name,
             before,
             after,
-            forces_replacement,
+            kind,
         }
     }
 
@@ -178,10 +197,11 @@ impl AttributeDelta {
         &self.after
     }
 
-    /// Whether this attribute is the reason the resource is being replaced.
+    /// How this difference is realized: in place, after a stop, or by
+    /// replacement.
     #[must_use]
-    pub fn forces_replacement(&self) -> bool {
-        self.forces_replacement
+    pub fn kind(&self) -> DeltaKind {
+        self.kind
     }
 }
 
@@ -379,7 +399,9 @@ impl Change {
     /// rather than leaving somebody to infer it from a marker.
     #[must_use]
     pub fn cause(&self) -> Option<&AttributeDelta> {
-        self.deltas.iter().find(|delta| delta.forces_replacement)
+        self.deltas
+            .iter()
+            .find(|delta| delta.kind() == DeltaKind::Replace)
     }
 }
 
@@ -1151,7 +1173,11 @@ fn encode_stage(stage: &PlanStage, out: &mut Vec<u8>) {
                 }
             }
             encode_confidence(delta.after(), out);
-            out.push(u8::from(delta.forces_replacement()));
+            out.push(match delta.kind() {
+                DeltaKind::InPlace => 0,
+                DeltaKind::StopThenChange => 1,
+                DeltaKind::Replace => 2,
+            });
         }
     }
 }

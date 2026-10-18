@@ -167,6 +167,8 @@ impl Schema {
     /// A disk can be enlarged but not shrunk. A declared value below what is
     /// there is refused while planning rather than proposed as a change the
     /// cloud would refuse anyway; a value above it is a normal change.
+    /// Compared as integers; a shrink of a value of another shape is the
+    /// provider's to refuse.
     #[must_use]
     pub fn monotonic(
         mut self,

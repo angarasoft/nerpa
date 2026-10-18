@@ -26,8 +26,8 @@ use crate::attribute::Attribute;
 use crate::graph::{Graph, GraphError, Moved, Stage, StageKind};
 use crate::observed::Observed;
 use crate::plan::{
-    AttributeDelta, Change, ChangeKind, Confidence, Merge, Outdated, Plan, PlanStage, Unreachable,
-    Waiting,
+    AttributeDelta, Change, ChangeKind, Confidence, DeltaKind, Merge, Outdated, Plan, PlanStage,
+    Unreachable, Waiting,
 };
 use crate::resource::{Protection, Resource};
 use crate::schema::Schema;
@@ -112,6 +112,24 @@ pub enum PlanError {
         attribute: String,
         /// What it says.
         value: String,
+    },
+    /// A monotonic attribute declared smaller than it is.
+    ///
+    /// A disk can be enlarged but not shrunk. The cloud would refuse the
+    /// change anyway; the plan refuses it first, by name, rather than
+    /// proposing a change that cannot be made.
+    #[error(
+        "{address}: {attribute} is declared as {will}, and {was} is what is there: a value that only grows cannot shrink"
+    )]
+    ShrinkRefused {
+        /// The resource declaring it.
+        address: Address,
+        /// Which attribute.
+        attribute: String,
+        /// What is there.
+        was: i64,
+        /// What is declared.
+        will: i64,
     },
     /// Changes that each have to come after the next, round to the first. One run
     /// cannot order them.
@@ -1431,13 +1449,34 @@ fn differences(
             outdated.push(Outdated::new(address.clone(), name.clone(), before, after));
             continue;
         }
-        let forces_replacement = existing.is_some() && schema.forces_replacement(address, name);
-        deltas.push(AttributeDelta::new(
-            name.clone(),
-            before,
-            after,
-            forces_replacement,
-        ));
+        // A monotonic value may only grow. A declared value below what is
+        // there is refused while planning rather than proposed as a change
+        // the cloud would refuse anyway. Compared as integers; a shrink of a
+        // value of another shape is the provider's to refuse.
+        if existing.is_some()
+            && schema.grows_only(address, name)
+            && let Some(Recorded::Plain(Value::Integer(was))) = &before
+            && let Confidence::Known(Value::Integer(will)) = &after
+            && will < was
+        {
+            return Err(PlanError::ShrinkRefused {
+                address: address.clone(),
+                attribute: name.clone(),
+                was: *was,
+                will: *will,
+            });
+        }
+        // A stop-to-change attribute is carried with the stop it requires,
+        // and an immutable one still replaces: a replacement makes a stop
+        // moot, so it wins where both are declared.
+        let kind = if existing.is_some() && schema.forces_replacement(address, name) {
+            DeltaKind::Replace
+        } else if existing.is_some() && schema.requires_stop(address, name) {
+            DeltaKind::StopThenChange
+        } else {
+            DeltaKind::InPlace
+        };
+        deltas.push(AttributeDelta::new(name.clone(), before, after, kind));
     }
     Ok((deltas, wanted))
 }
@@ -1514,7 +1553,11 @@ fn change_for(
     let (kind, resent) = match (existing, resending) {
         // Not there at all: it has to be made, whatever its attributes say.
         (None, _) => (ChangeKind::Create, false),
-        (Some(_), _) if deltas.iter().any(AttributeDelta::forces_replacement) => {
+        (Some(_), _)
+            if deltas
+                .iter()
+                .any(|delta| delta.kind() == DeltaKind::Replace) =>
+        {
             (ChangeKind::Replace, false)
         }
         (Some(_), _) if !deltas.is_empty() => (ChangeKind::Update, false),

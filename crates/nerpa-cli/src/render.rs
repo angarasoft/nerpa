@@ -19,7 +19,7 @@ use nerpa_core::plan::{Held, Merge, Outdated, Unreachable, Waiting};
 use nerpa_core::secret::Recorded;
 use nerpa_core::state::Written;
 use nerpa_core::value::Value;
-use nerpa_core::{BlastRadius, Change, ChangeKind, Confidence, Plan, StageKind, Target};
+use nerpa_core::{BlastRadius, Change, ChangeKind, Confidence, DeltaKind, Plan, StageKind, Target};
 
 /// The whole plan, as text.
 #[dacc_derive::doc_anchor(id = "inv-agent-001-1")]
@@ -426,7 +426,7 @@ fn one(change: &Change) -> String {
             (Some(Recorded::Secret(_)), Confidence::Secret(_)) => "(secret, changed)".to_owned(),
             (_, after) => shown(after),
         };
-        let cause = if delta.forces_replacement() {
+        let cause = if delta.kind() == DeltaKind::Replace {
             "   ← cause of the replacement"
         } else {
             ""

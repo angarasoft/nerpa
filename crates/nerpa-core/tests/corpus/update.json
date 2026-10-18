@@ -19,7 +19,7 @@
               "after": {
                 "known": 16
               },
-              "forces_replacement": false
+              "kind": "in_place"
             }
           ],
           "desired": [

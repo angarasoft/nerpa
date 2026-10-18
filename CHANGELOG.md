@@ -934,6 +934,11 @@ without ceremony until the first stage is complete.
 
 ### Changed
 
+- A plan's attribute delta carries a change kind — in place, after a stop, or
+  by replacement — instead of a bare replacement marker, and a declared shrink
+  of a monotonic attribute is refused while planning. The corpus moves with
+  the encoding.
+
 - The registry rides on dacc 0.6.0: the six dacc crates, and the CLI the gate
   installs at the one version line `Cargo.toml` carries, move off 0.5.2. Every
   decision and specification now carries its `introduces_norm` marker (none

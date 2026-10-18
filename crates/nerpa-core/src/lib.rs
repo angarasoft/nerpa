@@ -90,7 +90,9 @@ pub use domain::ExecutionDomain;
 pub use graph::{Graph, GraphError, Moved, Stage, StageKind};
 pub use inventory::{Inventory, Provenance};
 pub use observed::Observed;
-pub use plan::{AttributeDelta, BlastRadius, Change, ChangeKind, Confidence, Plan, PlanStage};
+pub use plan::{
+    AttributeDelta, BlastRadius, Change, ChangeKind, Confidence, DeltaKind, Plan, PlanStage,
+};
 pub use resource::{Protection, Resource};
 pub use schema::Schema;
 pub use value::Value;
