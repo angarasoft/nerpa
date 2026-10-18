@@ -634,3 +634,7 @@ work = "w-adr-yc-credentials"
 at = "2026-10-14T18:13:09Z"
 commit = "5ecc2d99edad939414a2117235bc88ab63bafc0c"
 tree = "4145a314491a4c3710a306a5386c1b7fc448879a"
+[[events]]
+event = "started"
+work = "w-schema-kinds-enforced"
+at = "2026-10-18T11:33:38Z"
