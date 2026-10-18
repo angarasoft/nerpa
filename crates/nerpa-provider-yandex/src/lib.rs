@@ -17,6 +17,7 @@ use nerpa_core::schema::Schema;
 
 pub mod auth;
 pub mod client;
+pub mod credentials;
 
 /// The generated Yandex Cloud proto types and service clients.
 #[allow(

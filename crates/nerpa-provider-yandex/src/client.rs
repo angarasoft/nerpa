@@ -241,6 +241,32 @@ mod tests {
         }
     }
 
+    /// A client whose token is already past its expiry. The channel is a
+    /// literal tonic never dials — `call` refuses before anything is sent —
+    /// so no network exists in this test.
+    fn a_client_with_expired_token() -> Client {
+        let runtime = tokio::runtime::Runtime::new().expect("a runtime");
+        let channel =
+            runtime.block_on(async { Endpoint::from_static("http://[::1]:1").connect_lazy() });
+        Client {
+            runtime,
+            channel,
+            carried: Arc::new(RwLock::new((
+                Arc::from("abc"),
+                SystemTime::now() - Duration::from_secs(1),
+            ))),
+        }
+    }
+
+    #[test]
+    fn a_call_under_an_expired_token_is_refused() {
+        let client = a_client_with_expired_token();
+        assert!(matches!(
+            client.call(std::future::ready(())),
+            Err(ClientError::Expired { .. })
+        ));
+    }
+
     #[test]
     fn the_bearer_puts_the_token_in_the_header() {
         let mut bearer = a_bearer();
