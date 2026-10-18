@@ -11,5 +11,5 @@ dacc_work::work!("w-schema-kinds-enforced",
     },
     taxon: taxon!(Subsystem, Core),
     radius: BlastRadius::Crate,
-    outcome: NonEmptyStr::new("The planner refuses a shrink of a monotonic attribute and marks a stop-to-change attribute for the stopped sequence, held by tests; the Schema's declares are read on the planning path, not only by the Schema's own tests."),
+    outcome: NonEmptyStr::new("The planner refuses a shrink of a monotonic attribute by name, and a stop-to-change delta is marked rather than refused: the delta's forces_replacement bool becomes a DeltaKind — InPlace, StopThenChange or Replace — carried in the canonical encoding, so the plan shows the stop it requires and the provider sequences stop, change, start. Held by tests."),
 );
