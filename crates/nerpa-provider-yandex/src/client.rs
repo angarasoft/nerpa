@@ -3,22 +3,38 @@
 //! to the async tonic client.
 
 use std::future::Future;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+use std::time::{Duration, SystemTime};
 
 use tonic::service::Interceptor;
 use tonic::transport::{Channel, Endpoint};
 
-use crate::auth::IamToken;
+use crate::auth::{self, ServiceAccountKey};
 use crate::yandex::cloud::compute::v1::disk_service_client::DiskServiceClient;
 use crate::yandex::cloud::compute::v1::instance_service_client::InstanceServiceClient;
 use crate::yandex::cloud::vpc::v1::network_service_client::NetworkServiceClient;
 use crate::yandex::cloud::vpc::v1::security_group_service_client::SecurityGroupServiceClient;
 use crate::yandex::cloud::vpc::v1::subnet_service_client::SubnetServiceClient;
 
+/// The most the channel may take to connect.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// The most one call may take: no answer is an error, not a hang
+/// (`INV-REACH-001`).
+const CALL_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// How long a token is asked to live. The endpoint's own ceiling is an hour.
+const TOKEN_TTL: u64 = 3_600;
+
+/// The bearer token every request carries, and when it stops working.
+type Carried = Arc<RwLock<(Arc<str>, SystemTime)>>;
+
 /// Adds the bearer token to every request.
-#[derive(Debug, Clone)]
+///
+/// Reads the token when a request is made, so a refresh between two calls is
+/// carried by the next one. The `Debug` output names nothing of the token.
 pub struct Bearer {
-    token: Arc<str>,
+    carried: Carried,
 }
 
 impl Interceptor for Bearer {
@@ -26,7 +42,11 @@ impl Interceptor for Bearer {
         &mut self,
         mut request: tonic::Request<()>,
     ) -> Result<tonic::Request<()>, tonic::Status> {
-        let value = format!("Bearer {}", self.token);
+        let (token, _) = &*self
+            .carried
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let value = format!("Bearer {token}");
         let value = value
             .parse()
             .map_err(|_| tonic::Status::internal("a bad bearer token"))?;
@@ -35,67 +55,129 @@ impl Interceptor for Bearer {
     }
 }
 
-/// Why the client could not be built.
+impl std::fmt::Debug for Bearer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Bearer").finish_non_exhaustive()
+    }
+}
+
+/// Why the client could not be built or used.
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
     /// The channel could not be opened.
     #[error("the Yandex endpoint could not be reached: {0}")]
     Connect(String),
+    /// The token the client carries has expired.
+    #[error("the IAM token expired at {at:?}; exchange a new one before the next call")]
+    Expired {
+        /// When the carried token stopped working.
+        at: SystemTime,
+    },
 }
 
 /// A Yandex Cloud gRPC client, holding a channel and a short-lived token.
+///
+/// The token is carried in a cell the requests read, so it can be refreshed
+/// without rebuilding the client; every call refuses with
+/// [`ClientError::Expired`] once it is past its expiry (070).
 pub struct Client {
     runtime: tokio::runtime::Runtime,
     channel: Channel,
-    token: Arc<str>,
+    carried: Carried,
 }
 
 impl std::fmt::Debug for Client {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Client")
             .field("channel", &self.channel)
-            .field("token", &self.token)
             .finish_non_exhaustive()
     }
 }
 
 impl Client {
-    /// Connects to the endpoint and carries the token in every request.
+    /// Signs one JWT, exchanges it for a short-lived IAM token, and connects
+    /// to the endpoint the token will be carried to.
+    ///
+    /// The channel speaks TLS — an `https` endpoint dialled plain would be
+    /// refused — and both the connect and each call are bounded, so a silent
+    /// endpoint is an error rather than a hung run.
     ///
     /// # Errors
     ///
-    /// Returns [`ClientError::Connect`] when the endpoint cannot be reached.
-    pub fn connect(endpoint: &str, token: &IamToken) -> Result<Self, ClientError> {
+    /// Returns [`ClientError::Connect`] when the key is unusable, the token
+    /// exchange fails, or the endpoint cannot be reached.
+    pub fn connect(endpoint: &str, key: &ServiceAccountKey) -> Result<Self, ClientError> {
         let runtime =
             tokio::runtime::Runtime::new().map_err(|e| ClientError::Connect(e.to_string()))?;
+        let carried = Arc::new(RwLock::new(
+            runtime
+                .block_on(exchange(key))
+                .map_err(|e| ClientError::Connect(e.to_string()))?,
+        ));
         let endpoint = Endpoint::from_shared(endpoint.to_owned())
-            .map_err(|e| ClientError::Connect(e.to_string()))?;
+            .map_err(|e| ClientError::Connect(e.to_string()))?
+            .connect_timeout(CONNECT_TIMEOUT)
+            .timeout(CALL_TIMEOUT);
         let channel = runtime
             .block_on(endpoint.connect())
             .map_err(|e| ClientError::Connect(e.to_string()))?;
         Ok(Self {
             runtime,
             channel,
-            token: Arc::from(token.token.as_str()),
+            carried,
         })
     }
 
-    /// Runs an async future on the client's runtime.
+    /// Runs an async future on the client's runtime, refusing to send a
+    /// request under a token that has expired.
     ///
-    /// This is the sync-to-async bridge: the [`Provider`](nerpa_core::provider::Provider)
-    /// trait is synchronous, and tonic is not, so the provider's methods run
-    /// their gRPC calls through here.
+    /// This is the sync-to-async bridge: the
+    /// [`Provider`](nerpa_core::provider::Provider) trait is synchronous, and
+    /// tonic is not, so the provider's methods run their gRPC calls through
+    /// here.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ClientError::Expired`] once the carried token is past its
+    /// expiry, which is the point of carrying one (070).
     #[allow(
         dead_code,
         reason = "the provider's read and prepare use it; they arrive in w-yc-provider"
     )]
-    pub(crate) fn block_on<F: Future>(&self, future: F) -> F::Output {
-        self.runtime.block_on(future)
+    pub(crate) fn call<F: Future>(&self, future: F) -> Result<F::Output, ClientError> {
+        let (_, expires_at) = *self
+            .carried
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if SystemTime::now() >= expires_at {
+            return Err(ClientError::Expired { at: expires_at });
+        }
+        Ok(self.runtime.block_on(future))
+    }
+
+    /// Signs a fresh JWT and exchanges it for a fresh token, before the old
+    /// one expires.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ClientError::Connect`] when the key is unusable or the
+    /// exchange fails.
+    pub fn refresh(&self, key: &ServiceAccountKey) -> Result<(), ClientError> {
+        let token = self
+            .runtime
+            .block_on(exchange(key))
+            .map_err(|e| ClientError::Connect(e.to_string()))?;
+        let mut carried = self
+            .carried
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *carried = token;
+        Ok(())
     }
 
     fn bearer(&self) -> Bearer {
         Bearer {
-            token: self.token.clone(),
+            carried: self.carried.clone(),
         }
     }
 
@@ -138,17 +220,38 @@ impl Client {
     }
 }
 
+/// One JWT, one exchange: the key signs once and is forgotten, and what is
+/// carried afterwards is the short-lived token (070).
+async fn exchange(key: &ServiceAccountKey) -> Result<(Arc<str>, SystemTime), auth::AuthError> {
+    let jwt = auth::signed_jwt(key, auth::now_seconds()?, TOKEN_TTL)?;
+    let token = auth::token_for(&jwt).await?;
+    Ok((Arc::from(token.token()), token.expires_at()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn a_bearer() -> Bearer {
+        Bearer {
+            carried: Arc::new(RwLock::new((
+                Arc::from("abc"),
+                SystemTime::now() + Duration::from_secs(3_600),
+            ))),
+        }
+    }
+
     #[test]
     fn the_bearer_puts_the_token_in_the_header() {
-        let mut bearer = Bearer {
-            token: Arc::from("abc"),
-        };
+        let mut bearer = a_bearer();
         let request = bearer.call(tonic::Request::new(())).expect("intercepted");
         let header = request.metadata().get("authorization").expect("a header");
         assert_eq!(header.to_str().expect("ascii"), "Bearer abc");
+    }
+
+    #[test]
+    fn no_debug_prints_the_token() {
+        let debug = format!("{:?}", a_bearer());
+        assert!(!debug.contains("abc"), "the token is redacted: {debug}");
     }
 }

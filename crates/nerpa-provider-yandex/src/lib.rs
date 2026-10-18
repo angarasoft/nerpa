@@ -59,6 +59,11 @@ pub mod yandex {
                 include!(concat!(env!("OUT_DIR"), "/yandex.cloud.compute.v1.rs"));
             }
         }
+        pub mod iam {
+            pub mod v1 {
+                include!(concat!(env!("OUT_DIR"), "/yandex.cloud.iam.v1.rs"));
+            }
+        }
         pub mod operation {
             include!(concat!(env!("OUT_DIR"), "/yandex.cloud.operation.rs"));
         }
