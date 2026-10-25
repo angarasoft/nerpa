@@ -16,6 +16,7 @@ use crate::yandex::cloud::compute::v1::{
     NetworkInterfaceSpec, ResourcesSpec, UpdateDiskRequest, UpdateInstanceRequest,
     attached_disk_spec, create_disk_request, disk,
 };
+use crate::yandex::cloud::storage::v1::{Bucket, CreateBucketRequest};
 use crate::yandex::cloud::vpc::v1::{
     CreateNetworkRequest, CreateSecurityGroupRequest, CreateSubnetRequest, Network, SecurityGroup,
     Subnet,
@@ -380,4 +381,29 @@ pub(crate) fn lookup(
     let folder_id = required_text(locator, "folder_id", address)?;
     let name = required_text(locator, "name", address)?;
     Ok((folder_id, name))
+}
+
+/// What a bucket looks like, as declared attributes plus the id the cloud
+/// assigned — the bucket's name, which Object Storage makes the id too.
+pub(crate) fn bucket_attributes(bucket: &Bucket) -> Attributes {
+    let mut attributes = Attributes::new();
+    attributes.insert(
+        "folder_id".to_owned(),
+        Value::Text(bucket.folder_id.clone()),
+    );
+    attributes.insert("name".to_owned(), Value::Text(bucket.name.clone()));
+    attributes.insert("id".to_owned(), Value::Text(bucket.id.clone()));
+    attributes
+}
+
+/// The create request a declared bucket becomes.
+pub(crate) fn create_bucket(
+    desired: &Attributes,
+    address: &Address,
+) -> Result<CreateBucketRequest, ProviderError> {
+    Ok(CreateBucketRequest {
+        name: required_text(desired, "name", address)?,
+        folder_id: required_text(desired, "folder_id", address)?,
+        ..Default::default()
+    })
 }

@@ -1,0 +1,30 @@
+{
+  "folder": "b1gseethgj6pa40lasl8",
+  "exchanges": [
+    {
+      "call": "BucketService/list",
+      "request": "ChRiMWdzZWV0aGdqNnBhNDBsYXNsOA==",
+      "response": ""
+    },
+    {
+      "call": "BucketService/list",
+      "request": "ChRiMWdzZWV0aGdqNnBhNDBsYXNsOA==",
+      "response": ""
+    },
+    {
+      "call": "BucketService/create",
+      "request": "ChRuZXJwYS1maXh0dXJlLWJ1Y2tldBIUYjFnc2VldGhnajZwYTQwbGFzbDg=",
+      "response": "ChRlM2VuYmpsM2VlNmNrczA2YWk2dBINY3JlYXRlIGJ1Y2tldBoMCLq3+NYGENC5gKIBIhRhamUyNG9jb2ZlZ2NvdnBrcGFmOSoMCLq3+NYGENC5gKIBMAE6WgpAdHlwZS5nb29nbGVhcGlzLmNvbS95YW5kZXguY2xvdWQuc3RvcmFnZS52MS5DcmVhdGVCdWNrZXRNZXRhZGF0YRIWChRuZXJwYS1maXh0dXJlLWJ1Y2tldEqUAQoydHlwZS5nb29nbGVhcGlzLmNvbS95YW5kZXguY2xvdWQuc3RvcmFnZS52MS5CdWNrZXQSXhIUbmVycGEtZml4dHVyZS1idWNrZXQaFGIxZ3NlZXRoZ2o2cGE0MGxhc2w4IgAqCFNUQU5EQVJEMAFSCwi6t/jWBhCYjLh2kgEUZTNlb29sOWNhb2loaWpmZjRsam0="
+    },
+    {
+      "call": "BucketService/list",
+      "request": "ChRiMWdzZWV0aGdqNnBhNDBsYXNsOA==",
+      "response": "CmYSFG5lcnBhLWZpeHR1cmUtYnVja2V0GhRiMWdzZWV0aGdqNnBhNDBsYXNsOCIGCgASABoAKghTVEFOREFSRDABSgBSCwi6t/jWBhCYjLh2kgEUZTNlb29sOWNhb2loaWpmZjRsam0="
+    },
+    {
+      "call": "BucketService/list",
+      "request": "ChRiMWdzZWV0aGdqNnBhNDBsYXNsOA==",
+      "response": "CmYSFG5lcnBhLWZpeHR1cmUtYnVja2V0GhRiMWdzZWV0aGdqNnBhNDBsYXNsOCIGCgASABoAKghTVEFOREFSRDABSgBSCwi6t/jWBhCYjLh2kgEUZTNlb29sOWNhb2loaWpmZjRsam0="
+    }
+  ]
+}

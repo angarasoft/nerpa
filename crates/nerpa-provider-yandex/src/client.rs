@@ -13,6 +13,7 @@ use crate::auth::{self, ServiceAccountKey};
 use crate::yandex::cloud::compute::v1::disk_service_client::DiskServiceClient;
 use crate::yandex::cloud::compute::v1::instance_service_client::InstanceServiceClient;
 use crate::yandex::cloud::operation::operation_service_client::OperationServiceClient;
+use crate::yandex::cloud::storage::v1::bucket_service_client::BucketServiceClient;
 use crate::yandex::cloud::vpc::v1::network_service_client::NetworkServiceClient;
 use crate::yandex::cloud::vpc::v1::security_group_service_client::SecurityGroupServiceClient;
 use crate::yandex::cloud::vpc::v1::subnet_service_client::SubnetServiceClient;
@@ -26,6 +27,9 @@ const CALL_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// How long a token is asked to live. The endpoint's own ceiling is an hour.
 const TOKEN_TTL: u64 = 3_600;
+
+/// The Object Storage bucket service lives on its own host (ADR-072).
+const STORAGE_ENDPOINT: &str = "https://storage.api.cloud.yandex.net:443";
 
 /// The bearer token every request carries, and when it stops working.
 type Carried = Arc<RwLock<(Arc<str>, SystemTime)>>;
@@ -84,6 +88,9 @@ pub enum ClientError {
 pub struct Client {
     runtime: tokio::runtime::Runtime,
     channel: Channel,
+    /// The bucket service's own channel: Object Storage answers on its own
+    /// host, and the bearer is the same token (ADR-072).
+    storage: Channel,
     /// Where a refreshed token is exchanged: the same service the first one
     /// came from, so a refresh never moves the credential somewhere else.
     iam_endpoint: Arc<str>,
@@ -129,6 +136,25 @@ impl Client {
         iam_endpoint: &str,
         key: &ServiceAccountKey,
     ) -> Result<Self, ClientError> {
+        Self::connect_at_with_storage(endpoint, iam_endpoint, STORAGE_ENDPOINT, key)
+    }
+
+    /// Signs one JWT, exchanges it for a short-lived IAM token at the named
+    /// IAM endpoint, and connects to the endpoint the token will be carried
+    /// to, plus the named Object Storage endpoint. The endpoints are
+    /// parameters rather than constants so a test can point all of them at
+    /// one in-process fake.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ClientError::Connect`] when the key is unusable, the token
+    /// exchange fails, or an endpoint cannot be reached.
+    pub fn connect_at_with_storage(
+        endpoint: &str,
+        iam_endpoint: &str,
+        storage_endpoint: &str,
+        key: &ServiceAccountKey,
+    ) -> Result<Self, ClientError> {
         let runtime =
             tokio::runtime::Runtime::new().map_err(|e| ClientError::Connect(e.to_string()))?;
         let carried = Arc::new(RwLock::new(
@@ -145,9 +171,21 @@ impl Client {
         let channel = runtime
             .block_on(endpoint.connect())
             .map_err(|e| ClientError::Connect(e.to_string()))?;
+        let storage = runtime
+            .block_on(
+                Endpoint::from_shared(storage_endpoint.to_owned())
+                    .map_err(|e| ClientError::Connect(e.to_string()))?
+                    .connect_timeout(CONNECT_TIMEOUT)
+                    .timeout(CALL_TIMEOUT)
+                    .tls_config(tonic::transport::ClientTlsConfig::new().with_native_roots())
+                    .map_err(|e| ClientError::Connect(e.to_string()))?
+                    .connect(),
+            )
+            .map_err(|e| ClientError::Connect(e.to_string()))?;
         Ok(Self {
             runtime,
             channel,
+            storage,
             iam_endpoint: Arc::from(iam_endpoint),
             carried,
         })
@@ -248,6 +286,14 @@ impl Client {
     {
         OperationServiceClient::with_interceptor(self.channel.clone(), self.bearer())
     }
+
+    /// The bucket service, with the token injected: Object Storage's own
+    /// host, reached through the channel made for it (ADR-072).
+    pub fn buckets(
+        &self,
+    ) -> BucketServiceClient<tonic::service::interceptor::InterceptedService<Channel, Bearer>> {
+        BucketServiceClient::with_interceptor(self.storage.clone(), self.bearer())
+    }
 }
 
 /// One JWT, one exchange: the key signs once and is forgotten, and what is
@@ -281,9 +327,12 @@ mod tests {
         let runtime = tokio::runtime::Runtime::new().expect("a runtime");
         let channel =
             runtime.block_on(async { Endpoint::from_static("http://[::1]:1").connect_lazy() });
+        let storage =
+            runtime.block_on(async { Endpoint::from_static("http://[::1]:1").connect_lazy() });
         Client {
             runtime,
             channel,
+            storage,
             iam_endpoint: Arc::from("http://[::1]:1"),
             carried: Arc::new(RwLock::new((
                 Arc::from("abc"),

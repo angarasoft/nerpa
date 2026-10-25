@@ -30,6 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "proto/yandex/cloud/vpc/v1/network_service.proto",
             "proto/yandex/cloud/vpc/v1/subnet_service.proto",
             "proto/yandex/cloud/vpc/v1/security_group_service.proto",
+            "proto/yandex/cloud/storage/v1/bucket_service.proto",
             "proto/yandex/cloud/iam/v1/iam_token_service.proto",
         ],
         &[

@@ -30,6 +30,7 @@ use crate::yandex::cloud::compute::v1::{
 };
 use crate::yandex::cloud::operation::operation::Result as OperationResult;
 use crate::yandex::cloud::operation::{GetOperationRequest, Operation};
+use crate::yandex::cloud::storage::v1::{DeleteBucketRequest, ListBucketsRequest};
 use crate::yandex::cloud::vpc::v1::{
     DeleteNetworkRequest, DeleteSecurityGroupRequest, DeleteSubnetRequest, ListNetworksRequest,
     ListSecurityGroupsRequest, ListSubnetsRequest,
@@ -91,6 +92,11 @@ pub mod yandex {
         }
         pub mod reference {
             include!(concat!(env!("OUT_DIR"), "/yandex.cloud.reference.rs"));
+        }
+        pub mod storage {
+            pub mod v1 {
+                include!(concat!(env!("OUT_DIR"), "/yandex.cloud.storage.v1.rs"));
+            }
         }
         pub mod vpc {
             pub mod v1 {
@@ -203,6 +209,31 @@ impl Yandex {
         })
     }
 
+    /// Connects to the Yandex Cloud API with the given credentials, exchanging
+    /// the key at the named IAM endpoint and reaching Object Storage at the
+    /// named storage endpoint. The endpoints are parameters rather than
+    /// constants so a test can point all of them at one in-process fake.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ClientError::Connect`] when the key is unusable, the exchange
+    /// fails, or an endpoint cannot be reached.
+    pub fn connect_at_with_storage(
+        endpoint: &str,
+        iam_endpoint: &str,
+        storage_endpoint: &str,
+        credentials: &Credentials,
+    ) -> Result<Self, ClientError> {
+        let key = credentials.service_account_key().clone();
+        let client =
+            Client::connect_at_with_storage(endpoint, iam_endpoint, storage_endpoint, &key)?;
+        Ok(Self {
+            name: Self::name(),
+            client: Some(client),
+            key: Some(key),
+        })
+    }
+
     /// The name this provider answers to, made once and shared.
     #[must_use]
     #[allow(
@@ -247,6 +278,8 @@ impl Yandex {
             .immutable(name.clone(), kind("subnet"), "network_id")
             .immutable(name.clone(), kind("subnet"), "v4_cidr_blocks")
             .identity(name.clone(), kind("subnet"), "name", "name")
+            // A bucket is a name and a folder.
+            .identity(name.clone(), kind("bucket"), "name", "name")
             // A security group belongs to one network.
             .immutable(name.clone(), kind("security_group"), "network_id")
             .identity(name, kind("security_group"), "name", "name")
@@ -354,6 +387,7 @@ impl Yandex {
             "network" => self.read_networks(client, at, folder_id, readings),
             "subnet" => self.read_subnets(client, at, folder_id, readings),
             "security_group" => self.read_groups(client, at, folder_id, readings),
+            "bucket" => self.read_buckets(client, at, folder_id, readings),
             _ => Err(ProviderError::UnknownKind {
                 provider: self.name.clone(),
                 address: at.clone(),
@@ -532,6 +566,33 @@ impl Yandex {
         .collect())
     }
 
+    fn read_buckets(
+        &self,
+        client: &Client,
+        at: &Address,
+        folder_id: &str,
+        readings: &[&Reading],
+    ) -> Result<Vec<(Address, Attributes)>, ProviderError> {
+        let listed = self.api(at, move || {
+            let folder_id = folder_id.to_owned();
+            async move {
+                client
+                    .buckets()
+                    .list(ListBucketsRequest {
+                        folder_id,
+                        ..Default::default()
+                    })
+                    .await
+            }
+        })?;
+        Ok(
+            found_by_name(readings, &listed.buckets, |bucket| bucket.name.as_str())?
+                .into_iter()
+                .map(|(address, bucket)| (address.clone(), resources::bucket_attributes(bucket)))
+                .collect(),
+        )
+    }
+
     /// Reads one resource by its identity, or nothing where the world holds
     /// no such thing. A create's existence check, an update's current state,
     /// and a conclude's read-back all run through here.
@@ -605,6 +666,13 @@ impl Yandex {
                 self.api(change.address, move || {
                     let request = request.clone();
                     async move { client.security_groups().create(request).await }
+                })?
+            }
+            "bucket" => {
+                let request = resources::create_bucket(change.desired, change.address)?;
+                self.api(change.address, move || {
+                    let request = request.clone();
+                    async move { client.buckets().create(request).await }
                 })?
             }
             _ => {
@@ -845,6 +913,16 @@ impl Yandex {
                 self.api_status(move || {
                     let request = request.clone();
                     async move { client.security_groups().delete(request).await }
+                })
+            }
+            "bucket" => {
+                // A bucket's id is its name; the delete names it.
+                let request = DeleteBucketRequest {
+                    name: id.to_owned(),
+                };
+                self.api_status(move || {
+                    let request = request.clone();
+                    async move { client.buckets().delete(request).await }
                 })
             }
             _ => Err(tonic::Status::internal("the provider owns no such kind")),

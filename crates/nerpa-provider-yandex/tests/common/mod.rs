@@ -79,6 +79,17 @@ use nerpa_provider_yandex::yandex::cloud::operation::operation_service_server::{
 use nerpa_provider_yandex::yandex::cloud::operation::{
     CancelOperationRequest, GetOperationRequest, Operation,
 };
+use nerpa_provider_yandex::yandex::cloud::storage::v1::bucket_service_server::{
+    BucketService, BucketServiceServer,
+};
+use nerpa_provider_yandex::yandex::cloud::storage::v1::{
+    Bucket, BucketStats, CreateBucketInventoryConfigurationRequest, CreateBucketRequest,
+    DeleteBucketHttpsConfigRequest, DeleteBucketInventoryConfigurationRequest, DeleteBucketRequest,
+    GetBucketHttpsConfigRequest, GetBucketInventoryConfigurationRequest, GetBucketRequest,
+    GetBucketStatsRequest, HttpsConfig, InventoryConfiguration,
+    ListBucketInventoryConfigurationsRequest, ListBucketInventoryConfigurationsResponse,
+    ListBucketsRequest, ListBucketsResponse, SetBucketHttpsConfigRequest, UpdateBucketRequest,
+};
 use nerpa_provider_yandex::yandex::cloud::vpc::v1::network_service_server::{
     NetworkService, NetworkServiceServer,
 };
@@ -229,6 +240,7 @@ struct State {
     networks: BTreeMap<String, Network>,
     subnets: BTreeMap<String, Subnet>,
     groups: BTreeMap<String, SecurityGroup>,
+    buckets: BTreeMap<String, Bucket>,
     operations: BTreeMap<String, Operation>,
     polls: BTreeMap<String, u32>,
     ledger: Vec<String>,
@@ -237,6 +249,7 @@ struct State {
     networks_next: u64,
     subnets_next: u64,
     groups_next: u64,
+    buckets_next: u64,
     operations_next: u64,
 }
 
@@ -288,6 +301,7 @@ impl FakeYandex {
                     .add_service(SubnetServiceServer::new(server.clone()))
                     .add_service(SecurityGroupServiceServer::new(server.clone()))
                     .add_service(OperationServiceServer::new(server.clone()))
+                    .add_service(BucketServiceServer::new(server.clone()))
                     .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
                     .await
                     .expect("served");
@@ -1060,10 +1074,95 @@ impl OperationService for FakeYandex {
     unserved!(cancel(CancelOperationRequest) -> Operation;);
 }
 
+/// The Object Storage bucket service, as the live one behaves: a bucket is
+/// unique by name across the whole platform, so a create answers
+/// `already_exists` for any name a folder has seen before, whatever folder
+/// it was made in.
+#[tonic::async_trait]
+impl BucketService for FakeYandex {
+    async fn list(
+        &self,
+        request: Request<ListBucketsRequest>,
+    ) -> Result<Response<ListBucketsResponse>, Status> {
+        authorized(&request)?;
+        let folder_id = request.into_inner().folder_id;
+        let state = self.state.lock().expect("the fake's state");
+        let buckets: Vec<Bucket> = state
+            .buckets
+            .values()
+            .filter(|bucket| bucket.folder_id == folder_id)
+            .cloned()
+            .collect();
+        Ok(Response::new(ListBucketsResponse {
+            buckets,
+            ..Default::default()
+        }))
+    }
+
+    async fn create(
+        &self,
+        request: Request<CreateBucketRequest>,
+    ) -> Result<Response<Operation>, Status> {
+        authorized(&request)?;
+        let request = request.into_inner();
+        let mut state = self.state.lock().expect("the fake's state");
+        // The name is the id: Object Storage makes them one and the same,
+        // and a taken name is refused wherever the caller is.
+        if state.buckets.contains_key(&request.name) {
+            return Err(Status::already_exists(format!(
+                "a bucket named {} already exists",
+                request.name
+            )));
+        }
+        state.buckets.insert(
+            request.name.clone(),
+            Bucket {
+                id: request.name.clone(),
+                name: request.name.clone(),
+                folder_id: request.folder_id,
+                ..Default::default()
+            },
+        );
+        let operation = state.begin_operation(format!("create-bucket {}", request.name));
+        Ok(Response::new(operation))
+    }
+
+    async fn delete(
+        &self,
+        request: Request<DeleteBucketRequest>,
+    ) -> Result<Response<Operation>, Status> {
+        authorized(&request)?;
+        let name = request.into_inner().name;
+        let mut state = self.state.lock().expect("the fake's state");
+        if state.buckets.remove(&name).is_none() {
+            return Err(Status::not_found("no such bucket"));
+        }
+        let operation = state.begin_operation(format!("delete-bucket {name}"));
+        Ok(Response::new(operation))
+    }
+
+    unserved!(
+        get(GetBucketRequest) -> Bucket;
+        update(UpdateBucketRequest) -> Operation;
+        get_stats(GetBucketStatsRequest) -> BucketStats;
+        get_https_config(GetBucketHttpsConfigRequest) -> HttpsConfig;
+        set_https_config(SetBucketHttpsConfigRequest) -> Operation;
+        delete_https_config(DeleteBucketHttpsConfigRequest) -> Operation;
+        set_access_bindings(SetAccessBindingsRequest) -> Operation;
+        update_access_bindings(UpdateAccessBindingsRequest) -> Operation;
+        list_access_bindings(ListAccessBindingsRequest) -> ListAccessBindingsResponse;
+        create_inventory_configuration(CreateBucketInventoryConfigurationRequest) -> Operation;
+        get_inventory_configuration(GetBucketInventoryConfigurationRequest)
+            -> InventoryConfiguration;
+        delete_inventory_configuration(DeleteBucketInventoryConfigurationRequest) -> Operation;
+        list_inventory_configurations(ListBucketInventoryConfigurationsRequest)
+            -> ListBucketInventoryConfigurationsResponse;
+    );
+}
+
 /// The recorded-exchange machinery: the tunnel that takes a recording from
 /// the live API and the replay that answers from it.
 pub(crate) mod recorded;
-
 /// The knobs a scenario turns; everything else is the declared set the
 /// scenarios share.
 #[derive(Clone, Copy)]
@@ -1179,6 +1278,21 @@ pub(crate) fn declared_recordable(folder: &str, set: Declared) -> Graph {
     graph
 }
 
+/// The declared set a bucket scenario covers: one bucket, by the name the
+/// scenario gives it. The name is the id and must be unique across the
+/// whole platform, so a recording picks its own.
+pub(crate) fn declared_bucket(folder: &str, name: &str) -> Graph {
+    let mut graph = Graph::new();
+    graph
+        .insert(
+            Resource::new(address("yandex:bucket.data"))
+                .with("folder_id", folder)
+                .with("name", name),
+        )
+        .expect("inserted");
+    graph
+}
+
 /// The digest key and the remembered-secrets store every converge run
 /// shares.
 static DIGEST_KEY: Key = Key::from_bytes([9; 32]);
@@ -1229,10 +1343,12 @@ pub(crate) fn converge(
     planned
 }
 
-/// The provider connected to the endpoint, which serves both the API and the
-/// IAM exchange.
+/// The provider connected to the endpoint, which serves the API, the IAM
+/// exchange, and Object Storage alike.
 pub(crate) fn providers(endpoint: &SocketAddr) -> Providers {
     let endpoint = format!("http://{endpoint}");
-    let provider = Yandex::connect_at(&endpoint, &endpoint, &a_credentials()).expect("connected");
+    let provider =
+        Yandex::connect_at_with_storage(&endpoint, &endpoint, &endpoint, &a_credentials())
+            .expect("connected");
     Providers::new().with(Box::new(provider))
 }

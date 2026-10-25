@@ -67,6 +67,17 @@ use nerpa_provider_yandex::yandex::cloud::operation::operation_service_server::{
 use nerpa_provider_yandex::yandex::cloud::operation::{
     CancelOperationRequest, GetOperationRequest, Operation,
 };
+use nerpa_provider_yandex::yandex::cloud::storage::v1::bucket_service_server::{
+    BucketService, BucketServiceServer,
+};
+use nerpa_provider_yandex::yandex::cloud::storage::v1::{
+    Bucket, BucketStats, CreateBucketInventoryConfigurationRequest, CreateBucketRequest,
+    DeleteBucketHttpsConfigRequest, DeleteBucketInventoryConfigurationRequest, DeleteBucketRequest,
+    GetBucketHttpsConfigRequest, GetBucketInventoryConfigurationRequest, GetBucketRequest,
+    GetBucketStatsRequest, HttpsConfig, InventoryConfiguration,
+    ListBucketInventoryConfigurationsRequest, ListBucketInventoryConfigurationsResponse,
+    ListBucketsRequest, ListBucketsResponse, SetBucketHttpsConfigRequest, UpdateBucketRequest,
+};
 use nerpa_provider_yandex::yandex::cloud::vpc::v1::network_service_server::{
     NetworkService, NetworkServiceServer,
 };
@@ -224,6 +235,7 @@ impl Replay {
                     .add_service(SubnetServiceServer::new(server.clone()))
                     .add_service(SecurityGroupServiceServer::new(server.clone()))
                     .add_service(OperationServiceServer::new(server.clone()))
+                    .add_service(BucketServiceServer::new(server.clone()))
                     .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
                     .await
                     .expect("served");
@@ -391,6 +403,30 @@ impl OperationService for Replay {
     );
 }
 
+#[tonic::async_trait]
+impl BucketService for Replay {
+    replayed!("BucketService":
+        get(GetBucketRequest) -> Bucket;
+        list(ListBucketsRequest) -> ListBucketsResponse;
+        create(CreateBucketRequest) -> Operation;
+        update(UpdateBucketRequest) -> Operation;
+        delete(DeleteBucketRequest) -> Operation;
+        get_stats(GetBucketStatsRequest) -> BucketStats;
+        get_https_config(GetBucketHttpsConfigRequest) -> HttpsConfig;
+        set_https_config(SetBucketHttpsConfigRequest) -> Operation;
+        delete_https_config(DeleteBucketHttpsConfigRequest) -> Operation;
+        set_access_bindings(SetAccessBindingsRequest) -> Operation;
+        update_access_bindings(UpdateAccessBindingsRequest) -> Operation;
+        list_access_bindings(ListAccessBindingsRequest) -> ListAccessBindingsResponse;
+        create_inventory_configuration(CreateBucketInventoryConfigurationRequest) -> Operation;
+        get_inventory_configuration(GetBucketInventoryConfigurationRequest)
+            -> InventoryConfiguration;
+        delete_inventory_configuration(DeleteBucketInventoryConfigurationRequest) -> Operation;
+        list_inventory_configurations(ListBucketInventoryConfigurationsRequest)
+            -> ListBucketInventoryConfigurationsResponse;
+    );
+}
+
 /// The live cloud serves its services on separate hosts: compute, vpc and
 /// operation each answer on their own endpoint. The tunnel fans calls out per
 /// service, which is the mapping a live client itself needs.
@@ -444,6 +480,7 @@ impl Recorder {
                     .add_service(SubnetServiceServer::new(server.clone()))
                     .add_service(SecurityGroupServiceServer::new(server.clone()))
                     .add_service(OperationServiceServer::new(server.clone()))
+                    .add_service(BucketServiceServer::new(server.clone()))
                     .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
                     .await
                     .expect("served");
@@ -893,4 +930,70 @@ impl OperationService for Recorder {
     }
 
     super::unserved!(cancel(CancelOperationRequest) -> Operation;);
+}
+
+/// The bucket service forwards through the compute client: the storage
+/// channel the bucket client speaks on is made by every client the same
+/// way, so any of them reaches Object Storage's host (ADR-072).
+#[tonic::async_trait]
+impl BucketService for Recorder {
+    async fn list(
+        &self,
+        request: Request<ListBucketsRequest>,
+    ) -> Result<Response<ListBucketsResponse>, Status> {
+        let body = encode(request.get_ref());
+        let request = request.into_inner();
+        self.forward(
+            "BucketService/list",
+            &body,
+            self.compute.buckets().list(request),
+        )
+        .await
+    }
+
+    async fn create(
+        &self,
+        request: Request<CreateBucketRequest>,
+    ) -> Result<Response<Operation>, Status> {
+        let body = encode(request.get_ref());
+        let request = request.into_inner();
+        self.forward(
+            "BucketService/create",
+            &body,
+            self.compute.buckets().create(request),
+        )
+        .await
+    }
+
+    async fn delete(
+        &self,
+        request: Request<DeleteBucketRequest>,
+    ) -> Result<Response<Operation>, Status> {
+        let body = encode(request.get_ref());
+        let request = request.into_inner();
+        self.forward(
+            "BucketService/delete",
+            &body,
+            self.compute.buckets().delete(request),
+        )
+        .await
+    }
+
+    super::unserved!(
+        get(GetBucketRequest) -> Bucket;
+        update(UpdateBucketRequest) -> Operation;
+        get_stats(GetBucketStatsRequest) -> BucketStats;
+        get_https_config(GetBucketHttpsConfigRequest) -> HttpsConfig;
+        set_https_config(SetBucketHttpsConfigRequest) -> Operation;
+        delete_https_config(DeleteBucketHttpsConfigRequest) -> Operation;
+        set_access_bindings(SetAccessBindingsRequest) -> Operation;
+        update_access_bindings(UpdateAccessBindingsRequest) -> Operation;
+        list_access_bindings(ListAccessBindingsRequest) -> ListAccessBindingsResponse;
+        create_inventory_configuration(CreateBucketInventoryConfigurationRequest) -> Operation;
+        get_inventory_configuration(GetBucketInventoryConfigurationRequest)
+            -> InventoryConfiguration;
+        delete_inventory_configuration(DeleteBucketInventoryConfigurationRequest) -> Operation;
+        list_inventory_configurations(ListBucketInventoryConfigurationsRequest)
+            -> ListBucketInventoryConfigurationsResponse;
+    );
 }
