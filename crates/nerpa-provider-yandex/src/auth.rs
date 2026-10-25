@@ -20,7 +20,7 @@ use crate::yandex::cloud::iam::v1::create_iam_token_request::Identity;
 use crate::yandex::cloud::iam::v1::iam_token_service_client::IamTokenServiceClient;
 
 /// The IAM service the JWT is exchanged at, over gRPC.
-const IAM_ENDPOINT: &str = "https://iam.api.cloud.yandex.net";
+pub(crate) const IAM_ENDPOINT: &str = "https://iam.api.cloud.yandex.net";
 
 /// The `aud` claim: the URL the IAM documentation says the token is requested
 /// at. Carried verbatim, as the endpoint expects it.
@@ -198,14 +198,16 @@ pub fn now_seconds() -> Result<u64, AuthError> {
 ///
 /// The exchange runs over the IAM gRPC service — the same transport the
 /// client reads resources through — speaking TLS as the `https` endpoint
-/// requires, and bounded by a one-minute timeout.
+/// requires, and bounded by a one-minute timeout. The endpoint is a
+/// parameter rather than a constant so a test can point the exchange at a
+/// fake IAM service.
 ///
 /// # Errors
 ///
 /// Returns [`AuthError::Exchange`] when the endpoint refuses the JWT, is
 /// unreachable, or the answer is not a token.
-pub async fn token_for(jwt: &str) -> Result<IamToken, AuthError> {
-    let channel = Endpoint::from_shared(IAM_ENDPOINT.to_owned())
+pub async fn token_for(jwt: &str, endpoint: &str) -> Result<IamToken, AuthError> {
+    let channel = Endpoint::from_shared(endpoint.to_owned())
         .map_err(|e| AuthError::Exchange(e.to_string()))?
         .connect_timeout(IAM_TIMEOUT)
         .timeout(IAM_TIMEOUT)

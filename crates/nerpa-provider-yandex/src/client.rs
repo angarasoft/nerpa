@@ -12,6 +12,7 @@ use tonic::transport::{Channel, Endpoint};
 use crate::auth::{self, ServiceAccountKey};
 use crate::yandex::cloud::compute::v1::disk_service_client::DiskServiceClient;
 use crate::yandex::cloud::compute::v1::instance_service_client::InstanceServiceClient;
+use crate::yandex::cloud::operation::operation_service_client::OperationServiceClient;
 use crate::yandex::cloud::vpc::v1::network_service_client::NetworkServiceClient;
 use crate::yandex::cloud::vpc::v1::security_group_service_client::SecurityGroupServiceClient;
 use crate::yandex::cloud::vpc::v1::subnet_service_client::SubnetServiceClient;
@@ -83,6 +84,9 @@ pub enum ClientError {
 pub struct Client {
     runtime: tokio::runtime::Runtime,
     channel: Channel,
+    /// Where a refreshed token is exchanged: the same service the first one
+    /// came from, so a refresh never moves the credential somewhere else.
+    iam_endpoint: Arc<str>,
     carried: Carried,
 }
 
@@ -95,8 +99,9 @@ impl std::fmt::Debug for Client {
 }
 
 impl Client {
-    /// Signs one JWT, exchanges it for a short-lived IAM token, and connects
-    /// to the endpoint the token will be carried to.
+    /// Signs one JWT, exchanges it for a short-lived IAM token at the
+    /// default IAM endpoint, and connects to the endpoint the token will be
+    /// carried to.
     ///
     /// The channel speaks TLS — an `https` endpoint dialled plain would be
     /// refused — and both the connect and each call are bounded, so a silent
@@ -107,11 +112,28 @@ impl Client {
     /// Returns [`ClientError::Connect`] when the key is unusable, the token
     /// exchange fails, or the endpoint cannot be reached.
     pub fn connect(endpoint: &str, key: &ServiceAccountKey) -> Result<Self, ClientError> {
+        Self::connect_at(endpoint, auth::IAM_ENDPOINT, key)
+    }
+
+    /// Signs one JWT, exchanges it for a short-lived IAM token at the named
+    /// IAM endpoint, and connects to the endpoint the token will be carried
+    /// to. The IAM endpoint is a parameter rather than a constant so a test
+    /// can point both at one in-process fake.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ClientError::Connect`] when the key is unusable, the token
+    /// exchange fails, or the endpoint cannot be reached.
+    pub fn connect_at(
+        endpoint: &str,
+        iam_endpoint: &str,
+        key: &ServiceAccountKey,
+    ) -> Result<Self, ClientError> {
         let runtime =
             tokio::runtime::Runtime::new().map_err(|e| ClientError::Connect(e.to_string()))?;
         let carried = Arc::new(RwLock::new(
             runtime
-                .block_on(exchange(key))
+                .block_on(exchange(key, iam_endpoint))
                 .map_err(|e| ClientError::Connect(e.to_string()))?,
         ));
         let endpoint = Endpoint::from_shared(endpoint.to_owned())
@@ -124,6 +146,7 @@ impl Client {
         Ok(Self {
             runtime,
             channel,
+            iam_endpoint: Arc::from(iam_endpoint),
             carried,
         })
     }
@@ -140,10 +163,6 @@ impl Client {
     ///
     /// Returns [`ClientError::Expired`] once the carried token is past its
     /// expiry, which is the point of carrying one (070).
-    #[allow(
-        dead_code,
-        reason = "the provider's read and prepare use it; they arrive in w-yc-provider"
-    )]
     pub(crate) fn call<F: Future>(&self, future: F) -> Result<F::Output, ClientError> {
         let (_, expires_at) = *self
             .carried
@@ -165,7 +184,7 @@ impl Client {
     pub fn refresh(&self, key: &ServiceAccountKey) -> Result<(), ClientError> {
         let token = self
             .runtime
-            .block_on(exchange(key))
+            .block_on(exchange(key, &self.iam_endpoint))
             .map_err(|e| ClientError::Connect(e.to_string()))?;
         let mut carried = self
             .carried
@@ -218,13 +237,25 @@ impl Client {
     {
         SecurityGroupServiceClient::with_interceptor(self.channel.clone(), self.bearer())
     }
+
+    /// The operation service, with the token injected: the endpoint the
+    /// provider polls while a create, update or delete completes.
+    pub fn operations(
+        &self,
+    ) -> OperationServiceClient<tonic::service::interceptor::InterceptedService<Channel, Bearer>>
+    {
+        OperationServiceClient::with_interceptor(self.channel.clone(), self.bearer())
+    }
 }
 
 /// One JWT, one exchange: the key signs once and is forgotten, and what is
 /// carried afterwards is the short-lived token (070).
-async fn exchange(key: &ServiceAccountKey) -> Result<(Arc<str>, SystemTime), auth::AuthError> {
+async fn exchange(
+    key: &ServiceAccountKey,
+    iam_endpoint: &str,
+) -> Result<(Arc<str>, SystemTime), auth::AuthError> {
     let jwt = auth::signed_jwt(key, auth::now_seconds()?, TOKEN_TTL)?;
-    let token = auth::token_for(&jwt).await?;
+    let token = auth::token_for(&jwt, iam_endpoint).await?;
     Ok((Arc::from(token.token()), token.expires_at()))
 }
 
@@ -251,6 +282,7 @@ mod tests {
         Client {
             runtime,
             channel,
+            iam_endpoint: Arc::from("http://[::1]:1"),
             carried: Arc::new(RwLock::new((
                 Arc::from("abc"),
                 SystemTime::now() - Duration::from_secs(1),

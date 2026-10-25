@@ -30,5 +30,9 @@ tonic-prost = "0.14"
 protoc-bin-vendored = "3"
 tonic-prost-build = "0.14"
 
+[dev-dependencies]
+# The fake cloud's server takes incoming connections from a listener stream.
+tokio-stream = "0.1"
+
 [lints]
 workspace = true

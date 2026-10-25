@@ -934,6 +934,10 @@ without ceremony until the first stage is complete.
 
 ### Changed
 
+- A yandex instance's subnet is immutable now: the schema says Replace, so
+  changing the subnet a declared instance points at replaces the instance
+  rather than pretending the interface could move.
+
 - A plan's attribute delta carries a change kind — in place, after a stop, or
   by replacement — instead of a bare replacement marker, and a declared shrink
   of a monotonic attribute is refused while planning. The corpus moves with
