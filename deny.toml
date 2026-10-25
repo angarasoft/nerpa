@@ -26,9 +26,6 @@ allow = [
   # its REPL. Not feature-gated upstream, so the only alternatives were allowing
   # it or not using Starlark.
   "BSL-1.0",
-  # Root certificates are data, not code; webpki-roots carries them under the
-  # Community Data License Agreement, which exists for exactly that.
-  "CDLA-Permissive-2.0",
 ]
 
 [bans]

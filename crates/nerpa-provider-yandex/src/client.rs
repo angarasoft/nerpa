@@ -139,7 +139,9 @@ impl Client {
         let endpoint = Endpoint::from_shared(endpoint.to_owned())
             .map_err(|e| ClientError::Connect(e.to_string()))?
             .connect_timeout(CONNECT_TIMEOUT)
-            .timeout(CALL_TIMEOUT);
+            .timeout(CALL_TIMEOUT)
+            .tls_config(tonic::transport::ClientTlsConfig::new().with_native_roots())
+            .map_err(|e| ClientError::Connect(e.to_string()))?;
         let channel = runtime
             .block_on(endpoint.connect())
             .map_err(|e| ClientError::Connect(e.to_string()))?;

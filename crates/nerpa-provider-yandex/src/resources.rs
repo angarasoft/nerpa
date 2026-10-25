@@ -22,6 +22,9 @@ use crate::yandex::cloud::vpc::v1::{
 };
 use prost_types::FieldMask;
 
+/// A gibibyte, the unit sizes are given in.
+const GIB: i64 = 1_073_741_824;
+
 /// A text attribute, wherever a declared attribute of that shape is read.
 pub(crate) fn text(attributes: &Attributes, name: &str) -> Option<String> {
     match attributes.get(name)? {
@@ -167,6 +170,10 @@ pub(crate) fn instance_attributes(instance: &Instance, boot_disk: &Disk) -> Attr
     if let Some(resources) = &instance.resources {
         attributes.insert("cores".to_owned(), Value::Integer(resources.cores));
         attributes.insert("memory".to_owned(), Value::Integer(resources.memory));
+        attributes.insert(
+            "core_fraction".to_owned(),
+            Value::Integer(resources.core_fraction),
+        );
     }
     if let Some(disk::Source::SourceImageId(image_id)) = &boot_disk.source {
         attributes.insert("boot_disk".to_owned(), Value::Text(image_id.clone()));
@@ -251,7 +258,13 @@ pub(crate) fn create_instance(
     address: &Address,
 ) -> Result<CreateInstanceRequest, ProviderError> {
     let boot_disk = required_text(desired, "boot_disk", address)?;
-    let subnet = required_text(desired, "subnet", address)?;
+    // A subnet is optional: an instance can be declared without a network,
+    // which is also what a recording takes when the cloud's vpc quota is
+    // spent.
+    let subnet = text(desired, "subnet");
+    // Fractional cores exist on some platforms; a declaration names the
+    // fraction, and full cores are the default.
+    let core_fraction = integer(desired, "core_fraction").unwrap_or(100);
     let metadata = text(desired, "user_data").map_or_else(HashMap::new, |user_data| {
         HashMap::from([("user-data".to_owned(), user_data)])
     });
@@ -263,7 +276,7 @@ pub(crate) fn create_instance(
         resources_spec: Some(ResourcesSpec {
             memory: required_integer(desired, "memory", address)?,
             cores: required_integer(desired, "cores", address)?,
-            core_fraction: 100,
+            core_fraction,
             gpus: 0,
         }),
         boot_disk_spec: Some(AttachedDiskSpec {
@@ -271,8 +284,10 @@ pub(crate) fn create_instance(
             auto_delete: true,
             disk: Some(attached_disk_spec::Disk::DiskSpec(
                 attached_disk_spec::DiskSpec {
-                    // Zero means the image's own size and the default type.
-                    size: 0,
+                    // A size must be on the wire: the live API refuses a
+                    // missing field, and prost omits a zero. Ten gibibytes
+                    // is the image's own minimum.
+                    size: 10 * GIB,
                     source: Some(attached_disk_spec::disk_spec::Source::ImageId(boot_disk)),
                     ..Default::default()
                 },
@@ -280,10 +295,13 @@ pub(crate) fn create_instance(
             ..Default::default()
         }),
         metadata,
-        network_interface_specs: vec![NetworkInterfaceSpec {
-            subnet_id: subnet,
-            ..Default::default()
-        }],
+        network_interface_specs: subnet
+            .into_iter()
+            .map(|subnet_id| NetworkInterfaceSpec {
+                subnet_id,
+                ..Default::default()
+            })
+            .collect(),
         ..Default::default()
     })
 }
@@ -303,7 +321,7 @@ pub(crate) fn update_instance(
         resources_spec: Some(ResourcesSpec {
             memory: required_integer(desired, "memory", address)?,
             cores: required_integer(desired, "cores", address)?,
-            core_fraction: 100,
+            core_fraction: integer(desired, "core_fraction").unwrap_or(100),
             gpus: 0,
         }),
         ..Default::default()

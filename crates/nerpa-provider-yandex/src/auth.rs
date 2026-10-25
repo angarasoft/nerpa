@@ -171,10 +171,16 @@ pub fn signed_jwt(key: &ServiceAccountKey, now: u64, ttl: u64) -> Result<String,
 }
 
 /// The DER the PEM spells: everything between the armor lines, decoded.
+///
+/// A key file written by `yc iam key create` carries a marker line before the
+/// armor — «PLEASE DO NOT REMOVE THIS LINE!» — which is not part of the key;
+/// it is skipped like the armor itself.
 fn pem_to_der(pem: &str) -> Result<Vec<u8>, String> {
     let body: String = pem
         .lines()
-        .filter(|line| !line.starts_with("-----"))
+        .filter(|line| {
+            !line.starts_with("-----") && !line.starts_with("PLEASE DO NOT REMOVE THIS LINE!")
+        })
         .collect();
     STANDARD
         .decode(body.trim())
@@ -208,19 +214,21 @@ pub fn now_seconds() -> Result<u64, AuthError> {
 /// unreachable, or the answer is not a token.
 pub async fn token_for(jwt: &str, endpoint: &str) -> Result<IamToken, AuthError> {
     let channel = Endpoint::from_shared(endpoint.to_owned())
-        .map_err(|e| AuthError::Exchange(e.to_string()))?
+        .map_err(|e| AuthError::Exchange(format!("{e:?}")))?
         .connect_timeout(IAM_TIMEOUT)
         .timeout(IAM_TIMEOUT)
+        .tls_config(tonic::transport::ClientTlsConfig::new().with_native_roots())
+        .map_err(|e| AuthError::Exchange(format!("{e:?}")))?
         .connect()
         .await
-        .map_err(|e| AuthError::Exchange(e.to_string()))?;
+        .map_err(|e| AuthError::Exchange(format!("{e:?}")))?;
     let mut client = IamTokenServiceClient::new(channel);
     let response = client
         .create(CreateIamTokenRequest {
             identity: Some(Identity::Jwt(jwt.to_owned())),
         })
         .await
-        .map_err(|e| AuthError::Exchange(e.to_string()))?
+        .map_err(|e| AuthError::Exchange(format!("{e:?}")))?
         .into_inner();
     let expires_at = SystemTime::try_from(response.expires_at.ok_or_else(|| {
         AuthError::Exchange("the token service answered without an expiry".to_owned())
@@ -322,5 +330,32 @@ NFOvnrJCq7mtBmQIvPZixQ==
             !token_debug.contains("t1.token-text"),
             "the token is redacted: {token_debug}"
         );
+    }
+
+    #[test]
+    fn a_yandex_key_with_its_marker_line_is_readable() {
+        // `yc iam key create` writes the private key with a marker line
+        // before the armor; a real key must read, marker and all.
+        let key = ServiceAccountKey {
+            id: "ajekey".to_owned(),
+            service_account_id: "ajeservice".to_owned(),
+            private_key: format!(
+                "PLEASE DO NOT REMOVE THIS LINE! Yandex.Cloud SA Key ID <ajekey>\n{KEY_PEM}"
+            ),
+        };
+        let jwt = signed_jwt(&key, 1_700_000_000, 3_600).expect("signed");
+
+        let mut parts = jwt.split('.');
+        let header = parts.next().expect("a header");
+        let claims = parts.next().expect("claims");
+        let signature = parts.next().expect("a signature");
+        let signing_input = format!("{header}.{claims}");
+        let signature = URL_SAFE_NO_PAD.decode(signature).expect("base64");
+        UnparsedPublicKey::new(
+            &RSA_PSS_2048_8192_SHA256,
+            include_bytes!("rsa_public_key_test.der"),
+        )
+        .verify(signing_input.as_bytes(), &signature)
+        .expect("the signature holds");
     }
 }

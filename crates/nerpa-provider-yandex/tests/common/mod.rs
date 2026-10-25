@@ -26,6 +26,15 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use nerpa_core::address::address;
+use nerpa_core::attribute::Reference;
+use nerpa_core::provider::{Machines, Providers};
+use nerpa_core::run;
+use nerpa_core::schema::Schema;
+use nerpa_core::secret::{Key, Remembered, Secrets};
+use nerpa_core::state::State as EngineState;
+use nerpa_core::{Actor, Graph, Observed, Plan, Resource, Value};
+use nerpa_provider_yandex::Yandex;
 use nerpa_provider_yandex::auth::ServiceAccountKey;
 use nerpa_provider_yandex::credentials::Credentials;
 use nerpa_provider_yandex::yandex::cloud::access::{
@@ -100,7 +109,17 @@ use ring::signature::{RSA_PSS_2048_8192_SHA256, UnparsedPublicKey};
 use tonic::{Request, Response, Status};
 
 /// A gibibyte, the unit a declaration's sizes are given in.
-const GIB: i64 = 1_073_741_824;
+pub(crate) const GIB: i64 = 1_073_741_824;
+
+/// The default zone the scenarios declare their resources in: `d`, the zone
+/// that stays available after the datacenter attack; the cloud refuses
+/// allocation in the others.
+pub(crate) const ZONE: &str = "ru-central1-d";
+
+/// The image the scenarios make disks and boot disks from: a public Ubuntu
+/// image, by id — a disk's create refuses a family name, so the scenario
+/// names the image the way a disk can take it.
+pub(crate) const IMAGE: &str = "fd8em71f8oo1hdpali1k";
 
 /// The token the fake's IAM service hands out; every resource service checks
 /// for it as a bearer.
@@ -197,6 +216,9 @@ macro_rules! unserved {
         )*
     };
 }
+
+/// Re-exported so a sibling module can call the macro by path.
+pub(crate) use unserved;
 
 /// The fake's world: the resources it holds, the operations in flight, and
 /// what happened. One mutex guards it all, so no two answers interleave.
@@ -310,15 +332,15 @@ impl FakeYandex {
             .ledger
             .push(note.to_owned());
     }
+}
 
-    /// Refuses a request that does not carry the fake's token, exactly like
-    /// every resource service on the real cloud.
-    fn authorized<T>(request: &Request<T>) -> Result<(), Status> {
-        let bearer = format!("Bearer {TOKEN}");
-        match request.metadata().get("authorization") {
-            Some(value) if matches!(value.to_str(), Ok(value) if value == bearer) => Ok(()),
-            _ => Err(Status::unauthenticated("not the fake's token")),
-        }
+/// Refuses a request that does not carry the fake's token, exactly like
+/// every resource service on the real cloud.
+pub(crate) fn authorized<T>(request: &Request<T>) -> Result<(), Status> {
+    let bearer = format!("Bearer {TOKEN}");
+    match request.metadata().get("authorization") {
+        Some(value) if matches!(value.to_str(), Ok(value) if value == bearer) => Ok(()),
+        _ => Err(Status::unauthenticated("not the fake's token")),
     }
 }
 
@@ -351,7 +373,7 @@ impl IamTokenService for FakeYandex {
 
 /// Whether the JWT was signed by the test key with the one algorithm the real
 /// endpoint accepts.
-fn jwt_accepted(jwt: &str) -> bool {
+pub(crate) fn jwt_accepted(jwt: &str) -> bool {
     let Some((signing, signature)) = jwt.rsplit_once('.') else {
         return false;
     };
@@ -378,7 +400,7 @@ fn jwt_accepted(jwt: &str) -> bool {
 
 /// An expiry an hour away, so the provider's carried token never runs out
 /// during a test.
-fn an_hour_hence() -> Timestamp {
+pub(crate) fn an_hour_hence() -> Timestamp {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("after the epoch")
@@ -395,7 +417,7 @@ impl InstanceService for FakeYandex {
         &self,
         request: Request<GetInstanceRequest>,
     ) -> Result<Response<Instance>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let instance_id = request.into_inner().instance_id;
         let state = self.state.lock().expect("the fake's state");
         state
@@ -410,7 +432,7 @@ impl InstanceService for FakeYandex {
         &self,
         request: Request<ListInstancesRequest>,
     ) -> Result<Response<ListInstancesResponse>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let folder_id = request.into_inner().folder_id;
         let state = self.state.lock().expect("the fake's state");
         let mut instances: Vec<Instance> = state
@@ -434,7 +456,7 @@ impl InstanceService for FakeYandex {
         &self,
         request: Request<CreateInstanceRequest>,
     ) -> Result<Response<Operation>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let CreateInstanceRequest {
             folder_id,
             name,
@@ -526,7 +548,7 @@ impl InstanceService for FakeYandex {
         &self,
         request: Request<UpdateInstanceRequest>,
     ) -> Result<Response<Operation>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let request = request.into_inner();
         let instance_id = request.instance_id.clone();
         let mut state = self.state.lock().expect("the fake's state");
@@ -559,7 +581,7 @@ impl InstanceService for FakeYandex {
         &self,
         request: Request<DeleteInstanceRequest>,
     ) -> Result<Response<Operation>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let instance_id = request.into_inner().instance_id;
         let mut state = self.state.lock().expect("the fake's state");
         let Some(instance) = state.instances.remove(&instance_id) else {
@@ -577,7 +599,7 @@ impl InstanceService for FakeYandex {
         &self,
         request: Request<StopInstanceRequest>,
     ) -> Result<Response<Operation>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let instance_id = request.into_inner().instance_id;
         let mut state = self.state.lock().expect("the fake's state");
         match state.instances.get_mut(&instance_id) {
@@ -597,7 +619,7 @@ impl InstanceService for FakeYandex {
         &self,
         request: Request<StartInstanceRequest>,
     ) -> Result<Response<Operation>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let instance_id = request.into_inner().instance_id;
         let mut state = self.state.lock().expect("the fake's state");
         match state.instances.get_mut(&instance_id) {
@@ -639,7 +661,7 @@ impl InstanceService for FakeYandex {
 #[tonic::async_trait]
 impl DiskService for FakeYandex {
     async fn get(&self, request: Request<GetDiskRequest>) -> Result<Response<Disk>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let disk_id = request.into_inner().disk_id;
         let state = self.state.lock().expect("the fake's state");
         state
@@ -654,7 +676,7 @@ impl DiskService for FakeYandex {
         &self,
         request: Request<ListDisksRequest>,
     ) -> Result<Response<ListDisksResponse>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let folder_id = request.into_inner().folder_id;
         let state = self.state.lock().expect("the fake's state");
         let disks: Vec<Disk> = state
@@ -673,7 +695,7 @@ impl DiskService for FakeYandex {
         &self,
         request: Request<CreateDiskRequest>,
     ) -> Result<Response<Operation>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let CreateDiskRequest {
             folder_id,
             name,
@@ -720,7 +742,7 @@ impl DiskService for FakeYandex {
         &self,
         request: Request<UpdateDiskRequest>,
     ) -> Result<Response<Operation>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let request = request.into_inner();
         let disk_id = request.disk_id.clone();
         let mut state = self.state.lock().expect("the fake's state");
@@ -743,7 +765,7 @@ impl DiskService for FakeYandex {
         &self,
         request: Request<DeleteDiskRequest>,
     ) -> Result<Response<Operation>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let disk_id = request.into_inner().disk_id;
         let mut state = self.state.lock().expect("the fake's state");
         if state.disks.remove(&disk_id).is_none() {
@@ -770,7 +792,7 @@ impl NetworkService for FakeYandex {
         &self,
         request: Request<ListNetworksRequest>,
     ) -> Result<Response<ListNetworksResponse>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let folder_id = request.into_inner().folder_id;
         let state = self.state.lock().expect("the fake's state");
         let networks: Vec<Network> = state
@@ -789,7 +811,7 @@ impl NetworkService for FakeYandex {
         &self,
         request: Request<CreateNetworkRequest>,
     ) -> Result<Response<Operation>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let CreateNetworkRequest {
             folder_id, name, ..
         } = request.into_inner();
@@ -820,7 +842,7 @@ impl NetworkService for FakeYandex {
         &self,
         request: Request<DeleteNetworkRequest>,
     ) -> Result<Response<Operation>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let network_id = request.into_inner().network_id;
         let mut state = self.state.lock().expect("the fake's state");
         if state.networks.remove(&network_id).is_none() {
@@ -847,7 +869,7 @@ impl SubnetService for FakeYandex {
         &self,
         request: Request<ListSubnetsRequest>,
     ) -> Result<Response<ListSubnetsResponse>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let folder_id = request.into_inner().folder_id;
         let state = self.state.lock().expect("the fake's state");
         let subnets: Vec<Subnet> = state
@@ -866,7 +888,7 @@ impl SubnetService for FakeYandex {
         &self,
         request: Request<CreateSubnetRequest>,
     ) -> Result<Response<Operation>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let CreateSubnetRequest {
             folder_id,
             name,
@@ -905,7 +927,7 @@ impl SubnetService for FakeYandex {
         &self,
         request: Request<DeleteSubnetRequest>,
     ) -> Result<Response<Operation>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let subnet_id = request.into_inner().subnet_id;
         let mut state = self.state.lock().expect("the fake's state");
         if state.subnets.remove(&subnet_id).is_none() {
@@ -933,7 +955,7 @@ impl SecurityGroupService for FakeYandex {
         &self,
         request: Request<ListSecurityGroupsRequest>,
     ) -> Result<Response<ListSecurityGroupsResponse>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let folder_id = request.into_inner().folder_id;
         let state = self.state.lock().expect("the fake's state");
         let security_groups: Vec<SecurityGroup> = state
@@ -952,7 +974,7 @@ impl SecurityGroupService for FakeYandex {
         &self,
         request: Request<CreateSecurityGroupRequest>,
     ) -> Result<Response<Operation>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let CreateSecurityGroupRequest {
             folder_id,
             name,
@@ -989,7 +1011,7 @@ impl SecurityGroupService for FakeYandex {
         &self,
         request: Request<DeleteSecurityGroupRequest>,
     ) -> Result<Response<Operation>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let group_id = request.into_inner().security_group_id;
         let mut state = self.state.lock().expect("the fake's state");
         if state.groups.remove(&group_id).is_none() {
@@ -1015,7 +1037,7 @@ impl OperationService for FakeYandex {
         &self,
         request: Request<GetOperationRequest>,
     ) -> Result<Response<Operation>, Status> {
-        Self::authorized(&request)?;
+        authorized(&request)?;
         let operation_id = request.into_inner().operation_id;
         let mut state = self.state.lock().expect("the fake's state");
         let operation = state
@@ -1036,4 +1058,181 @@ impl OperationService for FakeYandex {
     }
 
     unserved!(cancel(CancelOperationRequest) -> Operation;);
+}
+
+/// The recorded-exchange machinery: the tunnel that takes a recording from
+/// the live API and the replay that answers from it.
+pub(crate) mod recorded;
+
+/// The knobs a scenario turns; everything else is the declared set the
+/// scenarios share.
+#[derive(Clone, Copy)]
+pub(crate) struct Declared {
+    pub(crate) zone: &'static str,
+    pub(crate) cores: i64,
+    pub(crate) memory: i64,
+    pub(crate) boot_disk: &'static str,
+    pub(crate) size: i64,
+}
+
+impl Default for Declared {
+    fn default() -> Self {
+        Self {
+            zone: ZONE,
+            cores: 2,
+            memory: 4 * GIB,
+            boot_disk: IMAGE,
+            size: 10 * GIB,
+        }
+    }
+}
+
+/// The declared set the scenarios share: a network, a subnet in it, a
+/// security group on it, a data disk, and an instance whose boot disk is
+/// made from an image and whose interface hangs off the subnet. The folder
+/// is a parameter so a recording's replay declares in the folder the
+/// recording was taken in.
+pub(crate) fn declared(folder: &str, set: Declared) -> Graph {
+    let mut graph = Graph::new();
+    graph
+        .insert(
+            Resource::new(address("yandex:network.main"))
+                .with("folder_id", folder)
+                .with("name", "main"),
+        )
+        .expect("inserted");
+    graph
+        .insert(
+            Resource::new(address("yandex:subnet.mgmt"))
+                .with("folder_id", folder)
+                .with("name", "mgmt")
+                .with("zone", ZONE)
+                .with(
+                    "network_id",
+                    Reference::to(address("yandex:network.main"), "id"),
+                )
+                .with(
+                    "v4_cidr_blocks",
+                    Value::List(vec![Value::Text("10.0.0.0/24".to_owned())]),
+                ),
+        )
+        .expect("inserted");
+    graph
+        .insert(
+            Resource::new(address("yandex:security_group.web"))
+                .with("folder_id", folder)
+                .with("name", "web")
+                .with(
+                    "network_id",
+                    Reference::to(address("yandex:network.main"), "id"),
+                ),
+        )
+        .expect("inserted");
+    graph
+        .insert(
+            Resource::new(address("yandex:disk.data"))
+                .with("folder_id", folder)
+                .with("name", "data")
+                // An hdd disk: the cloud's ssd quota in zone d is spent, so
+                // the scenario's data disk is the kind the quota allows.
+                .with("type", "network-hdd")
+                .with("zone", ZONE)
+                .with("size", set.size)
+                .with("image_id", IMAGE),
+        )
+        .expect("inserted");
+    graph
+        .insert(
+            Resource::new(address("yandex:instance.db"))
+                .with("folder_id", folder)
+                .with("name", "db")
+                .with("zone", set.zone)
+                .with("platform_id", "standard-v2")
+                .with("cores", set.cores)
+                .with("memory", set.memory)
+                .with("boot_disk", set.boot_disk)
+                .with("user_data", "#cloud-config\n")
+                .with("subnet", Reference::to(address("yandex:subnet.mgmt"), "id")),
+        )
+        .expect("inserted");
+    graph
+}
+
+/// The declared set a recording covers: a data disk, nothing else. The
+/// cloud's vpc and core quotas are spent after the datacenter attack, so a
+/// recording must be of what the cloud allows; the full five-resource set
+/// stays in [`declared`] for the fake-cloud tests, and the recording is
+/// re-taken when the quotas return.
+pub(crate) fn declared_recordable(folder: &str, set: Declared) -> Graph {
+    let mut graph = Graph::new();
+    graph
+        .insert(
+            Resource::new(address("yandex:disk.data"))
+                .with("folder_id", folder)
+                .with("name", "data")
+                .with("type", "network-hdd")
+                .with("zone", ZONE)
+                .with("size", set.size)
+                .with("image_id", IMAGE),
+        )
+        .expect("inserted");
+    graph
+}
+
+/// The digest key and the remembered-secrets store every converge run
+/// shares.
+static DIGEST_KEY: Key = Key::from_bytes([9; 32]);
+static NO_STORE: Remembered = Remembered::EMPTY;
+
+/// Secrets for a converge run.
+pub(crate) fn secrets() -> Secrets<'static> {
+    Secrets::new(&DIGEST_KEY, &NO_STORE)
+}
+
+/// The actor a plan is attributed to: `run::apply` proceeds only with an
+/// actor identity, and a test is a run of a kind.
+pub(crate) fn actor() -> Actor {
+    Actor::new("tester", "run", None).expect("an actor")
+}
+
+/// The plan a test drives, attributed to a tester.
+pub(crate) fn plan(
+    graph: &Graph,
+    observed: &Observed,
+    state: &EngineState,
+    schema: &Schema,
+    secrets: Secrets<'_>,
+) -> Result<Plan, nerpa_core::planner::PlanError> {
+    nerpa_core::planner::plan(graph, observed, state, schema, secrets)
+        .map(|planned| planned.attributed_to(actor()))
+}
+
+/// One full run against the cloud: observe, plan, apply.
+pub(crate) fn converge(
+    graph: &Graph,
+    providers: &Providers,
+    machines: &Machines,
+    state: &mut EngineState,
+) -> Plan {
+    let observed = run::observe(graph, providers, machines, state).expect("observed");
+    let planned = plan(graph, &observed, state, &providers.schema(), secrets()).expect("plannable");
+    run::apply(
+        &planned,
+        providers,
+        machines,
+        &observed,
+        state,
+        secrets(),
+        &mut |_: &EngineState| Ok(()),
+    )
+    .expect("applied");
+    planned
+}
+
+/// The provider connected to the endpoint, which serves both the API and the
+/// IAM exchange.
+pub(crate) fn providers(endpoint: &SocketAddr) -> Providers {
+    let endpoint = format!("http://{endpoint}");
+    let provider = Yandex::connect_at(&endpoint, &endpoint, &a_credentials()).expect("connected");
+    Providers::new().with(Box::new(provider))
 }

@@ -23,7 +23,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread"] }
-tonic = { version = "0.14", features = ["tls-webpki-roots"] }
+tonic = { version = "0.14", features = ["tls-native-roots", "tls-ring"] }
 tonic-prost = "0.14"
 
 [build-dependencies]

@@ -8,170 +8,13 @@
 
 mod common;
 
-use std::net::SocketAddr;
-
-use nerpa_core::address::address;
-use nerpa_core::attribute::Reference;
-use nerpa_core::provider::{Machines, Providers};
-use nerpa_core::run;
-use nerpa_core::schema::Schema;
-use nerpa_core::secret::{Key, Remembered, Secrets};
+use nerpa_core::provider::Machines;
 use nerpa_core::state::State;
-use nerpa_core::{Actor, Graph, Observed, Plan, Resource, Value};
-use nerpa_provider_yandex::Yandex;
 
-use common::{FakeYandex, a_credentials};
-
-/// A gibibyte, the unit a declaration's sizes are given in.
-const GIB: i64 = 1_073_741_824;
+use common::{Declared, FakeYandex, converge, declared, providers};
 
 /// The folder everything in these tests lives in.
 const FOLDER: &str = "b1g-folder";
-
-/// The default zone; the replace test moves the instance out of it.
-const ZONE: &str = "rucentral1-a";
-
-/// The image the disk is made from.
-const IMAGE: &str = "fd8image";
-
-static DIGEST_KEY: Key = Key::from_bytes([9; 32]);
-static NO_STORE: Remembered = Remembered::EMPTY;
-
-fn secrets() -> Secrets<'static> {
-    Secrets::new(&DIGEST_KEY, &NO_STORE)
-}
-
-fn actor() -> Actor {
-    Actor::new("tester", "run", None).expect("an actor")
-}
-
-/// The plan a test drives, attributed to a tester: `run::apply` proceeds only
-/// with an actor identity, and a test is a run of a kind.
-fn plan(
-    graph: &Graph,
-    observed: &Observed,
-    state: &State,
-    schema: &Schema,
-    secrets: Secrets<'_>,
-) -> Result<Plan, nerpa_core::planner::PlanError> {
-    nerpa_core::planner::plan(graph, observed, state, schema, secrets)
-        .map(|planned| planned.attributed_to(actor()))
-}
-
-/// One full run against the fake cloud: observe, plan, apply.
-fn converge(graph: &Graph, providers: &Providers, machines: &Machines, state: &mut State) -> Plan {
-    let observed = run::observe(graph, providers, machines, state).expect("observed");
-    let planned = plan(graph, &observed, state, &providers.schema(), secrets()).expect("plannable");
-    run::apply(
-        &planned,
-        providers,
-        machines,
-        &observed,
-        state,
-        secrets(),
-        &mut |_: &State| Ok(()),
-    )
-    .expect("applied");
-    planned
-}
-
-/// The provider connected to the fake's one endpoint for both the API and the
-/// IAM exchange.
-fn providers(endpoint: &SocketAddr) -> Providers {
-    let endpoint = format!("http://{endpoint}");
-    let provider = Yandex::connect_at(&endpoint, &endpoint, &a_credentials()).expect("connected");
-    Providers::new().with(Box::new(provider))
-}
-
-/// The knobs a scenario turns; everything else is the declared set the
-/// scenarios share.
-#[derive(Clone, Copy)]
-struct Declared {
-    zone: &'static str,
-    cores: i64,
-    memory: i64,
-    boot_disk: &'static str,
-    size: i64,
-}
-
-impl Default for Declared {
-    fn default() -> Self {
-        Self {
-            zone: ZONE,
-            cores: 2,
-            memory: 4 * GIB,
-            boot_disk: IMAGE,
-            size: 10 * GIB,
-        }
-    }
-}
-
-/// The declared set: a network, a subnet in it, a security group on it, a
-/// data disk, and an instance whose boot disk is made from an image and whose
-/// interface hangs off the subnet.
-fn declared(set: Declared) -> Graph {
-    let mut graph = Graph::new();
-    graph
-        .insert(
-            Resource::new(address("yandex:network.main"))
-                .with("folder_id", FOLDER)
-                .with("name", "main"),
-        )
-        .expect("inserted");
-    graph
-        .insert(
-            Resource::new(address("yandex:subnet.mgmt"))
-                .with("folder_id", FOLDER)
-                .with("name", "mgmt")
-                .with("zone", ZONE)
-                .with(
-                    "network_id",
-                    Reference::to(address("yandex:network.main"), "id"),
-                )
-                .with(
-                    "v4_cidr_blocks",
-                    Value::List(vec![Value::Text("10.0.0.0/24".to_owned())]),
-                ),
-        )
-        .expect("inserted");
-    graph
-        .insert(
-            Resource::new(address("yandex:security_group.web"))
-                .with("folder_id", FOLDER)
-                .with("name", "web")
-                .with(
-                    "network_id",
-                    Reference::to(address("yandex:network.main"), "id"),
-                ),
-        )
-        .expect("inserted");
-    graph
-        .insert(
-            Resource::new(address("yandex:disk.data"))
-                .with("folder_id", FOLDER)
-                .with("name", "data")
-                .with("type", "network-ssd")
-                .with("zone", ZONE)
-                .with("size", set.size)
-                .with("image_id", IMAGE),
-        )
-        .expect("inserted");
-    graph
-        .insert(
-            Resource::new(address("yandex:instance.db"))
-                .with("folder_id", FOLDER)
-                .with("name", "db")
-                .with("zone", set.zone)
-                .with("platform_id", "standard-v2")
-                .with("cores", set.cores)
-                .with("memory", set.memory)
-                .with("boot_disk", set.boot_disk)
-                .with("user_data", "#cloud-config\n")
-                .with("subnet", Reference::to(address("yandex:subnet.mgmt"), "id")),
-        )
-        .expect("inserted");
-    graph
-}
 
 #[test]
 fn a_declared_set_converges() {
@@ -179,7 +22,7 @@ fn a_declared_set_converges() {
     let providers = providers(&address);
     let machines = Machines::new();
     let mut state = State::new();
-    let graph = declared(Declared::default());
+    let graph = declared(FOLDER, Declared::default());
 
     let first = converge(&graph, &providers, &machines, &mut state);
     assert_eq!(
@@ -204,15 +47,18 @@ fn an_immutable_change_replaces() {
     let providers = providers(&address);
     let machines = Machines::new();
     let mut state = State::new();
-    let graph = declared(Declared::default());
+    let graph = declared(FOLDER, Declared::default());
     converge(&graph, &providers, &machines, &mut state);
 
     // An instance's zone cannot move: the same declaration in another zone
     // replaces the instance, and the replacement is a removal then a make.
-    let moved = declared(Declared {
-        zone: "ru-central1-b",
-        ..Declared::default()
-    });
+    let moved = declared(
+        FOLDER,
+        Declared {
+            zone: "ru-central1-b",
+            ..Declared::default()
+        },
+    );
     let planned = converge(&moved, &providers, &machines, &mut state);
     assert_eq!(
         planned.blast_radius().replaces(),
@@ -236,16 +82,19 @@ fn a_birth_change_is_reported_without_acting() {
     let providers = providers(&address);
     let machines = Machines::new();
     let mut state = State::new();
-    let graph = declared(Declared::default());
+    let graph = declared(FOLDER, Declared::default());
     converge(&graph, &providers, &machines, &mut state);
 
     // An instance's boot disk was born: another image means another instance,
     // which nothing can make while the old one holds the name. The plan
     // reports the change as outdated and acts on nothing.
-    let reborn = declared(Declared {
-        boot_disk: "fd8other",
-        ..Declared::default()
-    });
+    let reborn = declared(
+        FOLDER,
+        Declared {
+            boot_disk: "fd8other",
+            ..Declared::default()
+        },
+    );
     let before = fake.ledger();
     let planned = converge(&reborn, &providers, &machines, &mut state);
     assert!(
@@ -269,15 +118,18 @@ fn a_stopped_attribute_change_stops_updates_and_starts() {
     let providers = providers(&address);
     let machines = Machines::new();
     let mut state = State::new();
-    let graph = declared(Declared::default());
+    let graph = declared(FOLDER, Declared::default());
     converge(&graph, &providers, &machines, &mut state);
 
     // Cores change only while the instance is stopped: the provider stops,
     // updates and starts it.
-    let resized = declared(Declared {
-        cores: 4,
-        ..Declared::default()
-    });
+    let resized = declared(
+        FOLDER,
+        Declared {
+            cores: 4,
+            ..Declared::default()
+        },
+    );
     let planned = converge(&resized, &providers, &machines, &mut state);
     assert_eq!(
         planned.blast_radius().updates(),
@@ -312,15 +164,18 @@ fn a_disk_size_grows_in_place() {
     let providers = providers(&address);
     let machines = Machines::new();
     let mut state = State::new();
-    let graph = declared(Declared::default());
+    let graph = declared(FOLDER, Declared::default());
     converge(&graph, &providers, &machines, &mut state);
 
     // A disk's size only grows, and the growth changes the disk in place:
     // one call, and the disk is the same disk.
-    let grown = declared(Declared {
-        size: 20 * GIB,
-        ..Declared::default()
-    });
+    let grown = declared(
+        FOLDER,
+        Declared {
+            size: 20 * common::GIB,
+            ..Declared::default()
+        },
+    );
     let before = fake.ledger();
     let planned = converge(&grown, &providers, &machines, &mut state);
     assert_eq!(
@@ -348,17 +203,20 @@ fn a_stopped_instance_changes_where_it_stands() {
     let providers = providers(&address);
     let machines = Machines::new();
     let mut state = State::new();
-    let graph = declared(Declared::default());
+    let graph = declared(FOLDER, Declared::default());
     converge(&graph, &providers, &machines, &mut state);
 
     // A preemptible stop leaves the instance stopped behind the API's back:
     // the provider changes its resources where it stands and never starts it
     // — a start under preemption would lose the instance.
     fake.set_stopped("inst-1");
-    let resized = declared(Declared {
-        memory: 6 * GIB,
-        ..Declared::default()
-    });
+    let resized = declared(
+        FOLDER,
+        Declared {
+            memory: 6 * common::GIB,
+            ..Declared::default()
+        },
+    );
     let before = fake.ledger();
     let planned = converge(&resized, &providers, &machines, &mut state);
     assert_eq!(
