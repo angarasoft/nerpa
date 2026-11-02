@@ -4,7 +4,7 @@ use dacc_knowledge::{Breaking, DocStatus};
 
 dacc_knowledge::adr!(
     title: "A long-lived key enters the Yandex flow; a short-lived token leaves it",
-    status: DocStatus::Active,
+    status: DocStatus::SupersededBy(crate::adr::adr_2026_079),
     channel: crate::taxonomy::channel::Public,
     subsystems: &[taxon!(Subsystem, Yandex), taxon!(Subsystem, Core)],
     context: r"
