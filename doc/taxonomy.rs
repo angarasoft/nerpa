@@ -10,7 +10,7 @@
 //! apart so that a commit scope for it exists without touching a product crate.
 
 dacc_core::declare_taxonomy! {
-    Subsystem => [Core, Config, Proto, Executor, Transport, Os, Cli, Gate, Docs, Pilot, Yandex],
+    Subsystem => [Core, Config, Proto, Executor, Transport, Os, Cli, Gate, Docs, Pilot, Yandex, Alibaba],
     Team => [Maintainers],
 }
 
