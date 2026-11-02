@@ -1687,3 +1687,7 @@ work = "w-rustls-advisories"
 at = "2026-11-02T09:47:06Z"
 commit = "d508436a964cbffb64d89c8a5edd93e5e2084421"
 tree = "ba7668b1d2b463b6c553abc182bdd3c2d3af6d79"
+[[events]]
+event = "closed"
+slice = "s-develop-rejoined"
+at = "2026-11-02T09:47:26Z"
