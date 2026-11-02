@@ -1802,3 +1802,7 @@ at = "2026-11-02T14:08:57Z"
 commit = "d6870d407b0993ae509d0afd47e75ec6f6c67bca"
 tree = "4a5aa4f14f6c4f549345736f6088d5e6c13e7154"
 red_before = "fleet::an_unknown_table_in_the_fleet_is_refused_by_name"
+[[events]]
+event = "closed"
+slice = "s-fleet-closed"
+at = "2026-11-02T14:09:09Z"
