@@ -14,8 +14,29 @@ without ceremony until the first stage is complete.
 - Third-party providers as WASM components in `nerpa-provider-wasm`: a
   component and its manifest load beside the in-tree providers, and the
   manifest's kinds enter the schema (adr-2026-0004).
+- A service-account key as the Yandex credential (adr-2026-079, which
+  supersedes adr-2026-075). The key is read from a file only its owner can read,
+  a PS256 JWT signed with ring is exchanged for a short-lived IAM token, and the
+  key is not kept between exchanges. A key file open to group or others, a
+  long-lived credential where a key belongs (an API key, a static or OAuth
+  token) and a key under 2048 bits are each refused by name. `Signer` is the seam
+  a signer that wipes its copy of the key, or one outside the process, plugs
+  into. The one gap is declared rather than hidden: ring keeps its parsed copy of
+  the key in memory it does not wipe (`l-yc-key-copies-unwiped`).
+- `key_file` in `[cloud.yandex]`: the fleet names the file a service-account key
+  is in, and the key never appears in the fleet document. A `private_key` field,
+  and a long-lived credential — an API key, a static or OAuth token — in any
+  spelling of the name, are refused by name; a fleet that names both an
+  `iam_token` and a `key_file` is refused. The engine reads the key file when it
+  is assembled, so a key file that cannot be used stops the run before anything
+  is read or changed, as `EngineError::Credential`.
 
 ### Changed
+
+- No `Debug` output of the Yandex provider or of the fleet prints a token or a
+  key, and an IAM token is no longer reused in the last minute before it
+  expires. A refused token exchange names the HTTP status and nothing of the
+  answer.
 
 - An actor's scope is a grant now — `kind=a,b;target=c;op=d,e` — carried in the
   plan as `grant` and covered by the plan hash. A plan signed before this change
