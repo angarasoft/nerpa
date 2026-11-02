@@ -11,5 +11,5 @@ dacc_work::work!("w-yc-real-create",
     },
     taxon: taxon!(Subsystem, Yandex),
     radius: BlastRadius::Crate,
-    outcome: NonEmptyStr::new("The create request carries a boot disk and network interfaces, an operation is polled until it is done, a running instance is stopped, updated and started, and stop_to_change and monotonic are declared in Yandex::schema."),
+    outcome: NonEmptyStr::new("The create request carries a boot disk and network interfaces, an operation is polled until it is done, a running instance is stopped, updated and started, the rendered plan shows the stop a change requires, and stop_to_change and monotonic are declared in Yandex::schema."),
 );

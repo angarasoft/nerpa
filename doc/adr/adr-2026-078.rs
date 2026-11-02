@@ -39,6 +39,7 @@ dacc_knowledge::adr!(
     constraints: &[
         "No gRPC, tokio or protoc dependency enters the Yandex provider without a decision that supersedes this one.",
         "Until w-yc-credential-model lands, a limitation declares that adr-2026-075's refusal is held by no test.",
+        "The iam_token that adr-2026-071 keeps for CI and tests is a short-lived IAM token; it is not the long-lived static token adr-2026-075 refuses.",
     ],
     authors: nonempty_str!["Anishchuk Sergei"],
     decided_at: dacc_core::date!(2026, 11, 2),

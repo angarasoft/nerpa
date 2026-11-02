@@ -30,11 +30,13 @@ without ceremony until the first stage is complete.
   of a monotonic attribute is refused while planning. The corpus moves with
   the encoding. Only a replace delta moves the pinned plan digest, from 1 to 2:
   an in-place delta is encoded as it was, so a digest recorded before this
-  change still holds for a plan that replaces nothing.
+  change still holds for a plan that replaces nothing. The delta's JSON field
+  `forces_replacement` becomes `kind`, so a plan file written before this change
+  does not load.
 
 - The registry rides on dacc 0.6.0: the six dacc crates, and the CLI the gate
   installs at the one version line `Cargo.toml` carries, move off 0.5.2. Every
-  decision and specification now carries its `introduces_norm` marker (sixteen
+  decision and specification now carries its `introduces_norm` marker (seventeen
   declared as norms; the rest are classified as each record is touched,
   adr-2026-074), and an executor admission profile exists so a landing names the
   executor who has the right.
