@@ -119,8 +119,18 @@ getrandom = "0.4"
 # Bytes in a human-readable state file. JSON has no way to say "these are
 # bytes", and an array of numbers cannot be told apart from a list of integers.
 base64 = "0.23"
-# WASM components, for third-party providers (adr-2026-0004).
-wasmtime = "49"
+# WASM components, for third-party providers (adr-2026-0004). The defaults
+# are named one by one so that one can be left out: the compile cache is off.
+# Nothing here uses it, and it is the only road to zstd 0.13, whose advisories
+# have no fix in that line.
+wasmtime = { version = "49", default-features = false, features = [
+    "anyhow", "async", "backtrace", "gc", "gc-copying", "gc-drc", "gc-null",
+    "wat", "profiling", "parallel-compilation", "cranelift",
+    "pooling-allocator", "demangle", "addr2line", "coredump",
+    "debug-builtins", "runtime", "component-model", "component-model-async",
+    "threads", "stack-switching", "std", "debug", "compile-time-builtins",
+    "wit-parser",
+] }
 # `flock`, and nothing else from it. A lock held by the kernel is released when
 # the process ends however it ends, which a lock file's existence cannot do: a
 # run that was killed left a file that refused every later run until somebody
