@@ -31,6 +31,15 @@ without ceremony until the first stage is complete.
   is assembled, so a key file that cannot be used stops the run before anything
   is read or changed, as `EngineError::Credential`.
 
+### Fixed
+
+- The fleet document refuses a table it does not know. It used to skip one
+  without a word, and a fleet that names no approvers asks for no signature, so
+  a misspelt `[approval]` turned the signature requirement off silently. A known
+  table written as something that is not a table (`approval = "..."`) is refused
+  too, and a cloud the build has no provider for (`[cloud.alibaba]`) is named
+  with the clouds it has.
+
 ### Changed
 
 - No `Debug` output of the Yandex provider or of the fleet prints a token or a
