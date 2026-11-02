@@ -613,6 +613,93 @@ iam_token = "t1.secret-token-text"
     );
 }
 
+/// The fleet is a closed set. A fleet that names no approvers asks for no
+/// signature, so a table skipped because its name is misspelt would turn the
+/// requirement off and say nothing.
+#[test]
+fn an_unknown_table_in_the_fleet_is_refused_by_name() {
+    for (document, name) in [
+        (
+            "[aproval]\napprovers = \"/etc/nerpa/approvers\"\n",
+            "aproval",
+        ),
+        (
+            "[approvals]\napprovers = \"/etc/nerpa/approvers\"\n",
+            "approvals",
+        ),
+        ("[grant]\nweb-ops = \"kind=instance\"\n", "grant"),
+        ("[node.web-01]\nssh = \"web-01\"\n", "node"),
+        ("[clouds.yandex]\nfolder_id = \"b1g\"\n", "clouds"),
+    ] {
+        let refused = Fleet::read(document).unwrap_err();
+        assert!(refused.contains(name), "{name}: {refused}");
+        assert!(
+            refused.contains("approval") && refused.contains("nodes"),
+            "the refusal names the tables it does read: {refused}"
+        );
+    }
+}
+
+/// A known table written as something that is not a table is refused too: the
+/// signature requirement is no less off for being written `approval = "..."`.
+#[test]
+fn a_known_table_written_as_something_else_is_refused() {
+    for (document, name) in [
+        ("approval = \"/etc/nerpa/approvers\"\n", "approval"),
+        ("nodes = 3\n", "nodes"),
+        ("groups = [\"web\"]\n", "groups"),
+        ("grants = \"kind=instance\"\n", "grants"),
+        ("cloud = \"yandex\"\n", "cloud"),
+    ] {
+        let refused = Fleet::read(document).unwrap_err();
+        assert!(refused.contains(name), "{name}: {refused}");
+        assert!(refused.contains("table"), "{name}: {refused}");
+    }
+}
+
+/// A cloud the build has no provider for is named, with the clouds it has,
+/// instead of being skipped as if the document did not say it.
+#[test]
+fn a_cloud_without_a_provider_is_named_and_not_skipped() {
+    let refused = Fleet::read("[cloud.alibaba]\nregion = \"ap-southeast-1\"\n").unwrap_err();
+    assert!(refused.contains("cloud.alibaba"), "{refused}");
+    assert!(
+        refused.contains("yandex"),
+        "the refusal names the clouds the build has: {refused}"
+    );
+
+    let refused = Fleet::read("[cloud]\nyandex = \"b1g\"\n").unwrap_err();
+    assert!(refused.contains("cloud.yandex"), "{refused}");
+    assert!(refused.contains("table"), "{refused}");
+}
+
+/// Everything the fleet does read still reads: the closed set is not a narrower
+/// one.
+#[test]
+fn a_fleet_with_every_table_it_reads_still_reads() {
+    let fleet = Fleet::read(
+        r#"
+[groups.web]
+port = 443
+
+[nodes.web-01]
+groups = ["web"]
+
+[approval]
+approvers = "/etc/nerpa/approvers"
+
+[grants]
+web-ops = "kind=instance;target=web-01;op=create"
+
+[cloud.yandex]
+folder_id = "b1g"
+"#,
+    )
+    .expect("a fleet that uses every table it reads");
+    assert!(fleet.cloud().is_some());
+    assert!(fleet.grant("web-ops").is_some());
+}
+
 /// The fleet names the grant it issued an identity, and the run reads it back
 /// as the structured grant that limits it (`0072`).
 #[test]

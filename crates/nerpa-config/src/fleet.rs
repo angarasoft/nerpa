@@ -168,9 +168,10 @@ impl Fleet {
     pub fn read(text: &str) -> Result<Self, String> {
         let document: toml::Value =
             toml::from_str(text).map_err(|error| format!("the fleet is not TOML: {error}"))?;
+        refuse_unread_tables(&document)?;
 
         let mut groups: BTreeMap<String, BTreeMap<String, CoreValue>> = BTreeMap::new();
-        if let Some(table) = document.get("groups").and_then(toml::Value::as_table) {
+        if let Some(table) = table(&document, "groups")? {
             for (name, values) in table {
                 groups.insert(name.clone(), read_values(name, values)?);
             }
@@ -182,7 +183,7 @@ impl Fleet {
             cloud: read_cloud(&document)?,
             ..Self::default()
         };
-        let Some(nodes) = document.get("nodes").and_then(toml::Value::as_table) else {
+        let Some(nodes) = table(&document, "nodes")? else {
             return Ok(fleet);
         };
 
@@ -348,20 +349,80 @@ impl Fleet {
     }
 }
 
-/// Where who may sign a plan is written down.
-///
-/// The table's fields are a closed set, like a node's: a field silently
-/// ignored would leave a document that says something no run does.
+/// The tables the fleet document is read from. The document is a closed set, as
+/// a node's fields are: a table outside this list is refused and not skipped,
+/// because a fleet that names no approvers asks for no signature, and a
+/// misspelt `[approval]` would turn the requirement off and say nothing.
+const TABLES: &[&str] = &["nodes", "groups", "approval", "grants", "cloud"];
+
+/// The clouds this build has a provider for. A cloud outside this list is named
+/// in the refusal rather than skipped.
+const CLOUDS: &[&str] = &["yandex"];
+
+/// Refuses a top-level table the fleet does not read.
+fn refuse_unread_tables(document: &toml::Value) -> Result<(), String> {
+    let Some(tables) = document.as_table() else {
+        return Ok(());
+    };
+    for name in tables.keys() {
+        if !TABLES.contains(&name.as_str()) {
+            return Err(format!(
+                "{name:?} is not a table of the fleet — it reads {}, and a table it does not \
+                 read is refused, because a misspelt `approval` would ask for no signature",
+                list(TABLES)
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The names as a list a person can read: `a`, `b` and `c`.
+fn list(names: &[&str]) -> String {
+    match names {
+        [] => String::new(),
+        [only] => format!("`{only}`"),
+        [init @ .., last] => {
+            let init: Vec<String> = init.iter().map(|name| format!("`{name}`")).collect();
+            format!("{} and `{last}`", init.join(", "))
+        }
+    }
+}
+
+/// The table `name` of the document, if it has one. A part that is there and is
+/// not a table is refused: skipping it would leave a document that says
+/// something no run does.
+fn table<'a>(document: &'a toml::Value, name: &str) -> Result<Option<&'a toml::Table>, String> {
+    document
+        .get(name)
+        .map(|value| {
+            value
+                .as_table()
+                .ok_or_else(|| format!("{name}: has to be a table, written as `[{name}]`"))
+        })
+        .transpose()
+}
+
 /// The cloud a run touches, as `[cloud.yandex]`. Its fields are a closed set,
 /// like a node's: a field silently ignored would leave a document that says
-/// something no run does.
+/// something no run does. A cloud the build has no provider for is named in the
+/// refusal.
 fn read_cloud(document: &toml::Value) -> Result<Option<Cloud>, String> {
-    let Some(cloud) = document.get("cloud").and_then(toml::Value::as_table) else {
+    let Some(cloud) = table(document, "cloud")? else {
         return Ok(None);
     };
-    let Some(yandex) = cloud.get("yandex").and_then(toml::Value::as_table) else {
+    if let Some(name) = cloud.keys().find(|name| !CLOUDS.contains(&name.as_str())) {
+        return Err(format!(
+            "cloud.{name}: this build has no provider for a cloud by that name — the clouds \
+             it has are {}",
+            list(CLOUDS)
+        ));
+    }
+    let Some(yandex) = cloud.get("yandex") else {
         return Ok(None);
     };
+    let yandex = yandex
+        .as_table()
+        .ok_or_else(|| "cloud.yandex: has to be a table, written as `[cloud.yandex]`".to_owned())?;
     for (field, _) in yandex {
         if !matches!(field.as_str(), "folder_id" | "iam_token" | "key_file") {
             return Err(refused_cloud_field(field));
@@ -437,8 +498,12 @@ fn refused_cloud_field(field: &str) -> String {
     }
 }
 
+/// Where who may sign a plan is written down.
+///
+/// The table's fields are a closed set, like a node's: a field silently
+/// ignored would leave a document that says something no run does.
 fn read_approval(document: &toml::Value) -> Result<Option<String>, String> {
-    let Some(table) = document.get("approval").and_then(toml::Value::as_table) else {
+    let Some(table) = table(document, "approval")? else {
         return Ok(None);
     };
     for (field, _) in table {
@@ -461,7 +526,7 @@ fn read_approval(document: &toml::Value) -> Result<Option<String>, String> {
 
 /// The grants this fleet issued: an identity to what it may touch (`0072`).
 fn read_grants(document: &toml::Value) -> Result<BTreeMap<String, Grant>, String> {
-    let Some(table) = document.get("grants").and_then(toml::Value::as_table) else {
+    let Some(table) = table(document, "grants")? else {
         return Ok(BTreeMap::new());
     };
     table
