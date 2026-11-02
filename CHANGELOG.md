@@ -46,6 +46,11 @@ without ceremony until the first stage is complete.
   did not come across at the merge, and what they proved is ported over REST as
   declared works (adr-2026-078).
 
+- wasmtime is built without its compile cache, which nothing here used: it was
+  the only road to zstd 0.13, whose advisories have no fix in that line. The
+  lock moves off the advisories on rustls, rustls-webpki, webpki-roots and
+  wasmtime, and off the yanked clipboard-win.
+
 ## 0.3.0
 
 ### Added
