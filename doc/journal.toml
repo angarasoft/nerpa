@@ -1712,3 +1712,7 @@ work = "w-rust-1991"
 at = "2026-11-02T11:46:20Z"
 commit = "350be968815c0379b04803322fac8bee957aed89"
 tree = "201a5b601ae597704a9ae9de0a28ad1a14e39729"
+[[events]]
+event = "closed"
+slice = "s-rust-1991"
+at = "2026-11-02T11:46:30Z"
