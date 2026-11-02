@@ -9,7 +9,7 @@ on in a single graph — and plans both together, in one pass.
 
 [![CI](https://github.com/nerpa-run/nerpa/actions/workflows/ci.yml/badge.svg)](https://github.com/nerpa-run/nerpa/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.99.0-orange.svg)](rust-toolchain.toml)
+[![Rust](https://img.shields.io/badge/rust-1.99.1-orange.svg)](rust-toolchain.toml)
 
 `nerpa` plans infrastructure and configuration together, in one pass, and
 applies the result over a transport that carries an identity rather than a
