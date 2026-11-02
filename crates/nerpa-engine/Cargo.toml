@@ -24,6 +24,7 @@ thiserror = { workspace = true }
 nerpa-config = { workspace = true }
 nerpa-core = { workspace = true }
 nerpa-transport = { workspace = true }
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

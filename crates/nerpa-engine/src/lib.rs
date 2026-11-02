@@ -28,6 +28,11 @@ pub enum EngineError {
     #[error(transparent)]
     Configuration(#[from] nerpa_config::ConfigError),
 
+    /// The credential the fleet names cannot be used: a key file that others can
+    /// read, a long-lived credential where a key belongs, a key that cannot sign.
+    #[error(transparent)]
+    Credential(#[from] nerpa_provider_yandex::AuthError),
+
     /// The world could not be read.
     #[error(transparent)]
     Observe(#[from] RunError),
@@ -56,15 +61,16 @@ impl Engine {
     ///
     /// # Errors
     ///
-    /// Returns [`EngineError::Configuration`] when the configuration does not
-    /// evaluate.
+    /// Returns [`EngineError::Credential`] when the credential the fleet names
+    /// cannot be used, and [`EngineError::Configuration`] when the configuration
+    /// does not evaluate.
     pub fn assemble(
         file: &str,
         source: &str,
         root: &Path,
         fleet: &Fleet,
     ) -> Result<Self, EngineError> {
-        let providers = providers(fleet);
+        let providers = providers(fleet)?;
         let graph = nerpa_config::evaluate_with(
             file,
             source,
@@ -143,16 +149,20 @@ impl Engine {
 
 /// The providers the fleet names: the os provider always, and Yandex where the
 /// fleet carries a cloud.
-fn providers(fleet: &Fleet) -> Providers {
+fn providers(fleet: &Fleet) -> Result<Providers, EngineError> {
     let mut providers = Providers::new().with(Box::new(Os::new()));
     // A cloud provider is registered only where the fleet names a cloud; a
     // configuration that touches no cloud asks for no credential and reaches
-    // nothing over HTTP. Where a cloud is named, the credential is either the
-    // static token the fleet carries or the yc profile (adr-2026-071).
+    // nothing over HTTP. Where a cloud is named, the credential is the
+    // short-lived token the fleet carries, the service-account key in the file
+    // it names (adr-2026-079), or the yc profile (adr-2026-071). A key file is
+    // read here, so one that cannot be used is refused when the fleet is read
+    // and not at the first apply.
     if let Some(cloud) = fleet.cloud() {
-        let auth = match &cloud.iam_token {
-            Some(token) => Auth::IamToken(token.clone()),
-            None => Auth::YcProfile,
+        let auth = match (&cloud.iam_token, &cloud.key_file) {
+            (Some(token), _) => Auth::IamToken(token.clone()),
+            (None, Some(path)) => Auth::service_account_key_file(path)?,
+            (None, None) => Auth::YcProfile,
         };
         providers = providers.with(Box::new(Yandex::new(
             cloud.folder_id.clone(),
@@ -162,5 +172,5 @@ fn providers(fleet: &Fleet) -> Providers {
             Box::new(Http::new(std::time::Duration::from_secs(30))),
         )));
     }
-    providers
+    Ok(providers)
 }

@@ -502,6 +502,117 @@ iam_token = 123
     assert!(refused.contains("iam_token"), "{refused}");
 }
 
+/// A run proves who it is with a service-account key by naming the file it is
+/// in, and the file is all the fleet document says about the key
+/// (adr-2026-079).
+#[test]
+fn a_cloud_names_a_service_account_key_file() {
+    let fleet = Fleet::read(
+        r#"
+[cloud.yandex]
+folder_id = "b1g"
+key_file = "/etc/nerpa/key.json"
+"#,
+    )
+    .expect("a fleet");
+    let cloud = fleet.cloud().expect("a cloud");
+    assert_eq!(cloud.key_file.as_deref(), Some("/etc/nerpa/key.json"));
+    assert_eq!(cloud.iam_token, None);
+}
+
+/// A long-lived credential in the fleet document is refused by name, in any
+/// spelling of the name, and the refusal does not repeat the value.
+#[test]
+fn a_long_lived_credential_in_the_fleet_document_is_refused_by_name() {
+    for (field, value) in [
+        ("api_key", "AQVN-api-value"),
+        ("API_KEY", "AQVN-upper-value"),
+        ("apiKey", "AQVN-camel-value"),
+        ("secret", "AQVN-secret-value"),
+        ("static_token", "static-value"),
+        ("oauth_token", "y0_oauth-value"),
+        ("token", "t1.token-value"),
+    ] {
+        let refused = Fleet::read(&format!(
+            "[cloud.yandex]\nfolder_id = \"b1g\"\n{field} = \"{value}\"\n"
+        ))
+        .unwrap_err();
+        assert!(refused.contains(field), "{field}: {refused}");
+        assert!(
+            refused.contains("long-lived"),
+            "the refusal says what the field is: {refused}"
+        );
+        assert!(
+            refused.contains("key_file"),
+            "the refusal says what to write instead: {refused}"
+        );
+        assert!(
+            !refused.contains(value),
+            "the refusal does not repeat the credential: {refused}"
+        );
+    }
+}
+
+/// A key does not belong in the fleet document at all: the file it is in does.
+#[test]
+fn a_key_in_the_fleet_document_is_refused_and_the_file_is_asked_for() {
+    for field in ["private_key", "service_account_key"] {
+        let refused = Fleet::read(&format!(
+            "[cloud.yandex]\nfolder_id = \"b1g\"\n{field} = \"-----BEGIN PRIVATE KEY-----\"\n"
+        ))
+        .unwrap_err();
+        assert!(refused.contains(field), "{refused}");
+        assert!(refused.contains("key_file"), "{refused}");
+        assert!(!refused.contains("BEGIN PRIVATE KEY"), "{refused}");
+    }
+}
+
+/// One credential at a time: a fleet that names a token and a key file says two
+/// things about who is running.
+#[test]
+fn a_cloud_that_names_a_token_and_a_key_file_is_refused() {
+    let refused = Fleet::read(
+        r#"
+[cloud.yandex]
+folder_id = "b1g"
+iam_token = "t1"
+key_file = "/etc/nerpa/key.json"
+"#,
+    )
+    .unwrap_err();
+    assert!(refused.contains("one credential"), "{refused}");
+}
+
+/// A key file that names nothing is not a key file.
+#[test]
+fn a_key_file_that_is_not_a_path_is_refused() {
+    for line in ["key_file = 3", "key_file = \"\""] {
+        let refused =
+            Fleet::read(&format!("[cloud.yandex]\nfolder_id = \"b1g\"\n{line}\n")).unwrap_err();
+        assert!(refused.contains("key_file"), "{line}: {refused}");
+    }
+}
+
+/// The fleet is printed in errors and in debugging, and a token in it must not
+/// come out (adr-2026-079).
+#[test]
+fn no_debug_output_of_the_fleet_prints_a_token() {
+    let fleet = Fleet::read(
+        r#"
+[cloud.yandex]
+folder_id = "b1g"
+iam_token = "t1.secret-token-text"
+"#,
+    )
+    .expect("a fleet");
+    let printed = format!("{fleet:?} {:?}", fleet.cloud());
+    assert!(!printed.contains("secret-token-text"), "{printed}");
+    assert!(
+        printed.contains("b1g"),
+        "the folder is still said: {printed}"
+    );
+}
+
 /// The fleet names the grant it issued an identity, and the run reads it back
 /// as the structured grant that limits it (`0072`).
 #[test]

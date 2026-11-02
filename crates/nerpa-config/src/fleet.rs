@@ -80,7 +80,10 @@ pub struct Fleet {
 
 /// What the control domain is written about: the cloud folder a run touches,
 /// and how it proves who it is.
-#[derive(Debug, Clone)]
+///
+/// The `Debug` output says whether a token is there and prints none of it
+/// (adr-2026-079).
+#[derive(Clone)]
 pub struct Cloud {
     /// The Yandex Cloud folder.
     pub folder_id: String,
@@ -88,6 +91,20 @@ pub struct Cloud {
     /// yc profile (adr-2026-071). A plain string for now; it becomes a secret
     /// reference when the secret store of `0027` arrives.
     pub iam_token: Option<String>,
+    /// The path of a service-account key, when the run proves who it is with one
+    /// (adr-2026-079). The key is in the file, never in the fleet document. A
+    /// run names this or an `iam_token`, not both.
+    pub key_file: Option<String>,
+}
+
+impl std::fmt::Debug for Cloud {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Cloud")
+            .field("folder_id", &self.folder_id)
+            .field("iam_token", &self.iam_token.as_ref().map(|_| "<redacted>"))
+            .field("key_file", &self.key_file)
+            .finish()
+    }
 }
 
 /// One machine, and what belongs to it.
@@ -346,11 +363,8 @@ fn read_cloud(document: &toml::Value) -> Result<Option<Cloud>, String> {
         return Ok(None);
     };
     for (field, _) in yandex {
-        if !matches!(field.as_str(), "folder_id" | "iam_token") {
-            return Err(format!(
-                "cloud.yandex: {field:?} is not a field of the cloud — a run needs its \
-                 `folder_id` and its `iam_token`, and that is the whole of it"
-            ));
+        if !matches!(field.as_str(), "folder_id" | "iam_token" | "key_file") {
+            return Err(refused_cloud_field(field));
         }
     }
     let folder_id = yandex
@@ -366,10 +380,61 @@ fn read_cloud(document: &toml::Value) -> Result<Option<Cloud>, String> {
                 .ok_or_else(|| "cloud.yandex: `iam_token` must be text".to_owned())
         })
         .transpose()?;
+    let key_file = yandex
+        .get("key_file")
+        .map(|value| {
+            value
+                .as_str()
+                .filter(|path| !path.is_empty())
+                .map(str::to_owned)
+                .ok_or_else(|| {
+                    "cloud.yandex: `key_file` must be the path of a service-account key".to_owned()
+                })
+        })
+        .transpose()?;
+    if iam_token.is_some() && key_file.is_some() {
+        return Err(
+            "cloud.yandex: name one credential — an `iam_token` or a `key_file`, \
+                    not both"
+                .to_owned(),
+        );
+    }
     Ok(Some(Cloud {
         folder_id: folder_id.to_owned(),
         iam_token,
+        key_file,
     }))
+}
+
+/// What the fleet says to a field of the cloud it does not take.
+///
+/// A long-lived credential is refused by name, in any spelling of the name, and
+/// says what to write instead: the fleet document is read by people and checked
+/// into repositories, and a credential that does not expire has no business in
+/// one (adr-2026-079). The value is never repeated.
+fn refused_cloud_field(field: &str) -> String {
+    let name: String = field
+        .chars()
+        .filter(|&c| c != '_' && c != '-')
+        .flat_map(char::to_lowercase)
+        .collect();
+    match name.as_str() {
+        "apikey" | "secret" | "secretkey" | "accesskey" | "statictoken" | "oauthtoken"
+        | "token" => format!(
+            "cloud.yandex: {field:?} is a long-lived credential and is refused; name a \
+             service-account key with `key_file`, which is exchanged for a short-lived \
+             token, or hand over a short-lived `iam_token` (adr-2026-079)"
+        ),
+        "privatekey" | "serviceaccountkey" | "key" => format!(
+            "cloud.yandex: {field:?} would put a key into the fleet document, and a key \
+             does not belong in one; name the file it is in with `key_file` (adr-2026-079)"
+        ),
+        _ => format!(
+            "cloud.yandex: {field:?} is not a field of the cloud — a run needs its \
+             `folder_id` and one credential, an `iam_token` or a `key_file`, and that is \
+             the whole of it"
+        ),
+    }
 }
 
 fn read_approval(document: &toml::Value) -> Result<Option<String>, String> {
