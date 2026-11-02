@@ -21,6 +21,29 @@ without ceremony until the first stage is complete.
   plan as `grant` and covered by the plan hash. A plan signed before this change
   does not verify after it (adr-2026-009).
 
+- A yandex instance's subnet is immutable now: the schema says Replace, so
+  changing the subnet a declared instance points at replaces the instance
+  rather than pretending the interface could move.
+
+- A plan's attribute delta carries a change kind — in place, after a stop, or
+  by replacement — instead of a bare replacement marker, and a declared shrink
+  of a monotonic attribute is refused while planning. The corpus moves with
+  the encoding. Only a replace delta moves the pinned plan digest, from 1 to 2:
+  an in-place delta is encoded as it was, so a digest recorded before this
+  change still holds for a plan that replaces nothing.
+
+- The registry rides on dacc 0.6.0: the six dacc crates, and the CLI the gate
+  installs at the one version line `Cargo.toml` carries, move off 0.5.2. Every
+  decision and specification now carries its `introduces_norm` marker (sixteen
+  declared as norms; the rest are classified as each record is touched,
+  adr-2026-074), and an executor admission profile exists so a landing names the
+  executor who has the right.
+
+- The Yandex provider stays on the main line's REST crate. The develop line's
+  gRPC client, its protos, resources, credentials module and recorded exchanges
+  did not come across at the merge, and what they proved is ported over REST as
+  declared works (adr-2026-078).
+
 ## 0.3.0
 
 ### Added

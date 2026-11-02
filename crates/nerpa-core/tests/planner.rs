@@ -12,8 +12,8 @@ use nerpa_core::secret::Recorded;
 use nerpa_core::secret::{Key, Remembered, Secrets};
 use nerpa_core::state::{Record, State};
 use nerpa_core::{
-    Change, ChangeKind, Confidence, ExecutionDomain, Graph, Kind, Observed, Provider, Reference,
-    Resource, Schema, Target, Value,
+    Change, ChangeKind, Confidence, DeltaKind, ExecutionDomain, Graph, Kind, Observed, Provider,
+    Reference, Resource, Schema, Target, Value,
 };
 
 /// A fixed key and a store holding nothing.
@@ -670,6 +670,60 @@ fn an_attribute_that_cannot_change_in_place_makes_it_a_replacement_and_says_whic
         change.cause().expect("a replacement has a cause").name(),
         "zone"
     );
+}
+
+#[test]
+fn a_shrink_of_a_monotonic_attribute_is_refused_naming_it() {
+    let graph = graph_of(vec![
+        Resource::new(address("yandex:instance.db")).with("size", 8),
+    ]);
+    let observed = observed_with(&[("yandex:instance.db", &[("size", Value::Integer(10))])]);
+    let schema = Schema::new().monotonic(
+        Provider::new("yandex").unwrap(),
+        Kind::new("instance").unwrap(),
+        "size",
+    );
+
+    let refused = plan(&graph, &observed, &State::new(), &schema, secrets())
+        .expect_err("a shrink is refused rather than planned");
+    assert!(
+        refused.to_string().contains("size"),
+        "the refusal names the attribute: {refused}"
+    );
+}
+
+#[test]
+fn a_stop_to_change_attribute_is_marked_for_the_stopped_sequence() {
+    let graph = graph_of(vec![
+        Resource::new(address("yandex:instance.db")).with("cores", 8),
+    ]);
+    let observed = observed_with(&[("yandex:instance.db", &[("cores", Value::Integer(4))])]);
+    let schema = Schema::new().stop_to_change(
+        Provider::new("yandex").unwrap(),
+        Kind::new("instance").unwrap(),
+        "cores",
+    );
+
+    let change = only_change(&graph, &observed, &schema);
+    assert_eq!(change.kind(), ChangeKind::Update);
+    assert_eq!(change.deltas()[0].kind(), DeltaKind::StopThenChange);
+}
+
+#[test]
+fn a_grow_of_a_monotonic_attribute_is_a_normal_change() {
+    let graph = graph_of(vec![
+        Resource::new(address("yandex:instance.db")).with("size", 12),
+    ]);
+    let observed = observed_with(&[("yandex:instance.db", &[("size", Value::Integer(10))])]);
+    let schema = Schema::new().monotonic(
+        Provider::new("yandex").unwrap(),
+        Kind::new("instance").unwrap(),
+        "size",
+    );
+
+    let change = only_change(&graph, &observed, &schema);
+    assert_eq!(change.kind(), ChangeKind::Update);
+    assert_eq!(change.deltas()[0].kind(), DeltaKind::InPlace);
 }
 
 /// A reference is unresolved in the text, not in the world. If the resource it

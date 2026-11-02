@@ -112,6 +112,24 @@ pub enum PlanError {
         /// What it says.
         value: String,
     },
+    /// A monotonic attribute declared smaller than it is.
+    ///
+    /// A disk can be enlarged but not shrunk. The cloud would refuse the
+    /// change anyway; the plan refuses it first, by name, rather than
+    /// proposing a change that cannot be made.
+    #[error(
+        "{address}: {attribute} is declared as {will}, and {was} is what is there: a value that only grows cannot shrink"
+    )]
+    ShrinkRefused {
+        /// The resource declaring it.
+        address: Address,
+        /// Which attribute.
+        attribute: String,
+        /// What is there.
+        was: i64,
+        /// What is declared.
+        will: i64,
+    },
     /// Changes that each have to come after the next, round to the first. One run
     /// cannot order them.
     #[error("one run cannot order these, each after the next: {}", steps(.cycle))]

@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::address::Address;
 use crate::attribute::Attribute;
 use crate::observed::Observed;
-use crate::plan::{AttributeDelta, Change, ChangeKind, Confidence, Merge, Outdated};
+use crate::plan::{AttributeDelta, Change, ChangeKind, Confidence, DeltaKind, Merge, Outdated};
 use crate::resource::{Protection, Resource};
 use crate::schema::Schema;
 use crate::secret::{Recorded, Secrets};
@@ -80,13 +80,34 @@ pub(super) fn differences(
             outdated.push(Outdated::new(address.clone(), name.clone(), before, after));
             continue;
         }
-        let forces_replacement = existing.is_some() && schema.forces_replacement(address, name);
-        deltas.push(AttributeDelta::new(
-            name.clone(),
-            before,
-            after,
-            forces_replacement,
-        ));
+        // A monotonic value may only grow. A declared value below what is
+        // there is refused while planning rather than proposed as a change
+        // the cloud would refuse anyway. Compared as integers; a shrink of a
+        // value of another shape is the provider's to refuse.
+        if existing.is_some()
+            && schema.grows_only(address, name)
+            && let Some(Recorded::Plain(Value::Integer(was))) = &before
+            && let Confidence::Known(Value::Integer(will)) = &after
+            && will < was
+        {
+            return Err(PlanError::ShrinkRefused {
+                address: address.clone(),
+                attribute: name.clone(),
+                was: *was,
+                will: *will,
+            });
+        }
+        // A stop-to-change attribute is carried with the stop it requires,
+        // and an immutable one still replaces: a replacement makes a stop
+        // moot, so it wins where both are declared.
+        let kind = if existing.is_some() && schema.forces_replacement(address, name) {
+            DeltaKind::Replace
+        } else if existing.is_some() && schema.requires_stop(address, name) {
+            DeltaKind::StopThenChange
+        } else {
+            DeltaKind::InPlace
+        };
+        deltas.push(AttributeDelta::new(name.clone(), before, after, kind));
     }
     Ok((deltas, wanted))
 }
@@ -207,7 +228,11 @@ pub(super) fn change_for(
     let (kind, resent) = match (existing, resending) {
         // Not there at all: it has to be made, whatever its attributes say.
         (None, _) => (ChangeKind::Create, false),
-        (Some(_), _) if deltas.iter().any(AttributeDelta::forces_replacement) => {
+        (Some(_), _)
+            if deltas
+                .iter()
+                .any(|delta| delta.kind() == DeltaKind::Replace) =>
+        {
             (ChangeKind::Replace, false)
         }
         (Some(_), _) if !deltas.is_empty() => (ChangeKind::Update, false),
