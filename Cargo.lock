@@ -1889,13 +1889,17 @@ dependencies = [
 name = "nerpa-provider-yandex"
 version = "0.4.0"
 dependencies = [
+ "base64",
  "chrono",
  "nerpa-core",
+ "ring",
  "serde",
  "serde-saphyr",
  "serde_json",
+ "tempfile",
  "thiserror",
  "ureq",
+ "zeroize",
 ]
 
 [[package]]

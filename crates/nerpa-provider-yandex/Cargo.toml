@@ -13,13 +13,19 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+base64 = { workspace = true }
 chrono = { workspace = true }
 nerpa-core = { workspace = true }
+ring = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde-saphyr = { workspace = true }
 thiserror = { workspace = true }
 ureq = { workspace = true }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

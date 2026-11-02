@@ -119,6 +119,14 @@ getrandom = "0.4"
 # Bytes in a human-readable state file. JSON has no way to say "these are
 # bytes", and an array of numbers cannot be told apart from a list of integers.
 base64 = "0.23"
+# Signs the JWT a Yandex service-account key exchanges for an IAM token: PS256,
+# which the IAM endpoint accepts alone. Already linked through rustls, so it adds
+# no crate; the RustCrypto `rsa` crate is out while RUSTSEC-2023-0071 has no
+# patch (adr-2026-079).
+ring = "0.17"
+# Wipes the buffers that held a key's bytes once the signature exists
+# (adr-2026-079).
+zeroize = "1"
 # WASM components, for third-party providers (adr-2026-0004). The defaults
 # are named one by one so that one can be left out: the compile cache is off.
 # Nothing here uses it, and it is the only road to zstd 0.13, whose advisories
