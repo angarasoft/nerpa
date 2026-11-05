@@ -163,3 +163,25 @@ fn a_bucket_reads_a_recorded_list() {
         )])))
     );
 }
+
+#[test]
+fn an_empty_folder_reads_as_no_buckets() {
+    let bucket = address("yandex:bucket.backup");
+    let provider = provider_with(Exchange {
+        method: "GET",
+        url: "https://storage.api.cloud.yandex.net/storage/v1/buckets?folderId=folder".to_owned(),
+        body: None,
+        // The API omits a list that is empty — proto3 JSON omits the zero
+        // value — so a folder with no buckets answers with an empty object.
+        response: Response {
+            status: 200,
+            body: "{}".to_owned(),
+        },
+    });
+
+    let found = read(&provider, bucket.clone());
+    assert!(
+        !found.attributes().contains_key(&bucket),
+        "an empty folder holds no bucket"
+    );
+}

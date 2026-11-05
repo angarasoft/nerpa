@@ -746,9 +746,12 @@ struct WireTag {
     value: String,
 }
 
-/// The answer to a bucket list call.
+/// The answer to a bucket list call. The field is absent where the folder
+/// holds no buckets: proto3 JSON omits a list that is empty, so an empty
+/// folder answers `{}`.
 #[derive(Debug, Deserialize)]
 struct BucketList {
+    #[serde(default)]
     buckets: Vec<WireBucket>,
 }
 
