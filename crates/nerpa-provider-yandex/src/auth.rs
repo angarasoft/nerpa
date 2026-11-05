@@ -329,7 +329,17 @@ fn send<T: serde::Serialize>(
 /// A refusal names the status and nothing of the answer: the endpoint is the one
 /// place a credential has just been sent to, and its error text is not echoed.
 fn exchange(api: &dyn Api, body: &str) -> Result<(String, SystemTime), ApiError> {
-    let answer = api.post(IAM_TOKENS_URL, &[], body)?;
+    let answer = match api.post(IAM_TOKENS_URL, &[], body) {
+        Ok(answer) => answer,
+        // The wire carries what a refusal said; here, and only here, that is
+        // dropped, for the reason above.
+        Err(ApiError::Refused { status, .. }) => {
+            return Err(ApiError::Transport(format!(
+                "the IAM service answered {status} to the token exchange"
+            )));
+        }
+        Err(error) => return Err(error),
+    };
     if answer.status != 200 {
         return Err(ApiError::Transport(format!(
             "the IAM service answered {} to the token exchange",
@@ -426,6 +436,45 @@ mod tests {
         };
         let problem = exchange_jwt(&api, "a.jwt.here").unwrap_err().to_string();
         assert!(problem.contains("401"), "{problem}");
+        assert!(!problem.contains("echoed-credential-text"), "{problem}");
+    }
+
+    #[test]
+    fn a_refusal_the_wire_carries_is_not_echoed_at_the_exchange() {
+        // The real wire returns a refusal carrying what the API said; the
+        // exchange drops that, as it drops the answer it can read itself.
+        struct Refusing;
+        impl Api for Refusing {
+            fn get(&self, _url: &str, _headers: &[(&str, &str)]) -> Result<Response, ApiError> {
+                Err(ApiError::Transport("not asked".to_owned()))
+            }
+            fn post(
+                &self,
+                _url: &str,
+                _headers: &[(&str, &str)],
+                _body: &str,
+            ) -> Result<Response, ApiError> {
+                Err(ApiError::Refused {
+                    status: 403,
+                    said: r#"{"message":"echoed-credential-text"}"#.to_owned(),
+                })
+            }
+            fn patch(
+                &self,
+                _url: &str,
+                _headers: &[(&str, &str)],
+                _body: &str,
+            ) -> Result<Response, ApiError> {
+                Err(ApiError::Transport("not asked".to_owned()))
+            }
+            fn delete(&self, _url: &str, _headers: &[(&str, &str)]) -> Result<Response, ApiError> {
+                Err(ApiError::Transport("not asked".to_owned()))
+            }
+        }
+        let problem = exchange_jwt(&Refusing, "a.jwt.here")
+            .unwrap_err()
+            .to_string();
+        assert!(problem.contains("403"), "{problem}");
         assert!(!problem.contains("echoed-credential-text"), "{problem}");
     }
 

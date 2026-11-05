@@ -21,6 +21,17 @@ pub enum ApiError {
     /// The transport could not carry the request or read the answer.
     #[error("the API call failed: {0}")]
     Transport(String),
+    /// The API refused the call, and what it said. A refusal's body names the
+    /// field it refused, so it is carried — to a readable length — except at
+    /// the token exchange, the one place a credential has just been sent and
+    /// the answer is not echoed.
+    #[error("the API call failed: http status: {status}; the API said: {said}")]
+    Refused {
+        /// The HTTP status code of the refusal.
+        status: u16,
+        /// What the API answered, kept to a readable length.
+        said: String,
+    },
 }
 
 /// The seam between the provider and the wire.
@@ -75,6 +86,10 @@ impl Http {
     pub fn new(timeout: std::time::Duration) -> Self {
         let config = ureq::Agent::config_builder()
             .timeout_global(Some(timeout))
+            // A refused call is an answer, not a transport failure: the body
+            // the API wrote with it is read, so a refusal says why it
+            // happened instead of naming a number.
+            .http_status_as_error(false)
             .build();
         Self {
             agent: config.into(),
@@ -90,6 +105,15 @@ impl Http {
             .body_mut()
             .read_to_string()
             .map_err(|error| ApiError::Transport(error.to_string()))?;
+        if !(200..300).contains(&status) {
+            // What the API said is kept to a readable length: a refusal's
+            // body is a line or two, and an answer of any size is not turned
+            // into an error nobody reads.
+            return Err(ApiError::Refused {
+                status,
+                said: body.chars().take(512).collect(),
+            });
+        }
         Ok(Response { status, body })
     }
 }
@@ -108,6 +132,9 @@ impl Api for Http {
         for (name, value) in headers {
             request = request.header(*name, *value);
         }
+        // A JSON body is labelled JSON: a gateway that reads the body by its
+        // content type refuses a body that claims nothing.
+        request = request.header("Content-Type", "application/json");
         Self::read(request.send(body))
     }
 
@@ -116,6 +143,7 @@ impl Api for Http {
         for (name, value) in headers {
             request = request.header(*name, *value);
         }
+        request = request.header("Content-Type", "application/json");
         Self::read(request.send(body))
     }
 
