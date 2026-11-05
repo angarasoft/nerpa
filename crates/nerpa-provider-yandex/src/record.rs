@@ -57,7 +57,10 @@ impl Recorded {
                 "the body for {method} {url} does not match the recording"
             )));
         }
-        Ok(exchange.response)
+        // A recorded refusal refuses on replay too, the way the wire refused
+        // when it was recorded: the provider sees the same error against a
+        // recording as it would see live.
+        exchange.response.or_refused()
     }
 }
 

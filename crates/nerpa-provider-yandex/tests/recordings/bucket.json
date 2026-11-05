@@ -1,0 +1,83 @@
+{
+  "folder": "b1g5kreli0ft87heedo0",
+  "bucket": "nerpa-recording-bucket",
+  "exchanges": [
+    {
+      "method": "GET",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-recording-bucket?view=VIEW_FULL",
+      "body": null,
+      "status": 404,
+      "response": "{\"code\":5, \"message\":\"The specified bucket does not exist.\", \"details\":[{\"@type\":\"type.googleapis.com/google.rpc.RequestInfo\", \"requestId\":\"473d42b5-97c1-45fc-85a5-43620cdd01c3\"}]}"
+    },
+    {
+      "method": "POST",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets",
+      "body": "{\"folderId\":\"b1g5kreli0ft87heedo0\",\"name\":\"nerpa-recording-bucket\",\"defaultStorageClass\":\"STANDARD\",\"versioning\":\"VERSIONING_ENABLED\",\"maxSize\":\"1073741824\",\"tags\":[{\"key\":\"team\",\"value\":\"nerpa\"}]}",
+      "status": 200,
+      "response": "{\"id\":\"e3es86qllvf2h89fe7fs\", \"description\":\"create bucket\", \"createdAt\":\"2026-11-05T18:45:33.730997Z\", \"createdBy\":\"ajem6atub9llee853fno\", \"modifiedAt\":\"2026-11-05T18:45:33.730997Z\", \"done\":true, \"metadata\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.CreateBucketMetadata\", \"name\":\"nerpa-recording-bucket\"}, \"response\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.Bucket\", \"name\":\"nerpa-recording-bucket\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{}, \"defaultStorageClass\":\"STANDARD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"1073741824\", \"createdAt\":\"2026-11-05T18:45:33.668125Z\", \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}], \"resourceId\":\"e3e1j1f9ranhfh7f6e3a\", \"disabledStatickeyAuth\":false}}"
+    },
+    {
+      "method": "GET",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-recording-bucket?view=VIEW_FULL",
+      "body": null,
+      "status": 200,
+      "response": "{\"name\":\"nerpa-recording-bucket\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":false, \"list\":false, \"configRead\":false}, \"defaultStorageClass\":\"STANDARD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"1073741824\", \"acl\":{}, \"createdAt\":\"2026-11-05T18:45:33.668125Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}], \"resourceId\":\"e3e1j1f9ranhfh7f6e3a\", \"disabledStatickeyAuth\":false}"
+    },
+    {
+      "method": "GET",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-recording-bucket?view=VIEW_FULL",
+      "body": null,
+      "status": 200,
+      "response": "{\"name\":\"nerpa-recording-bucket\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":false, \"list\":false, \"configRead\":false}, \"defaultStorageClass\":\"STANDARD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"1073741824\", \"acl\":{}, \"createdAt\":\"2026-11-05T18:45:33.668125Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}], \"resourceId\":\"e3e1j1f9ranhfh7f6e3a\", \"disabledStatickeyAuth\":false}"
+    },
+    {
+      "method": "GET",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-recording-bucket?view=VIEW_FULL",
+      "body": null,
+      "status": 200,
+      "response": "{\"name\":\"nerpa-recording-bucket\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":false, \"list\":false, \"configRead\":false}, \"defaultStorageClass\":\"STANDARD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"1073741824\", \"acl\":{}, \"createdAt\":\"2026-11-05T18:45:33.668125Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}], \"resourceId\":\"e3e1j1f9ranhfh7f6e3a\", \"disabledStatickeyAuth\":false}"
+    },
+    {
+      "method": "GET",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-recording-bucket?view=VIEW_FULL",
+      "body": null,
+      "status": 200,
+      "response": "{\"name\":\"nerpa-recording-bucket\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":false, \"list\":false, \"configRead\":false}, \"defaultStorageClass\":\"STANDARD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"1073741824\", \"acl\":{}, \"createdAt\":\"2026-11-05T18:45:33.668125Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}], \"resourceId\":\"e3e1j1f9ranhfh7f6e3a\", \"disabledStatickeyAuth\":false}"
+    },
+    {
+      "method": "PATCH",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-recording-bucket?updateMask=defaultStorageClass,maxSize,tags",
+      "body": "{\"versioning\":\"VERSIONING_ENABLED\",\"defaultStorageClass\":\"COLD\",\"maxSize\":\"2147483648\",\"tags\":[{\"key\":\"env\",\"value\":\"test\"},{\"key\":\"team\",\"value\":\"nerpa\"}],\"allowedPrivateEndpoints\":{\"enabled\":false,\"forceCloudConsoleAccess\":true},\"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}}",
+      "status": 200,
+      "response": "{\"id\":\"e3epa660t1mignjg8kev\", \"description\":\"update bucket\", \"createdAt\":\"2026-11-05T18:45:56.479877Z\", \"createdBy\":\"ajem6atub9llee853fno\", \"modifiedAt\":\"2026-11-05T18:45:56.479877Z\", \"done\":true, \"metadata\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.UpdateBucketMetadata\", \"name\":\"nerpa-recording-bucket\"}, \"response\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.Bucket\", \"name\":\"nerpa-recording-bucket\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-05T18:45:33.668125Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3e1j1f9ranhfh7f6e3a\", \"disabledStatickeyAuth\":false}}"
+    },
+    {
+      "method": "GET",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-recording-bucket?view=VIEW_FULL",
+      "body": null,
+      "status": 200,
+      "response": "{\"name\":\"nerpa-recording-bucket\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":false, \"list\":false, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-05T18:45:33.668125Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3e1j1f9ranhfh7f6e3a\", \"disabledStatickeyAuth\":false}"
+    },
+    {
+      "method": "GET",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-recording-bucket?view=VIEW_FULL",
+      "body": null,
+      "status": 200,
+      "response": "{\"name\":\"nerpa-recording-bucket\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":false, \"list\":false, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-05T18:45:33.668125Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3e1j1f9ranhfh7f6e3a\", \"disabledStatickeyAuth\":false}"
+    },
+    {
+      "method": "GET",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-recording-bucket?view=VIEW_FULL",
+      "body": null,
+      "status": 200,
+      "response": "{\"name\":\"nerpa-recording-bucket\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":false, \"list\":false, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-05T18:45:33.668125Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3e1j1f9ranhfh7f6e3a\", \"disabledStatickeyAuth\":false}"
+    },
+    {
+      "method": "DELETE",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-recording-bucket",
+      "body": null,
+      "status": 200,
+      "response": "{\"id\":\"e3e1ddcdvos72edq5as4\", \"description\":\"delete bucket\", \"createdAt\":\"2026-11-05T18:46:12.752770Z\", \"createdBy\":\"ajem6atub9llee853fno\", \"modifiedAt\":\"2026-11-05T18:46:12.752770Z\", \"done\":false, \"metadata\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.DeleteBucketMetadata\", \"name\":\"nerpa-recording-bucket\"}}"
+    }
+  ]
+}

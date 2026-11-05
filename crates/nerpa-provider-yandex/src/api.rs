@@ -15,6 +15,30 @@ pub struct Response {
     pub body: String,
 }
 
+impl Response {
+    /// The answer as the wire gives it: a status outside 2xx is carried as
+    /// [`ApiError::Refused`] with what the API said, so a replayed exchange
+    /// and a live one refuse the same way.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Refused`] where the status is outside 2xx.
+    #[must_use = "an answer is either kept or refused"]
+    pub fn or_refused(self) -> Result<Self, ApiError> {
+        if (200..300).contains(&self.status) {
+            Ok(self)
+        } else {
+            // What the API said is kept to a readable length: a refusal's
+            // body is a line or two, and an answer of any size is not turned
+            // into an error nobody reads.
+            Err(ApiError::Refused {
+                status: self.status,
+                said: self.body.chars().take(512).collect(),
+            })
+        }
+    }
+}
+
 /// Why a call could not be made.
 #[derive(Debug, Error)]
 pub enum ApiError {
@@ -105,16 +129,7 @@ impl Http {
             .body_mut()
             .read_to_string()
             .map_err(|error| ApiError::Transport(error.to_string()))?;
-        if !(200..300).contains(&status) {
-            // What the API said is kept to a readable length: a refusal's
-            // body is a line or two, and an answer of any size is not turned
-            // into an error nobody reads.
-            return Err(ApiError::Refused {
-                status,
-                said: body.chars().take(512).collect(),
-            });
-        }
-        Ok(Response { status, body })
+        Response { status, body }.or_refused()
     }
 }
 

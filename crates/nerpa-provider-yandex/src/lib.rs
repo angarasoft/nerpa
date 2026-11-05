@@ -162,16 +162,41 @@ impl Yandex {
         Ok(list.subnets)
     }
 
-    /// The buckets in the folder. A bucket's name is unique across the whole
-    /// platform, so a name says which bucket it is without an id.
-    fn list_buckets(
+    /// One bucket by name, read in the API's full view: the basic one the
+    /// list answers with does not carry the tags. `None` where the bucket is
+    /// not there — the API answers 404, which is an answer rather than a
+    /// failure.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError::World`] where the API could not be asked, or
+    /// answered with something other than the bucket or its absence.
+    fn get_bucket(
         &self,
+        name: &str,
         headers: &[(&str, &str)],
         address: &Address,
-    ) -> Result<Vec<WireBucket>, ProviderError> {
-        let url = format!("{}/buckets?folderId={}", self.storage, self.folder_id);
-        let list: BucketList = self.list_of(&url, headers, address)?;
-        Ok(list.buckets)
+    ) -> Result<Option<WireBucket>, ProviderError> {
+        let url = format!("{}/buckets/{}?view=VIEW_FULL", self.storage, name);
+        match self.api.get(&url, headers) {
+            Ok(Response { status: 200, body }) => {
+                serde_json::from_str(&body)
+                    .map(Some)
+                    .map_err(|error| ProviderError::World {
+                        address: address.clone(),
+                        problem: error.to_string(),
+                    })
+            }
+            Ok(Response { status, .. }) => Err(ProviderError::World {
+                address: address.clone(),
+                problem: format!("the API answered {status} to a bucket read"),
+            }),
+            Err(ApiError::Refused { status: 404, .. }) => Ok(None),
+            Err(error) => Err(ProviderError::World {
+                address: address.clone(),
+                problem: error.to_string(),
+            }),
+        }
     }
 
     /// Makes an instance.
@@ -390,7 +415,7 @@ impl Yandex {
     }
 
     /// Makes a bucket.
-    fn create_bucket(
+    fn make_bucket(
         &self,
         change: &Prepared<'_>,
         headers: &[(&str, &str)],
@@ -412,46 +437,93 @@ impl Yandex {
         headers: &[(&str, &str)],
         name: &str,
     ) -> Result<Concluded, ProviderError> {
-        let list = self.list_buckets(headers, change.address)?;
-        let bucket = list
-            .iter()
-            .find(|bucket| bucket.name == name)
+        let bucket = self
+            .get_bucket(name, headers, change.address)?
             .ok_or_else(|| ProviderError::World {
                 address: change.address.clone(),
                 problem: "the bucket is not there after it was made".to_owned(),
             })?;
-        Ok(Concluded::Became(bucket_attributes(bucket)))
+        Ok(Concluded::Became(bucket_attributes(&bucket)))
     }
 
-    /// Corrects a bucket in place. The storage API changes what the update
-    /// mask names, so the mask is exactly what the declaration manages.
-    fn update_bucket(
+    /// Removes a bucket by name. The API answers 404 where there is nothing
+    /// to remove, which is what the removal wanted anyway.
+    fn remove_bucket(
         &self,
         change: &Prepared<'_>,
         headers: &[(&str, &str)],
         name: &str,
     ) -> Result<(), ProviderError> {
+        let url = format!("{}/buckets/{}", self.storage, name);
+        match self.api.delete(&url, headers) {
+            // The API answers 404 where there is nothing to remove, which is
+            // what the removal wanted anyway.
+            Ok(_) | Err(ApiError::Refused { status: 404, .. }) => Ok(()),
+            Err(error) => Err(ProviderError::World {
+                address: change.address.clone(),
+                problem: error.to_string(),
+            }),
+        }
+    }
+
+    /// Corrects a bucket in place. The storage API applies what the body
+    /// carries whether the mask names it or not, so the body carries what the
+    /// bucket already holds for everything the declaration does not manage,
+    /// and what it asks for where it does. The versioning the body carries is
+    /// the enabled one the API accepts; a bucket whose versioning is not
+    /// enabled cannot be corrected through this door, and that is refused by
+    /// name rather than flipping it silently.
+    fn correct_bucket(
+        &self,
+        change: &Prepared<'_>,
+        headers: &[(&str, &str)],
+        name: &str,
+    ) -> Result<(), ProviderError> {
+        let current = self
+            .get_bucket(name, headers, change.address)?
+            .ok_or_else(|| ProviderError::World {
+                address: change.address.clone(),
+                problem: "the bucket to update is not there".to_owned(),
+            })?;
+        let held = current
+            .versioning
+            .clone()
+            .unwrap_or_else(|| "VERSIONING_DISABLED".to_owned());
+        if held != "VERSIONING_ENABLED" {
+            return Err(ProviderError::World {
+                address: change.address.clone(),
+                problem: format!(
+                    "the storage API updates a bucket only with versioning \
+                     enabled, and this one's is {held}"
+                ),
+            });
+        }
+        let desired = change.desired;
         let patch = PatchBucket {
-            default_storage_class: optional_text(
-                change.desired,
-                "default_storage_class",
-                change.address,
-            )?,
-            versioning: optional_versioning(change.desired, change.address)?,
-            max_size: optional_integer(change.desired, "max_size", change.address)?,
-            tags: wire_tags(change.desired, change.address)?,
+            versioning: "VERSIONING_ENABLED".to_owned(),
+            default_storage_class: optional_text(desired, "default_storage_class", change.address)?
+                .or_else(|| current.default_storage_class.clone()),
+            max_size: optional_integer(desired, "max_size", change.address)?.or(current.max_size),
+            tags: match desired.get("tags") {
+                Some(_) => wire_tags(desired, change.address)?,
+                None => current.tags.clone(),
+            },
+            allowed_private_endpoints: WireAllowedPrivateEndpoints {
+                enabled: false,
+                force_cloud_console_access: true,
+            },
+            object_lock: WireObjectLock {
+                status: "OBJECT_LOCK_STATUS_DISABLED".to_owned(),
+            },
         };
         let mut mask = Vec::new();
-        if patch.default_storage_class.is_some() {
+        if desired.get("default_storage_class").is_some() {
             mask.push("defaultStorageClass");
         }
-        if patch.versioning.is_some() {
-            mask.push("versioning");
-        }
-        if patch.max_size.is_some() {
+        if desired.get("max_size").is_some() {
             mask.push("maxSize");
         }
-        if change.desired.get("tags").is_some() {
+        if desired.get("tags").is_some() {
             mask.push("tags");
         }
         if mask.is_empty() {
@@ -482,37 +554,22 @@ impl Yandex {
         headers: &[(&str, &str)],
         name: &str,
     ) -> Result<Concluded, ProviderError> {
-        let existing = self
-            .list_buckets(headers, change.address)?
-            .into_iter()
-            .find(|bucket| bucket.name == name);
-
         match change.kind {
             Sending::Delete => {
-                if let Some(bucket) = existing {
-                    let url = format!("{}/buckets/{}", self.storage, bucket.name);
-                    world(change.address, self.api.delete(&url, headers))?;
-                }
+                self.remove_bucket(change, headers, name)?;
                 Ok(Concluded::Gone)
             }
             Sending::Replace => {
-                if let Some(bucket) = existing {
-                    let url = format!("{}/buckets/{}", self.storage, bucket.name);
-                    world(change.address, self.api.delete(&url, headers))?;
-                }
-                self.create_bucket(change, headers)?;
+                self.remove_bucket(change, headers, name)?;
+                self.make_bucket(change, headers)?;
                 self.read_bucket(change, headers, name)
             }
             Sending::Update => {
-                existing.ok_or_else(|| ProviderError::World {
-                    address: change.address.clone(),
-                    problem: "the bucket to update is not there".to_owned(),
-                })?;
-                self.update_bucket(change, headers, name)?;
+                self.correct_bucket(change, headers, name)?;
                 self.read_bucket(change, headers, name)
             }
             Sending::Create => {
-                self.create_bucket(change, headers)?;
+                self.make_bucket(change, headers)?;
                 self.read_bucket(change, headers, name)
             }
             _ => Err(ProviderError::Declaration {
@@ -740,19 +797,10 @@ struct WireBucket {
 }
 
 /// One tag on a bucket, as the API answers with it.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 struct WireTag {
     key: String,
     value: String,
-}
-
-/// The answer to a bucket list call. The field is absent where the folder
-/// holds no buckets: proto3 JSON omits a list that is empty, so an empty
-/// folder answers `{}`.
-#[derive(Debug, Deserialize)]
-struct BucketList {
-    #[serde(default)]
-    buckets: Vec<WireBucket>,
 }
 
 /// What a bucket create call is asked with. Only what the declaration manages
@@ -776,29 +824,58 @@ struct CreateBucket {
         skip_serializing_if = "Option::is_none"
     )]
     max_size: Option<i64>,
-    #[serde(rename = "tags", skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "tags", default, skip_serializing_if = "Vec::is_empty")]
     tags: Vec<WireTag>,
 }
 
 /// What a bucket update call is asked with. The update mask travels in the
-/// URL, as the storage API asks; the body carries only what the mask names.
+/// URL; the storage API applies what the body carries whether the mask names
+/// it or not, so the body says every field it wants left alone as well as
+/// every field it wants changed. Versioning is always `VERSIONING_ENABLED`,
+/// the one value the update accepts — the schema declares the attribute
+/// immutable, so a change replaces the bucket rather than passing through
+/// here. The private-endpoint policy and the object lock are the shapes the
+/// update validation demands be present; they say the check off and the lock
+/// disabled, and forcing the console's access is what makes the policy count
+/// as stated.
 #[derive(Debug, Serialize, Deserialize)]
 struct PatchBucket {
+    #[serde(rename = "versioning")]
+    versioning: String,
     #[serde(
         rename = "defaultStorageClass",
         skip_serializing_if = "Option::is_none"
     )]
     default_storage_class: Option<String>,
-    #[serde(rename = "versioning", skip_serializing_if = "Option::is_none")]
-    versioning: Option<String>,
     #[serde(
         rename = "maxSize",
         with = "optional_int64",
         skip_serializing_if = "Option::is_none"
     )]
     max_size: Option<i64>,
-    #[serde(rename = "tags", skip_serializing_if = "Vec::is_empty")]
+    #[serde(rename = "tags", default, skip_serializing_if = "Vec::is_empty")]
     tags: Vec<WireTag>,
+    #[serde(rename = "allowedPrivateEndpoints")]
+    allowed_private_endpoints: WireAllowedPrivateEndpoints,
+    #[serde(rename = "objectLock")]
+    object_lock: WireObjectLock,
+}
+
+/// The private-endpoint policy an update carries, as the storage API asks:
+/// the check off with the console's access forced — a non-empty shape, which
+/// is what the validation demands of the field.
+#[derive(Debug, Serialize, Deserialize)]
+struct WireAllowedPrivateEndpoints {
+    enabled: bool,
+    #[serde(rename = "forceCloudConsoleAccess")]
+    force_cloud_console_access: bool,
+}
+
+/// The object lock an update carries, as the storage API asks: disabled,
+/// which is the lock a plain bucket holds.
+#[derive(Debug, Serialize, Deserialize)]
+struct WireObjectLock {
+    status: String,
 }
 
 /// The attributes a wire instance reads back as.
@@ -1100,6 +1177,10 @@ impl Provider for Yandex {
             .immutable(self.name.clone(), subnet.clone(), "network_id")
             .immutable(self.name.clone(), subnet.clone(), "zone_id")
             .immutable(self.name.clone(), subnet, "v4_cidr_blocks")
+            // The storage API cannot change a bucket's versioning: the update
+            // accepts the enabled word alone. A declared change replaces the
+            // bucket rather than pretending the door is open.
+            .immutable(self.name.clone(), bucket.clone(), "versioning")
             .monotonic(self.name.clone(), bucket, "max_size")
     }
 
@@ -1174,15 +1255,12 @@ impl Provider for Yandex {
                     }
                 }
                 "bucket" => {
-                    let list = self.list_buckets(&headers, &address)?;
                     for reading in readings {
-                        if let Some(bucket) = list
-                            .iter()
-                            .find(|bucket| bucket.name == wire_name(reading.address()))
-                        {
+                        let name = wire_name(reading.address());
+                        if let Some(bucket) = self.get_bucket(&name, &headers, reading.address())? {
                             found = found.with(
                                 reading.address().clone(),
-                                bucket_attributes(bucket),
+                                bucket_attributes(&bucket),
                                 Vec::new(),
                             );
                         }
@@ -1257,18 +1335,26 @@ struct Memory {
     buckets: std::sync::Mutex<BTreeMap<String, WireBucket>>,
 }
 
-/// The resource kind a URL addresses: `instances`, `networks`, `subnets` or
-/// `buckets`.
+/// The name a single-bucket URL addresses, where it addresses one.
+fn bucket_name(url: &str) -> Option<&str> {
+    let path = url.split(['?', '#']).next().unwrap_or(url);
+    path.rsplit_once("/buckets/").map(|(_, name)| name)
+}
+
+/// The resource kind a URL addresses: `instances`, `networks` or `subnets`.
 fn list_kind(url: &str) -> &str {
-    if url.contains("/buckets") {
-        "buckets"
-    } else if url.contains("/networks") {
+    if url.contains("/networks") {
         "networks"
     } else if url.contains("/subnets") {
         "subnets"
     } else {
         "instances"
     }
+}
+
+/// What the API answers where a bucket is not there.
+fn not_there() -> String {
+    r#"{"code":5,"message":"The specified bucket does not exist."}"#.to_owned()
 }
 
 /// A poisoned store, as the transport error it is.
@@ -1278,6 +1364,23 @@ fn poisoned() -> ApiError {
 
 impl Api for Memory {
     fn get(&self, url: &str, _headers: &[(&str, &str)]) -> Result<Response, ApiError> {
+        // One bucket by name, in the full view the provider asks for, with
+        // the 404 the real API answers where it is not there.
+        if let Some(name) = bucket_name(url) {
+            let buckets = self.buckets.lock().map_err(|_| poisoned())?;
+            return match buckets.get(name) {
+                Some(bucket) => {
+                    let body = serde_json::to_string(bucket)
+                        .map_err(|error| ApiError::Transport(error.to_string()))?;
+                    Ok(Response { status: 200, body })
+                }
+                None => Response {
+                    status: 404,
+                    body: not_there(),
+                }
+                .or_refused(),
+            };
+        }
         let body = match list_kind(url) {
             "networks" => {
                 let networks = self.networks.lock().map_err(|_| poisoned())?;
@@ -1291,12 +1394,6 @@ impl Api for Memory {
                 listed.sort_by(|left, right| left.name.cmp(&right.name));
                 serde_json::to_string(&serde_json::json!({ "subnets": listed }))
             }
-            "buckets" => {
-                let buckets = self.buckets.lock().map_err(|_| poisoned())?;
-                let mut listed: Vec<&WireBucket> = buckets.values().collect();
-                listed.sort_by(|left, right| left.name.cmp(&right.name));
-                serde_json::to_string(&serde_json::json!({ "buckets": listed }))
-            }
             _ => {
                 let instances = self.instances.lock().map_err(|_| poisoned())?;
                 let mut listed: Vec<&WireInstance> = instances.values().collect();
@@ -1309,6 +1406,24 @@ impl Api for Memory {
     }
 
     fn post(&self, url: &str, _headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError> {
+        if url.contains("/buckets") {
+            let create: CreateBucket = serde_json::from_str(body)
+                .map_err(|error| ApiError::Transport(error.to_string()))?;
+            self.buckets.lock().map_err(|_| poisoned())?.insert(
+                create.name.clone(),
+                WireBucket {
+                    name: create.name,
+                    default_storage_class: create.default_storage_class,
+                    versioning: create.versioning,
+                    max_size: create.max_size,
+                    tags: create.tags,
+                },
+            );
+            return Ok(Response {
+                status: 200,
+                body: "{}".to_owned(),
+            });
+        }
         match list_kind(url) {
             "networks" => {
                 let create: CreateNetwork = serde_json::from_str(body)
@@ -1332,20 +1447,6 @@ impl Api for Memory {
                         network_id: create.network_id,
                         zone_id: create.zone_id,
                         v4_cidr_blocks: create.v4_cidr_blocks,
-                    },
-                );
-            }
-            "buckets" => {
-                let create: CreateBucket = serde_json::from_str(body)
-                    .map_err(|error| ApiError::Transport(error.to_string()))?;
-                self.buckets.lock().map_err(|_| poisoned())?.insert(
-                    create.name.clone(),
-                    WireBucket {
-                        name: create.name,
-                        default_storage_class: create.default_storage_class,
-                        versioning: create.versioning,
-                        max_size: create.max_size,
-                        tags: create.tags,
                     },
                 );
             }
@@ -1377,36 +1478,18 @@ impl Api for Memory {
         _headers: &[(&str, &str)],
         body: &str,
     ) -> Result<Response, ApiError> {
-        // A bucket is corrected in place through its update mask; an instance
-        // through its resources. Networks and subnets replace rather than
-        // patch.
-        if list_kind(url) == "buckets" {
-            let name = url
-                .split_once('?')
-                .map_or(url, |(before, _)| before)
-                .rsplit('/')
-                .next()
-                .unwrap_or("");
-            let mask: Vec<&str> = url
-                .split_once('?')
-                .and_then(|(_, after)| after.strip_prefix("updateMask="))
-                .map_or_else(Vec::new, |listed| listed.split(',').collect());
+        // A bucket is corrected by what the body carries — the mask is
+        // decorative on the real wire — and an instance through its
+        // resources. Networks and subnets replace rather than patch.
+        if let Some(name) = bucket_name(url) {
             let patch: PatchBucket = serde_json::from_str(body)
                 .map_err(|error| ApiError::Transport(error.to_string()))?;
             let mut buckets = self.buckets.lock().map_err(|_| poisoned())?;
             if let Some(bucket) = buckets.get_mut(name) {
-                if mask.contains(&"defaultStorageClass") {
-                    bucket.default_storage_class = patch.default_storage_class;
-                }
-                if mask.contains(&"versioning") {
-                    bucket.versioning = patch.versioning;
-                }
-                if mask.contains(&"maxSize") {
-                    bucket.max_size = patch.max_size;
-                }
-                if mask.contains(&"tags") {
-                    bucket.tags = patch.tags;
-                }
+                bucket.default_storage_class = patch.default_storage_class;
+                bucket.versioning = Some(patch.versioning);
+                bucket.max_size = patch.max_size;
+                bucket.tags = patch.tags;
             }
             return Ok(Response {
                 status: 200,
@@ -1427,6 +1510,28 @@ impl Api for Memory {
     }
 
     fn delete(&self, url: &str, _headers: &[(&str, &str)]) -> Result<Response, ApiError> {
+        // A bucket is removed by name, with the 404 the real API answers
+        // where there was nothing to remove.
+        if let Some(name) = bucket_name(url) {
+            let removed = self
+                .buckets
+                .lock()
+                .map_err(|_| poisoned())?
+                .remove(name)
+                .is_some();
+            return if removed {
+                Ok(Response {
+                    status: 200,
+                    body: "{}".to_owned(),
+                })
+            } else {
+                Response {
+                    status: 404,
+                    body: not_there(),
+                }
+                .or_refused()
+            };
+        }
         let id = url.rsplit('/').next().unwrap_or("");
         match list_kind(url) {
             "networks" => {
@@ -1440,13 +1545,6 @@ impl Api for Memory {
                     .lock()
                     .map_err(|_| poisoned())?
                     .retain(|_, subnet| subnet.id != id);
-            }
-            // A bucket is named by its name, which is also its id.
-            "buckets" => {
-                self.buckets
-                    .lock()
-                    .map_err(|_| poisoned())?
-                    .retain(|_, bucket| bucket.name != id);
             }
             _ => {
                 self.instances

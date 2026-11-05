@@ -124,17 +124,18 @@ fn a_subnet_reads_a_recorded_list() {
 }
 
 #[test]
-fn a_bucket_reads_a_recorded_list() {
+fn a_bucket_reads_a_recorded_get() {
     let bucket = address("yandex:bucket.backup");
     let provider = provider_with(Exchange {
         method: "GET",
-        url: "https://storage.api.cloud.yandex.net/storage/v1/buckets?folderId=folder".to_owned(),
+        url: "https://storage.api.cloud.yandex.net/storage/v1/buckets/backup?view=VIEW_FULL"
+            .to_owned(),
         body: None,
+        // The full view carries the tags; the basic one the list answers
+        // with does not.
         response: Response {
             status: 200,
-            // Versioning is omitted by the API where it is disabled, the
-            // zero value; the read reports it as disabled all the same.
-            body: r#"{"buckets":[{"name":"backup","defaultStorageClass":"COLD","maxSize":"1073741824","tags":[{"key":"team","value":"nerpa"}]}]}"#.to_owned(),
+            body: r#"{"name":"backup","folderId":"folder","defaultStorageClass":"COLD","versioning":"VERSIONING_ENABLED","maxSize":"1073741824","tags":[{"key":"team","value":"nerpa"}]}"#.to_owned(),
         },
     });
 
@@ -149,7 +150,7 @@ fn a_bucket_reads_a_recorded_list() {
     );
     assert_eq!(
         attributes.get("versioning"),
-        Some(&Value::Text("disabled".to_owned()))
+        Some(&Value::Text("enabled".to_owned()))
     );
     assert_eq!(
         attributes.get("max_size"),
@@ -165,23 +166,22 @@ fn a_bucket_reads_a_recorded_list() {
 }
 
 #[test]
-fn an_empty_folder_reads_as_no_buckets() {
+fn an_absent_bucket_reads_as_nothing() {
     let bucket = address("yandex:bucket.backup");
     let provider = provider_with(Exchange {
         method: "GET",
-        url: "https://storage.api.cloud.yandex.net/storage/v1/buckets?folderId=folder".to_owned(),
+        url: "https://storage.api.cloud.yandex.net/storage/v1/buckets/backup?view=VIEW_FULL"
+            .to_owned(),
         body: None,
-        // The API omits a list that is empty — proto3 JSON omits the zero
-        // value — so a folder with no buckets answers with an empty object.
         response: Response {
-            status: 200,
-            body: "{}".to_owned(),
+            status: 404,
+            body: r#"{"code":5,"message":"The specified bucket does not exist."}"#.to_owned(),
         },
     });
 
     let found = read(&provider, bucket.clone());
     assert!(
         !found.attributes().contains_key(&bucket),
-        "an empty folder holds no bucket"
+        "an absent bucket reads as nothing"
     );
 }

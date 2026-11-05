@@ -17,7 +17,7 @@ use nerpa_core::schema::Schema;
 use nerpa_core::secret::{Key, Remembered, Secrets};
 use nerpa_core::state::State;
 use nerpa_core::{ChangeKind, Graph, Resource, Value};
-use nerpa_provider_yandex::{Api, ApiError, Auth, Http, Response, Yandex};
+use nerpa_provider_yandex::{Api, ApiError, Auth, Exchange, Http, Recorded, Response, Yandex};
 use serde::{Deserialize, Serialize};
 
 fn plan(
@@ -63,15 +63,17 @@ fn first_declaration(bucket: &nerpa_core::Address) -> Graph {
     graph
 }
 
-/// The declaration it becomes: every managed attribute changes, each in
-/// place.
+/// The declaration it becomes: the storage class, the size cap and the tags
+/// change, each in place. Versioning does not: the storage API cannot change
+/// a bucket's versioning, so the schema declares it immutable and a change
+/// would replace the bucket.
 fn second_declaration(bucket: &nerpa_core::Address) -> Graph {
     let mut graph = Graph::new();
     graph
         .insert(
             Resource::new(bucket.clone())
                 .with("default_storage_class", "COLD")
-                .with("versioning", "suspended")
+                .with("versioning", "enabled")
                 .with("max_size", 2_147_483_648)
                 .with(
                     "tags",
@@ -226,6 +228,68 @@ fn a_bucket_changes_in_place_where_the_api_allows() {
 }
 
 #[test]
+fn a_bucket_without_versioning_is_not_corrected_in_place() {
+    // The storage API updates a bucket only with versioning enabled, and a
+    // bucket that was made without it cannot be corrected through that door:
+    // the refusal names the versioning it holds rather than flipping it.
+    let bucket = address("yandex:bucket.plain");
+
+    let mut state = State::new();
+    let providers = Providers::new().with(Box::new(Yandex::fake()));
+    let machines = Machines::new();
+
+    let mut plain = Graph::new();
+    plain
+        .insert(
+            Resource::new(bucket.clone())
+                .with("default_storage_class", "STANDARD")
+                .with("max_size", 1_073_741_824),
+        )
+        .expect("a resource");
+
+    let observed = observe(&plain, &providers, &machines, &state).expect("observed");
+    let first = plan(&plain, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    apply(
+        &first,
+        &providers,
+        &machines,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |_| Ok(()),
+    )
+    .expect("applied");
+
+    let mut changed = Graph::new();
+    changed
+        .insert(
+            Resource::new(bucket.clone())
+                .with("default_storage_class", "COLD")
+                .with("max_size", 1_073_741_824),
+        )
+        .expect("a resource");
+
+    let observed = observe(&changed, &providers, &machines, &state).expect("observed");
+    let update =
+        plan(&changed, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    let refused = apply(
+        &update,
+        &providers,
+        &machines,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |_| Ok(()),
+    )
+    .expect_err("a bucket without versioning is not corrected in place");
+    let problem = refused.to_string();
+    assert!(
+        problem.contains("versioning"),
+        "the refusal names the versioning it holds: {problem}"
+    );
+}
+
+#[test]
 fn a_shrink_of_max_size_is_refused_while_planning() {
     let bucket = address("yandex:bucket.backup");
 
@@ -373,46 +437,60 @@ struct Recording {
 }
 
 impl Recording {
-    /// Remembers the exchange, where it is one this recording is about.
-    fn remember(&self, method: &str, url: &str, body: Option<&str>, answer: &Response) {
-        if url.starts_with(&self.storage) {
-            self.exchanges
-                .lock()
-                .expect("the recording is not poisoned")
-                .push(RecordedExchange {
-                    method: method.to_owned(),
-                    url: url.to_owned(),
-                    body: body.map(str::to_owned),
-                    status: answer.status,
-                    response: answer.body.clone(),
-                });
+    /// Remembers the exchange, where it is one this recording is about. A
+    /// refusal is remembered too — an absent bucket reads as a 404, and a
+    /// replay has to walk that answer as well.
+    fn remember(
+        &self,
+        method: &str,
+        url: &str,
+        body: Option<&str>,
+        answer: &Result<Response, ApiError>,
+    ) {
+        if !url.starts_with(&self.storage) {
+            return;
         }
+        let (status, said) = match answer {
+            Ok(response) => (response.status, response.body.clone()),
+            Err(ApiError::Refused { status, said }) => (*status, said.clone()),
+            Err(_) => return,
+        };
+        self.exchanges
+            .lock()
+            .expect("the recording is not poisoned")
+            .push(RecordedExchange {
+                method: method.to_owned(),
+                url: url.to_owned(),
+                body: body.map(str::to_owned),
+                status,
+                response: said,
+            });
     }
 }
 
 impl Api for Recording {
     fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Response, ApiError> {
-        let answer = self.real.get(url, headers)?;
+        let answer = self.real.get(url, headers);
         self.remember("GET", url, None, &answer);
-        Ok(answer)
+        answer
     }
 
     fn post(&self, url: &str, headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError> {
-        let answer = self.real.post(url, headers, body)?;
+        let answer = self.real.post(url, headers, body);
         self.remember("POST", url, Some(body), &answer);
-        Ok(answer)
+        answer
     }
 
     fn patch(&self, url: &str, headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError> {
-        let answer = self.real.patch(url, headers, body)?;
+        let answer = self.real.patch(url, headers, body);
         self.remember("PATCH", url, Some(body), &answer);
-        Ok(answer)
+        answer
     }
 
     fn delete(&self, url: &str, headers: &[(&str, &str)]) -> Result<Response, ApiError> {
-        let answer = self.real.delete(url, headers)?;
+        let answer = self.real.delete(url, headers);
         self.remember("DELETE", url, None, &answer);
-        Ok(answer)
+        answer
     }
 }
 
@@ -425,7 +503,7 @@ fn take_a_recording_of_the_bucket_scenario() {
     // A bucket's name is unique across the whole platform, so the fixture owns
     // one of its own. The scenario deletes it before the recording is written,
     // so the replay walks a world that no longer exists there.
-    let bucket = "nerpa-fixture-bucket";
+    let bucket = "nerpa-recording-bucket";
     let exchanges: Arc<Mutex<Vec<RecordedExchange>>> = Arc::default();
     let api = Recording {
         real: Http::new(std::time::Duration::from_secs(30)),
@@ -450,4 +528,34 @@ fn take_a_recording_of_the_bucket_scenario() {
         serde_json::to_string_pretty(&recording).expect("a serialisable recording"),
     )
     .expect("the recording is written");
+}
+
+#[test]
+fn the_provider_converges_against_recorded_bucket_exchanges() {
+    let path =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/recordings/bucket.json");
+    let recording: BucketRecording =
+        serde_json::from_str(&std::fs::read_to_string(&path).expect("a recording beside the test"))
+            .expect("a well-formed recording");
+    // The method names of the replayed exchanges live as long as the test
+    // does; there is one short run of them and nothing else to free.
+    let exchanges = recording
+        .exchanges
+        .into_iter()
+        .map(|exchange| Exchange {
+            method: Box::leak(exchange.method.into_boxed_str()),
+            url: exchange.url,
+            body: exchange.body,
+            response: Response {
+                status: exchange.status,
+                body: exchange.response,
+            },
+        })
+        .collect();
+    the_scenario(
+        Box::new(Recorded::new(exchanges)),
+        Auth::IamToken("token".to_owned()),
+        &recording.folder,
+        &recording.bucket,
+    );
 }
