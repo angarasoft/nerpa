@@ -168,6 +168,7 @@ fn providers(fleet: &Fleet) -> Result<Providers, EngineError> {
             cloud.folder_id.clone(),
             "https://compute.api.cloud.yandex.net/compute/v1",
             "https://vpc.api.cloud.yandex.net/vpc/v1",
+            "https://storage.api.cloud.yandex.net/storage/v1",
             auth,
             Box::new(Http::new(std::time::Duration::from_secs(30))),
         )));

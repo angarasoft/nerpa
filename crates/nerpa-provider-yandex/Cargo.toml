@@ -25,6 +25,8 @@ ureq = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
 tempfile = { workspace = true }
 
 [lints]

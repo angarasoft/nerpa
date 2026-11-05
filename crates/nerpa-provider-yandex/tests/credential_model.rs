@@ -153,6 +153,7 @@ fn provider(auth: Auth, cloud: &Arc<Cloud>) -> Yandex {
         "folder",
         "https://compute.example/compute/v1",
         "https://vpc.example/vpc/v1",
+        "https://storage.example/storage/v1",
         auth,
         Box::new(Shared(Arc::clone(cloud))),
     )

@@ -18,6 +18,7 @@ fn provider_with(exchange: Exchange) -> Yandex {
         "folder",
         "https://compute.api.cloud.yandex.net/compute/v1",
         "https://vpc.api.cloud.yandex.net/vpc/v1",
+        "https://storage.api.cloud.yandex.net/storage/v1",
         Auth::IamToken("token".to_owned()),
         Box::new(Recorded::new(vec![exchange])),
     )
@@ -119,5 +120,46 @@ fn a_subnet_reads_a_recorded_list() {
     assert_eq!(
         attributes.get("v4_cidr_blocks"),
         Some(&Value::List(vec![Value::Text("10.0.0.0/24".to_owned())]))
+    );
+}
+
+#[test]
+fn a_bucket_reads_a_recorded_list() {
+    let bucket = address("yandex:bucket.backup");
+    let provider = provider_with(Exchange {
+        method: "GET",
+        url: "https://storage.api.cloud.yandex.net/storage/v1/buckets?folderId=folder".to_owned(),
+        body: None,
+        response: Response {
+            status: 200,
+            // Versioning is omitted by the API where it is disabled, the
+            // zero value; the read reports it as disabled all the same.
+            body: r#"{"buckets":[{"name":"backup","defaultStorageClass":"COLD","maxSize":"1073741824","tags":[{"key":"team","value":"nerpa"}]}]}"#.to_owned(),
+        },
+    });
+
+    let found = read(&provider, bucket.clone());
+    let attributes = found
+        .attributes()
+        .get(&bucket)
+        .expect("the bucket was found");
+    assert_eq!(
+        attributes.get("default_storage_class"),
+        Some(&Value::Text("COLD".to_owned()))
+    );
+    assert_eq!(
+        attributes.get("versioning"),
+        Some(&Value::Text("disabled".to_owned()))
+    );
+    assert_eq!(
+        attributes.get("max_size"),
+        Some(&Value::Integer(1_073_741_824))
+    );
+    assert_eq!(
+        attributes.get("tags"),
+        Some(&Value::Map(BTreeMap::from([(
+            "team".to_owned(),
+            Value::Text("nerpa".to_owned())
+        )])))
     );
 }
