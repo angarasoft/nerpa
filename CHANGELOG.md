@@ -7,6 +7,17 @@ without ceremony until the first stage is complete.
 
 ### Added
 
+- The `yandex:bucket` kind over the storage REST API: a declared bucket is
+  made with its default storage class, versioning, size cap and tags, read
+  back by name in the API's full view — the list answers in the basic one,
+  which does not carry the tags — corrected in place for the class, the size
+  cap and the tags, and deleted by name when its declaration goes. Versioning
+  is immutable: the storage API's update accepts the enabled word alone, so a
+  declared change replaces the bucket, and a bucket whose versioning is not
+  enabled is refused by name rather than flipped. A declared shrink of the
+  size cap is refused while planning. The wire is pinned against exchanges
+  recorded from a real folder, replayed in tests without a live cloud
+  (w-yc-bucket-rest).
 - The run as a library in `nerpa-engine`: the engine registers the providers,
   evaluates the configuration, reads the world, and plans and applies over the
   typed plan, taking the opened machines as input. The CLI wraps it
@@ -42,6 +53,11 @@ without ceremony until the first stage is complete.
 
 ### Changed
 
+- The Yandex HTTP seam labels every JSON body it sends `application/json`, and
+  a refused call carries what the API answered, to a readable length — the
+  token exchange still names the status and nothing of the answer. A replayed
+  exchange refuses the way the live wire refused, so a recording exercises the
+  same paths a live run does.
 - No `Debug` output of the Yandex provider or of the fleet prints a token or a
   key, and an IAM token is no longer reused in the last minute before it
   expires. A refused token exchange names the HTTP status and nothing of the
