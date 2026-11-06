@@ -7,6 +7,18 @@ without ceremony until the first stage is complete.
 
 ### Added
 
+- The static-site pair on a declared bucket (adr-2026-082): `website` — a map
+  of an index page, which the wire demands, and an error page — and
+  `anonymous_access`, the flags that open a bucket to the public, which is
+  how Yandex spells public where other clouds spell a policy. The site joins
+  a bucket through its first update, for the wire ignores the document at
+  creation; the document is carried from the read into every update after
+  that, so a change to a tag does not wipe the site the probe showed the wire
+  wiping; the flags are the whole document — the map names the flags that are
+  on, an unnamed flag is off, and naming one off is refused. A site on a
+  bucket without versioning is refused by name until versioning is declared
+  or enabled, because the update that carries a site carries the enabled
+  word too (w-yc-bucket-website).
 - The `yandex:bucket` kind over the storage REST API: a declared bucket is
   made with its default storage class, versioning, size cap and tags, read
   back by name in the API's full view — the list answers in the basic one,
