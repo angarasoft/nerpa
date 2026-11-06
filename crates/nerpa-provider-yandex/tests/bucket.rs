@@ -44,6 +44,27 @@ fn secrets() -> Secrets<'static> {
 /// The declaration the bucket scenario starts from: the bucket is made with
 /// every managed attribute but versioning — a bucket that was never
 /// versioned reads as disabled — and the run after it has nothing to do.
+/// The one rule the scenario's declarations speak: the versions of the
+/// bucket's backups go to cold storage after thirty days and expire after
+/// a year.
+fn rule() -> Value {
+    Value::Map(BTreeMap::from([
+        ("id".to_owned(), Value::Text("backups-cold".to_owned())),
+        ("prefix".to_owned(), Value::Text("backups/".to_owned())),
+        (
+            "noncurrent_transitions".to_owned(),
+            Value::List(vec![Value::Map(BTreeMap::from([
+                ("days".to_owned(), Value::Integer(30)),
+                ("storage_class".to_owned(), Value::Text("COLD".to_owned())),
+            ]))]),
+        ),
+        (
+            "noncurrent_expire_after_days".to_owned(),
+            Value::Integer(365),
+        ),
+    ]))
+}
+
 /// The declaration the bucket scenario starts from. The site is not here:
 /// the wire ignores the document at creation, so the site joins through the
 /// first update (adr-2026-082).
@@ -61,6 +82,7 @@ fn first_declaration(bucket: &nerpa_core::Address) -> Graph {
                         ("list".to_owned(), Value::Boolean(true)),
                     ])),
                 )
+                .with("lifecycle", Value::List(vec![rule()]))
                 .with(
                     "tags",
                     Value::Map(BTreeMap::from([(
@@ -98,6 +120,7 @@ fn second_declaration(bucket: &nerpa_core::Address) -> Graph {
                         ("list".to_owned(), Value::Boolean(true)),
                     ])),
                 )
+                .with("lifecycle", Value::List(vec![rule()]))
                 .with(
                     "tags",
                     Value::Map(BTreeMap::from([
@@ -123,6 +146,30 @@ fn third_declaration(bucket: &nerpa_core::Address) -> Graph {
                 .with("default_storage_class", "COLD")
                 .with("versioning", "suspended")
                 .with("max_size", 2_147_483_648)
+                .with(
+                    "tags",
+                    Value::Map(BTreeMap::from([
+                        ("team".to_owned(), Value::Text("nerpa".to_owned())),
+                        ("env".to_owned(), Value::Text("test".to_owned())),
+                    ])),
+                ),
+        )
+        .expect("a resource");
+    graph
+}
+
+/// The declaration after that: the rules are gone, and the empty list is
+/// the word for no rules — the update that follows carries it and clears
+/// what is there.
+fn fourth_declaration(bucket: &nerpa_core::Address) -> Graph {
+    let mut graph = Graph::new();
+    graph
+        .insert(
+            Resource::new(bucket.clone())
+                .with("default_storage_class", "COLD")
+                .with("versioning", "suspended")
+                .with("max_size", 2_147_483_648)
+                .with("lifecycle", Value::List(Vec::new()))
                 .with(
                     "tags",
                     Value::Map(BTreeMap::from([
@@ -162,6 +209,8 @@ fn the_scenario(api: Box<dyn Api>, auth: Auth, folder: &str, bucket: &str) {
         second_declaration(&address),
         third_declaration(&address),
         third_declaration(&address),
+        fourth_declaration(&address),
+        fourth_declaration(&address),
         Graph::new(),
         Graph::new(),
     ] {
@@ -866,7 +915,7 @@ fn take_a_recording_of_the_bucket_scenario() {
     // A bucket's name is unique across the whole platform, so the fixture owns
     // one of its own. The scenario deletes it before the recording is written,
     // so the replay walks a world that no longer exists there.
-    let bucket = "nerpa-site-recording";
+    let bucket = "nerpa-lifecycle-recording";
     let exchanges: Arc<Mutex<Vec<RecordedExchange>>> = Arc::default();
     let api = Recording {
         real: Http::new(std::time::Duration::from_secs(30)),

@@ -108,6 +108,7 @@ impl Api for Memory {
                     allowed_private_endpoints: None,
                     website: None,
                     anonymous: create.anonymous,
+                    lifecycle: create.lifecycle,
                 },
             );
             return Ok(Response {
@@ -196,6 +197,7 @@ impl Api for Memory {
             if let Some(anonymous) = patch.anonymous {
                 bucket.anonymous = Some(anonymous);
             }
+            bucket.lifecycle = patch.lifecycle;
             return Ok(Response {
                 status: 200,
                 body: "{}".to_owned(),

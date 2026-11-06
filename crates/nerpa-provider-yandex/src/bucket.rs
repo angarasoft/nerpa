@@ -6,8 +6,8 @@ use nerpa_core::address::Address;
 use nerpa_core::provider::{Concluded, Prepared, ProviderError, Sending};
 
 use crate::attributes::{
-    bucket_attributes, create_bucket, declared_anonymous, declared_website, optional_integer,
-    optional_text, wire_tags,
+    bucket_attributes, create_bucket, declared_anonymous, declared_lifecycle, declared_website,
+    optional_integer, optional_text, wire_tags,
 };
 use crate::wire::{
     PatchBucket, Versioning, WireAllowedPrivateEndpoints, WireBucket, WireObjectLock, WireWebsite,
@@ -185,6 +185,15 @@ impl Yandex {
                 None => current.website.clone().filter(WireWebsite::carries),
             },
             anonymous: declared_anonymous(desired, change.address)?,
+            // The rules are carried from the read where the declaration
+            // leaves them alone — the wire replaces what the body omits —
+            // and an empty declared list is the word for no rules, carried
+            // as the empty list that clears them (adr-2026-083).
+            lifecycle: if desired.get("lifecycle").is_some() {
+                declared_lifecycle(desired, change.address)?
+            } else {
+                current.lifecycle.clone()
+            },
         };
         let mut mask = Vec::new();
         if desired.get("default_storage_class").is_some() {
@@ -201,6 +210,9 @@ impl Yandex {
         }
         if desired.get("anonymous_access").is_some() {
             mask.push("anonymousAccessFlags");
+        }
+        if desired.get("lifecycle").is_some() {
+            mask.push("lifecycleRules");
         }
         let body = serde_json::to_string(&patch).map_err(|error| ProviderError::World {
             address: change.address.clone(),

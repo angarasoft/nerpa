@@ -301,6 +301,14 @@ pub(crate) struct WireBucket {
         skip_serializing_if = "Option::is_none"
     )]
     pub(crate) anonymous: Option<WireAnonymous>,
+    /// The lifecycle rules the bucket holds. Carried through every update,
+    /// for the wire replaces what the body omits with nothing (adr-2026-083).
+    #[serde(
+        rename = "lifecycleRules",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub(crate) lifecycle: Vec<WireRule>,
 }
 
 /// The website document a bucket holds: the index page a request without a
@@ -341,6 +349,103 @@ pub(crate) struct WireAnonymous {
     pub(crate) config_read: bool,
 }
 
+/// One lifecycle rule a bucket holds: a schedule the versions of the
+/// bucket's objects are moved and expired on. The read materializes the
+/// zero subfields of the wrapped values — a nil date, the marker off —
+/// which the report folds away.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct WireRule {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) id: Option<String>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) enabled: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) filter: Option<WireRuleFilter>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) expiration: Option<WireExpiration>,
+    #[serde(rename = "transitions", default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) transitions: Vec<WireTransition>,
+    #[serde(
+        rename = "noncurrentTransitions",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub(crate) noncurrent_transitions: Vec<WireNoncurrentTransition>,
+    #[serde(
+        rename = "noncurrentExpiration",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) noncurrent_expiration: Option<WireNoncurrentExpiration>,
+}
+
+/// The filter a rule applies: the key prefix, where the rule has one.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct WireRuleFilter {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub(crate) prefix: String,
+}
+
+/// The expiration of the current versions, in days from their making.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct WireExpiration {
+    #[serde(
+        rename = "days",
+        with = "optional_int64",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) days: Option<i64>,
+}
+
+/// One transition of the current versions to another storage class.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct WireTransition {
+    #[serde(
+        rename = "days",
+        with = "optional_int64",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) days: Option<i64>,
+    #[serde(
+        rename = "storageClass",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub(crate) storage_class: String,
+}
+
+/// One transition of the noncurrent versions to another storage class.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct WireNoncurrentTransition {
+    #[serde(
+        rename = "noncurrentDays",
+        with = "optional_int64",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) days: Option<i64>,
+    #[serde(
+        rename = "storageClass",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub(crate) storage_class: String,
+}
+
+/// The expiration of the noncurrent versions, in days from their replacing.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct WireNoncurrentExpiration {
+    #[serde(
+        rename = "noncurrentDays",
+        with = "optional_int64",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) days: Option<i64>,
+}
+
 /// One tag on a bucket, as the API answers with it.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct WireTag {
@@ -377,6 +482,14 @@ pub(crate) struct CreateBucket {
         skip_serializing_if = "Option::is_none"
     )]
     pub(crate) anonymous: Option<WireAnonymous>,
+    /// The rules the wire takes at creation, unlike the website document
+    /// (adr-2026-083).
+    #[serde(
+        rename = "lifecycleRules",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub(crate) lifecycle: Vec<WireRule>,
 }
 
 /// What a bucket update call is asked with. The update mask travels in the
@@ -426,6 +539,15 @@ pub(crate) struct PatchBucket {
         skip_serializing_if = "Option::is_none"
     )]
     pub(crate) anonymous: Option<WireAnonymous>,
+    /// Carried from the read, for the wire replaces what the body omits with
+    /// nothing; an empty declared list is the word for no rules, and it
+    /// clears them (adr-2026-083).
+    #[serde(
+        rename = "lifecycleRules",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub(crate) lifecycle: Vec<WireRule>,
 }
 
 /// The private-endpoint policy a bucket holds and an update carries: the

@@ -9,8 +9,9 @@ use nerpa_core::provider::{Attributes, ProviderError};
 use nerpa_core::value::Value;
 
 use crate::wire::{
-    CreateBucket, Versioning, WireAnonymous, WireBucket, WireInstance, WireResources, WireSubnet,
-    WireTag, WireWebsite,
+    CreateBucket, Versioning, WireAnonymous, WireBucket, WireExpiration, WireInstance,
+    WireNoncurrentExpiration, WireNoncurrentTransition, WireResources, WireRule, WireRuleFilter,
+    WireSubnet, WireTag, WireTransition, WireWebsite,
 };
 
 /// One gibibyte: Yandex Cloud counts memory in bytes, a person counts in GiB.
@@ -147,6 +148,13 @@ pub(crate) fn bucket_attributes(bucket: &WireBucket) -> Attributes {
     // The flags that are on, and only those: the map is the set of the on
     // flags, the shape the declaration speaks and the wire itself omits the
     // off ones in.
+    // The rules are always reported, an empty list where there are none:
+    // the empty list is the declared word for no rules, and a read that
+    // omitted it would never confirm the clear (the tags' own reason).
+    attributes.insert(
+        "lifecycle".to_owned(),
+        Value::List(bucket.lifecycle.iter().map(rule_map).collect()),
+    );
     if let Some(anonymous) = bucket.anonymous {
         let mut flags = BTreeMap::new();
         if anonymous.read {
@@ -354,6 +362,301 @@ pub(crate) fn declared_anonymous(
     }
 }
 
+/// One transition a declaration names: after how many days, to which storage
+/// class.
+fn declared_transition(
+    pages: &BTreeMap<String, Value>,
+    address: &Address,
+    kind: &str,
+) -> Result<WireTransition, ProviderError> {
+    let days = match pages.get("days") {
+        Some(Value::Integer(days)) => Some(*days),
+        None => None,
+        Some(_) => {
+            return Err(ProviderError::Declaration {
+                address: address.clone(),
+                problem: format!("{kind} days must be an integer where it is named"),
+            });
+        }
+    };
+    let storage_class = match pages.get("storage_class") {
+        Some(Value::Text(class)) => class.clone(),
+        _ => {
+            return Err(ProviderError::Declaration {
+                address: address.clone(),
+                problem: format!("{kind} needs a storage_class"),
+            });
+        }
+    };
+    Ok(WireTransition {
+        days,
+        storage_class,
+    })
+}
+
+/// One noncurrent transition a declaration names: the same shape, after the
+/// replacing.
+fn declared_noncurrent_transition(
+    pages: &BTreeMap<String, Value>,
+    address: &Address,
+    kind: &str,
+) -> Result<WireNoncurrentTransition, ProviderError> {
+    let days = match pages.get("days") {
+        Some(Value::Integer(days)) => Some(*days),
+        None => None,
+        Some(_) => {
+            return Err(ProviderError::Declaration {
+                address: address.clone(),
+                problem: format!("{kind} days must be an integer where it is named"),
+            });
+        }
+    };
+    let storage_class = match pages.get("storage_class") {
+        Some(Value::Text(class)) => class.clone(),
+        _ => {
+            return Err(ProviderError::Declaration {
+                address: address.clone(),
+                problem: format!("{kind} needs a storage_class"),
+            });
+        }
+    };
+    Ok(WireNoncurrentTransition {
+        days,
+        storage_class,
+    })
+}
+
+/// The transitions a declaration names, in the wire's shape.
+fn declared_transitions(
+    rule: &BTreeMap<String, Value>,
+    address: &Address,
+    name: &str,
+) -> Result<Vec<WireTransition>, ProviderError> {
+    match rule.get(name) {
+        None => Ok(Vec::new()),
+        Some(Value::List(pages)) => pages
+            .iter()
+            .map(|page| match page {
+                Value::Map(pages) => declared_transition(pages, address, name),
+                _ => Err(ProviderError::Declaration {
+                    address: address.clone(),
+                    problem: format!("{name} hold maps of days and storage_class"),
+                }),
+            })
+            .collect(),
+        Some(_) => Err(ProviderError::Declaration {
+            address: address.clone(),
+            problem: format!("{name} must be a list where it is declared"),
+        }),
+    }
+}
+
+/// The noncurrent transitions a declaration names, in the wire's shape.
+fn declared_noncurrent_transitions(
+    rule: &BTreeMap<String, Value>,
+    address: &Address,
+    name: &str,
+) -> Result<Vec<WireNoncurrentTransition>, ProviderError> {
+    match rule.get(name) {
+        None => Ok(Vec::new()),
+        Some(Value::List(pages)) => pages
+            .iter()
+            .map(|page| match page {
+                Value::Map(pages) => declared_noncurrent_transition(pages, address, name),
+                _ => Err(ProviderError::Declaration {
+                    address: address.clone(),
+                    problem: format!("{name} hold maps of days and storage_class"),
+                }),
+            })
+            .collect(),
+        Some(_) => Err(ProviderError::Declaration {
+            address: address.clone(),
+            problem: format!("{name} must be a list where it is declared"),
+        }),
+    }
+}
+
+/// A rule's flat day count, where it names one.
+fn declared_days(
+    rule: &BTreeMap<String, Value>,
+    address: &Address,
+    name: &str,
+) -> Result<Option<i64>, ProviderError> {
+    match rule.get(name) {
+        None => Ok(None),
+        Some(Value::Integer(days)) => Ok(Some(*days)),
+        Some(_) => Err(ProviderError::Declaration {
+            address: address.clone(),
+            problem: format!("{name} must be an integer where it is declared"),
+        }),
+    }
+}
+
+/// The lifecycle a declaration manages, in the wire's shape. Each rule names
+/// its id — the list is compared whole, and a generated id would never
+/// converge — its enabled, a prefix, and at least one of the four actions;
+/// an empty list is the word for no rules.
+///
+/// # Errors
+///
+/// Returns [`ProviderError::Declaration`] where a rule is not a map, lacks
+/// its id, names no action, or holds a value of the wrong shape.
+pub(crate) fn declared_lifecycle(
+    desired: &Attributes,
+    address: &Address,
+) -> Result<Vec<WireRule>, ProviderError> {
+    let Some(Value::List(rules)) = desired.get("lifecycle") else {
+        return Ok(Vec::new());
+    };
+    let mut wire = Vec::new();
+    for rule in rules {
+        let Value::Map(rule) = rule else {
+            return Err(ProviderError::Declaration {
+                address: address.clone(),
+                problem: "lifecycle holds maps of rules; one does not".to_owned(),
+            });
+        };
+        let id = match rule.get("id") {
+            Some(Value::Text(id)) => Some(id.clone()),
+            _ => {
+                return Err(ProviderError::Declaration {
+                    address: address.clone(),
+                    problem: "a lifecycle rule needs an id; the list is compared whole".to_owned(),
+                });
+            }
+        };
+        let enabled = match rule.get("enabled") {
+            None => true,
+            Some(Value::Boolean(set)) => *set,
+            Some(_) => {
+                return Err(ProviderError::Declaration {
+                    address: address.clone(),
+                    problem: "enabled must be a boolean where it is named".to_owned(),
+                });
+            }
+        };
+        let prefix = match rule.get("prefix") {
+            None => None,
+            Some(Value::Text(prefix)) => Some(prefix.clone()),
+            Some(_) => {
+                return Err(ProviderError::Declaration {
+                    address: address.clone(),
+                    problem: "prefix must be text where it is named".to_owned(),
+                });
+            }
+        };
+        let transitions = declared_transitions(rule, address, "transitions")?;
+        let noncurrent_transitions =
+            declared_noncurrent_transitions(rule, address, "noncurrent_transitions")?;
+        let expire_after_days = declared_days(rule, address, "expire_after_days")?;
+        let noncurrent_expire_after_days =
+            declared_days(rule, address, "noncurrent_expire_after_days")?;
+        if transitions.is_empty()
+            && noncurrent_transitions.is_empty()
+            && expire_after_days.is_none()
+            && noncurrent_expire_after_days.is_none()
+        {
+            return Err(ProviderError::Declaration {
+                address: address.clone(),
+                problem: "a lifecycle rule names no action; it needs a transition or an                           expiration"
+                    .to_owned(),
+            });
+        }
+        wire.push(WireRule {
+            id,
+            enabled,
+            filter: prefix.map(|prefix| WireRuleFilter { prefix }),
+            expiration: expire_after_days.map(|days| WireExpiration { days: Some(days) }),
+            transitions,
+            noncurrent_transitions,
+            noncurrent_expiration: noncurrent_expire_after_days
+                .map(|days| WireNoncurrentExpiration { days: Some(days) }),
+        });
+    }
+    Ok(wire)
+}
+
+/// The rule map a declaration speaks, from the wire's rule: the zero
+/// subfields the read materializes are folded away, so what is reported is
+/// what the declaration says.
+fn rule_map(rule: &WireRule) -> Value {
+    let mut map = BTreeMap::new();
+    if let Some(id) = &rule.id {
+        map.insert("id".to_owned(), Value::Text(id.clone()));
+    }
+    // The enabled word only where it is off: the map reports the
+    // non-default, the same shape the declaration speaks — a rule is on
+    // unless it says otherwise, and a wire that materializes the default
+    // would never converge against a declaration that left it unnamed.
+    if !rule.enabled {
+        map.insert("enabled".to_owned(), Value::Boolean(false));
+    }
+    if let Some(prefix) = rule
+        .filter
+        .as_ref()
+        .map(|filter| filter.prefix.clone())
+        .filter(|prefix| !prefix.is_empty())
+    {
+        map.insert("prefix".to_owned(), Value::Text(prefix));
+    }
+    if !rule.transitions.is_empty() {
+        map.insert(
+            "transitions".to_owned(),
+            Value::List(
+                rule.transitions
+                    .iter()
+                    .map(|transition| {
+                        let mut pages = BTreeMap::new();
+                        if let Some(days) = transition.days {
+                            pages.insert("days".to_owned(), Value::Integer(days));
+                        }
+                        pages.insert(
+                            "storage_class".to_owned(),
+                            Value::Text(transition.storage_class.clone()),
+                        );
+                        Value::Map(pages)
+                    })
+                    .collect(),
+            ),
+        );
+    }
+    if !rule.noncurrent_transitions.is_empty() {
+        map.insert(
+            "noncurrent_transitions".to_owned(),
+            Value::List(
+                rule.noncurrent_transitions
+                    .iter()
+                    .map(|transition| {
+                        let mut pages = BTreeMap::new();
+                        if let Some(days) = transition.days {
+                            pages.insert("days".to_owned(), Value::Integer(days));
+                        }
+                        pages.insert(
+                            "storage_class".to_owned(),
+                            Value::Text(transition.storage_class.clone()),
+                        );
+                        Value::Map(pages)
+                    })
+                    .collect(),
+            ),
+        );
+    }
+    if let Some(days) = rule.expiration.as_ref().and_then(|when| when.days) {
+        map.insert("expire_after_days".to_owned(), Value::Integer(days));
+    }
+    if let Some(days) = rule
+        .noncurrent_expiration
+        .as_ref()
+        .and_then(|when| when.days)
+    {
+        map.insert(
+            "noncurrent_expire_after_days".to_owned(),
+            Value::Integer(days),
+        );
+    }
+    Value::Map(map)
+}
+
 /// The create request a declared bucket becomes. Only what the declaration
 /// manages is carried.
 pub(crate) fn create_bucket(
@@ -371,8 +674,10 @@ pub(crate) fn create_bucket(
         tags: wire_tags(desired, address)?,
         // The site is not carried: the wire ignores the document at
         // creation — the site joins a bucket through its first update
-        // (adr-2026-082). The flags are carried: the wire takes them there.
+        // (adr-2026-082). The flags and the rules are carried: the wire
+        // takes them there (adr-2026-083).
         anonymous: declared_anonymous(desired, address)?,
+        lifecycle: declared_lifecycle(desired, address)?,
     })
 }
 

@@ -1,132 +1,174 @@
 {
   "folder": "b1g5kreli0ft87heedo0",
-  "bucket": "nerpa-site-recording",
+  "bucket": "nerpa-lifecycle-recording",
   "exchanges": [
     {
       "method": "GET",
-      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-site-recording?view=VIEW_FULL",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
       "body": null,
       "status": 404,
-      "response": "{\"code\":5, \"message\":\"The specified bucket does not exist.\", \"details\":[{\"@type\":\"type.googleapis.com/google.rpc.RequestInfo\", \"requestId\":\"27529258-7c85-4ae4-8484-d02554480f8c\"}]}"
+      "response": "{\"code\":5, \"message\":\"The specified bucket does not exist.\", \"details\":[{\"@type\":\"type.googleapis.com/google.rpc.RequestInfo\", \"requestId\":\"a424e84f-b3f5-43c7-a44c-7eaf4a9fd2a6\"}]}"
     },
     {
       "method": "POST",
       "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets",
-      "body": "{\"folderId\":\"b1g5kreli0ft87heedo0\",\"name\":\"nerpa-site-recording\",\"defaultStorageClass\":\"STANDARD\",\"maxSize\":\"1073741824\",\"tags\":[{\"key\":\"team\",\"value\":\"nerpa\"}],\"anonymousAccessFlags\":{\"read\":true,\"list\":true}}",
+      "body": "{\"folderId\":\"b1g5kreli0ft87heedo0\",\"name\":\"nerpa-lifecycle-recording\",\"defaultStorageClass\":\"STANDARD\",\"maxSize\":\"1073741824\",\"tags\":[{\"key\":\"team\",\"value\":\"nerpa\"}],\"anonymousAccessFlags\":{\"read\":true,\"list\":true},\"lifecycleRules\":[{\"id\":\"backups-cold\",\"enabled\":true,\"filter\":{\"prefix\":\"backups/\"},\"noncurrentTransitions\":[{\"noncurrentDays\":\"30\",\"storageClass\":\"COLD\"}],\"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}}]}",
       "status": 200,
-      "response": "{\"id\":\"e3euvake7mcfq8l4kku3\", \"description\":\"create bucket\", \"createdAt\":\"2026-11-06T08:46:26.460523Z\", \"createdBy\":\"ajem6atub9llee853fno\", \"modifiedAt\":\"2026-11-06T08:46:26.460523Z\", \"done\":true, \"metadata\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.CreateBucketMetadata\", \"name\":\"nerpa-site-recording\"}, \"response\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.Bucket\", \"name\":\"nerpa-site-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true}, \"defaultStorageClass\":\"STANDARD\", \"versioning\":\"VERSIONING_DISABLED\", \"maxSize\":\"1073741824\", \"createdAt\":\"2026-11-06T08:46:26.397684Z\", \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}], \"resourceId\":\"e3eumjhdiej8j5429d5k\", \"disabledStatickeyAuth\":false}}"
+      "response": "{\"id\":\"e3en67hd485v7adp1vm6\", \"description\":\"create bucket\", \"createdAt\":\"2026-11-06T10:22:07.910291Z\", \"createdBy\":\"ajem6atub9llee853fno\", \"modifiedAt\":\"2026-11-06T10:22:07.910291Z\", \"done\":true, \"metadata\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.CreateBucketMetadata\", \"name\":\"nerpa-lifecycle-recording\"}, \"response\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.Bucket\", \"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true}, \"defaultStorageClass\":\"STANDARD\", \"versioning\":\"VERSIONING_DISABLED\", \"maxSize\":\"1073741824\", \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"lifecycleRules\":[{\"id\":\"backups-cold\", \"enabled\":true, \"filter\":{\"prefix\":\"backups/\"}, \"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}, \"noncurrentTransitions\":[{\"noncurrentDays\":\"30\", \"storageClass\":\"COLD\"}]}], \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}], \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}}"
     },
     {
       "method": "GET",
-      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-site-recording?view=VIEW_FULL",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
       "body": null,
       "status": 200,
-      "response": "{\"name\":\"nerpa-site-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"STANDARD\", \"versioning\":\"VERSIONING_DISABLED\", \"maxSize\":\"1073741824\", \"acl\":{}, \"createdAt\":\"2026-11-06T08:46:26.397684Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}], \"resourceId\":\"e3eumjhdiej8j5429d5k\", \"disabledStatickeyAuth\":false}"
+      "response": "{\"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"STANDARD\", \"versioning\":\"VERSIONING_DISABLED\", \"maxSize\":\"1073741824\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"lifecycleRules\":[{\"id\":\"backups-cold\", \"enabled\":true, \"filter\":{\"prefix\":\"backups/\"}, \"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}, \"noncurrentTransitions\":[{\"noncurrentDays\":\"30\", \"storageClass\":\"COLD\"}]}], \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}], \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}"
     },
     {
       "method": "GET",
-      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-site-recording?view=VIEW_FULL",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
       "body": null,
       "status": 200,
-      "response": "{\"name\":\"nerpa-site-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"STANDARD\", \"versioning\":\"VERSIONING_DISABLED\", \"maxSize\":\"1073741824\", \"acl\":{}, \"createdAt\":\"2026-11-06T08:46:26.397684Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}], \"resourceId\":\"e3eumjhdiej8j5429d5k\", \"disabledStatickeyAuth\":false}"
+      "response": "{\"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"STANDARD\", \"versioning\":\"VERSIONING_DISABLED\", \"maxSize\":\"1073741824\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"lifecycleRules\":[{\"id\":\"backups-cold\", \"enabled\":true, \"filter\":{\"prefix\":\"backups/\"}, \"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}, \"noncurrentTransitions\":[{\"noncurrentDays\":\"30\", \"storageClass\":\"COLD\"}]}], \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}], \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}"
     },
     {
       "method": "GET",
-      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-site-recording?view=VIEW_FULL",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
       "body": null,
       "status": 200,
-      "response": "{\"name\":\"nerpa-site-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"STANDARD\", \"versioning\":\"VERSIONING_DISABLED\", \"maxSize\":\"1073741824\", \"acl\":{}, \"createdAt\":\"2026-11-06T08:46:26.397684Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}], \"resourceId\":\"e3eumjhdiej8j5429d5k\", \"disabledStatickeyAuth\":false}"
+      "response": "{\"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"STANDARD\", \"versioning\":\"VERSIONING_DISABLED\", \"maxSize\":\"1073741824\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"lifecycleRules\":[{\"id\":\"backups-cold\", \"enabled\":true, \"filter\":{\"prefix\":\"backups/\"}, \"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}, \"noncurrentTransitions\":[{\"noncurrentDays\":\"30\", \"storageClass\":\"COLD\"}]}], \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}], \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}"
     },
     {
       "method": "GET",
-      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-site-recording?view=VIEW_FULL",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
       "body": null,
       "status": 200,
-      "response": "{\"name\":\"nerpa-site-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"STANDARD\", \"versioning\":\"VERSIONING_DISABLED\", \"maxSize\":\"1073741824\", \"acl\":{}, \"createdAt\":\"2026-11-06T08:46:26.397684Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}], \"resourceId\":\"e3eumjhdiej8j5429d5k\", \"disabledStatickeyAuth\":false}"
+      "response": "{\"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"STANDARD\", \"versioning\":\"VERSIONING_DISABLED\", \"maxSize\":\"1073741824\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"redirectAllRequests\":{}}, \"lifecycleRules\":[{\"id\":\"backups-cold\", \"enabled\":true, \"filter\":{\"prefix\":\"backups/\"}, \"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}, \"noncurrentTransitions\":[{\"noncurrentDays\":\"30\", \"storageClass\":\"COLD\"}]}], \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}], \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}"
     },
     {
       "method": "PATCH",
-      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-site-recording?updateMask=defaultStorageClass,maxSize,tags,websiteSettings,anonymousAccessFlags",
-      "body": "{\"versioning\":\"VERSIONING_ENABLED\",\"defaultStorageClass\":\"COLD\",\"maxSize\":\"2147483648\",\"tags\":[{\"key\":\"env\",\"value\":\"test\"},{\"key\":\"team\",\"value\":\"nerpa\"}],\"allowedPrivateEndpoints\":{\"enabled\":false,\"forceCloudConsoleAccess\":true},\"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"},\"websiteSettings\":{\"index\":\"index.html\",\"error\":\"404.html\"},\"anonymousAccessFlags\":{\"read\":true,\"list\":true}}",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?updateMask=defaultStorageClass,maxSize,tags,websiteSettings,anonymousAccessFlags,lifecycleRules",
+      "body": "{\"versioning\":\"VERSIONING_ENABLED\",\"defaultStorageClass\":\"COLD\",\"maxSize\":\"2147483648\",\"tags\":[{\"key\":\"env\",\"value\":\"test\"},{\"key\":\"team\",\"value\":\"nerpa\"}],\"allowedPrivateEndpoints\":{\"enabled\":false,\"forceCloudConsoleAccess\":true},\"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"},\"websiteSettings\":{\"index\":\"index.html\",\"error\":\"404.html\"},\"anonymousAccessFlags\":{\"read\":true,\"list\":true},\"lifecycleRules\":[{\"id\":\"backups-cold\",\"enabled\":true,\"filter\":{\"prefix\":\"backups/\"},\"noncurrentTransitions\":[{\"noncurrentDays\":\"30\",\"storageClass\":\"COLD\"}],\"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}}]}",
       "status": 200,
-      "response": "{\"id\":\"e3e76fk3nmntbe0dd8mf\", \"description\":\"update bucket\", \"createdAt\":\"2026-11-06T08:46:42.243957Z\", \"createdBy\":\"ajem6atub9llee853fno\", \"modifiedAt\":\"2026-11-06T08:46:42.243957Z\", \"done\":true, \"metadata\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.UpdateBucketMetadata\", \"name\":\"nerpa-site-recording\"}, \"response\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.Bucket\", \"name\":\"nerpa-site-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T08:46:26.397684Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3eumjhdiej8j5429d5k\", \"disabledStatickeyAuth\":false}}"
+      "response": "{\"id\":\"e3eqe6glkpl7mksk5a64\", \"description\":\"update bucket\", \"createdAt\":\"2026-11-06T10:22:39.661778Z\", \"createdBy\":\"ajem6atub9llee853fno\", \"modifiedAt\":\"2026-11-06T10:22:39.661778Z\", \"done\":true, \"metadata\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.UpdateBucketMetadata\", \"name\":\"nerpa-lifecycle-recording\"}, \"response\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.Bucket\", \"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"lifecycleRules\":[{\"id\":\"backups-cold\", \"enabled\":true, \"filter\":{\"prefix\":\"backups/\"}, \"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}, \"noncurrentTransitions\":[{\"noncurrentDays\":\"30\", \"storageClass\":\"COLD\"}]}], \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}}"
     },
     {
       "method": "PUT",
-      "url": "https://storage.yandexcloud.net/nerpa-site-recording?versioning",
+      "url": "https://storage.yandexcloud.net/nerpa-lifecycle-recording?versioning",
       "body": "<VersioningConfiguration><Status>Enabled</Status></VersioningConfiguration>",
       "status": 200,
       "response": ""
     },
     {
       "method": "GET",
-      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-site-recording?view=VIEW_FULL",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
       "body": null,
       "status": 200,
-      "response": "{\"name\":\"nerpa-site-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T08:46:26.397684Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3eumjhdiej8j5429d5k\", \"disabledStatickeyAuth\":false}"
+      "response": "{\"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"lifecycleRules\":[{\"id\":\"backups-cold\", \"enabled\":true, \"filter\":{\"prefix\":\"backups/\"}, \"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}, \"noncurrentTransitions\":[{\"noncurrentDays\":\"30\", \"storageClass\":\"COLD\"}]}], \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}"
     },
     {
       "method": "GET",
-      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-site-recording?view=VIEW_FULL",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
       "body": null,
       "status": 200,
-      "response": "{\"name\":\"nerpa-site-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T08:46:26.397684Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3eumjhdiej8j5429d5k\", \"disabledStatickeyAuth\":false}"
+      "response": "{\"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"lifecycleRules\":[{\"id\":\"backups-cold\", \"enabled\":true, \"filter\":{\"prefix\":\"backups/\"}, \"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}, \"noncurrentTransitions\":[{\"noncurrentDays\":\"30\", \"storageClass\":\"COLD\"}]}], \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}"
     },
     {
       "method": "GET",
-      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-site-recording?view=VIEW_FULL",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
       "body": null,
       "status": 200,
-      "response": "{\"name\":\"nerpa-site-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T08:46:26.397684Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}, {\"key\":\"env\", \"value\":\"test\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3eumjhdiej8j5429d5k\", \"disabledStatickeyAuth\":false}"
+      "response": "{\"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"lifecycleRules\":[{\"id\":\"backups-cold\", \"enabled\":true, \"filter\":{\"prefix\":\"backups/\"}, \"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}, \"noncurrentTransitions\":[{\"noncurrentDays\":\"30\", \"storageClass\":\"COLD\"}]}], \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}"
     },
     {
       "method": "GET",
-      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-site-recording?view=VIEW_FULL",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
       "body": null,
       "status": 200,
-      "response": "{\"name\":\"nerpa-site-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T08:46:26.397684Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3eumjhdiej8j5429d5k\", \"disabledStatickeyAuth\":false}"
+      "response": "{\"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"lifecycleRules\":[{\"id\":\"backups-cold\", \"enabled\":true, \"filter\":{\"prefix\":\"backups/\"}, \"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}, \"noncurrentTransitions\":[{\"noncurrentDays\":\"30\", \"storageClass\":\"COLD\"}]}], \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}"
     },
     {
       "method": "PATCH",
-      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-site-recording?updateMask=defaultStorageClass,maxSize,tags",
-      "body": "{\"versioning\":\"VERSIONING_ENABLED\",\"defaultStorageClass\":\"COLD\",\"maxSize\":\"2147483648\",\"tags\":[{\"key\":\"env\",\"value\":\"test\"},{\"key\":\"team\",\"value\":\"nerpa\"}],\"allowedPrivateEndpoints\":{\"enabled\":false,\"forceCloudConsoleAccess\":true},\"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"},\"websiteSettings\":{\"index\":\"index.html\",\"error\":\"404.html\"}}",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?updateMask=defaultStorageClass,maxSize,tags",
+      "body": "{\"versioning\":\"VERSIONING_ENABLED\",\"defaultStorageClass\":\"COLD\",\"maxSize\":\"2147483648\",\"tags\":[{\"key\":\"env\",\"value\":\"test\"},{\"key\":\"team\",\"value\":\"nerpa\"}],\"allowedPrivateEndpoints\":{\"enabled\":false,\"forceCloudConsoleAccess\":true},\"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"},\"websiteSettings\":{\"index\":\"index.html\",\"error\":\"404.html\"},\"lifecycleRules\":[{\"id\":\"backups-cold\",\"enabled\":true,\"filter\":{\"prefix\":\"backups/\"},\"noncurrentTransitions\":[{\"noncurrentDays\":\"30\",\"storageClass\":\"COLD\"}],\"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}}]}",
       "status": 200,
-      "response": "{\"id\":\"e3eqv832h2i78tm2il82\", \"description\":\"update bucket\", \"createdAt\":\"2026-11-06T08:47:21.391465Z\", \"createdBy\":\"ajem6atub9llee853fno\", \"modifiedAt\":\"2026-11-06T08:47:21.391465Z\", \"done\":true, \"metadata\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.UpdateBucketMetadata\", \"name\":\"nerpa-site-recording\"}, \"response\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.Bucket\", \"name\":\"nerpa-site-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T08:46:26.397684Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3eumjhdiej8j5429d5k\", \"disabledStatickeyAuth\":false}}"
+      "response": "{\"id\":\"e3eng4o1lgupvqvrujdh\", \"description\":\"update bucket\", \"createdAt\":\"2026-11-06T10:23:07.865637Z\", \"createdBy\":\"ajem6atub9llee853fno\", \"modifiedAt\":\"2026-11-06T10:23:07.865637Z\", \"done\":true, \"metadata\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.UpdateBucketMetadata\", \"name\":\"nerpa-lifecycle-recording\"}, \"response\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.Bucket\", \"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"lifecycleRules\":[{\"id\":\"backups-cold\", \"enabled\":true, \"filter\":{\"prefix\":\"backups/\"}, \"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}, \"noncurrentTransitions\":[{\"noncurrentDays\":\"30\", \"storageClass\":\"COLD\"}]}], \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}}"
     },
     {
       "method": "PUT",
-      "url": "https://storage.yandexcloud.net/nerpa-site-recording?versioning",
+      "url": "https://storage.yandexcloud.net/nerpa-lifecycle-recording?versioning",
       "body": "<VersioningConfiguration><Status>Suspended</Status></VersioningConfiguration>",
       "status": 200,
       "response": ""
     },
     {
       "method": "GET",
-      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-site-recording?view=VIEW_FULL",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
       "body": null,
       "status": 200,
-      "response": "{\"name\":\"nerpa-site-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_SUSPENDED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T08:46:26.397684Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3eumjhdiej8j5429d5k\", \"disabledStatickeyAuth\":false}"
+      "response": "{\"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_SUSPENDED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"lifecycleRules\":[{\"id\":\"backups-cold\", \"enabled\":true, \"filter\":{\"prefix\":\"backups/\"}, \"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}, \"noncurrentTransitions\":[{\"noncurrentDays\":\"30\", \"storageClass\":\"COLD\"}]}], \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}"
     },
     {
       "method": "GET",
-      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-site-recording?view=VIEW_FULL",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
       "body": null,
       "status": 200,
-      "response": "{\"name\":\"nerpa-site-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_SUSPENDED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T08:46:26.397684Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3eumjhdiej8j5429d5k\", \"disabledStatickeyAuth\":false}"
+      "response": "{\"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_SUSPENDED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"lifecycleRules\":[{\"id\":\"backups-cold\", \"enabled\":true, \"filter\":{\"prefix\":\"backups/\"}, \"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}, \"noncurrentTransitions\":[{\"noncurrentDays\":\"30\", \"storageClass\":\"COLD\"}]}], \"tags\":[{\"key\":\"team\", \"value\":\"nerpa\"}, {\"key\":\"env\", \"value\":\"test\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}"
     },
     {
       "method": "GET",
-      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-site-recording?view=VIEW_FULL",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
       "body": null,
       "status": 200,
-      "response": "{\"name\":\"nerpa-site-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_SUSPENDED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T08:46:26.397684Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3eumjhdiej8j5429d5k\", \"disabledStatickeyAuth\":false}"
+      "response": "{\"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_SUSPENDED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"lifecycleRules\":[{\"id\":\"backups-cold\", \"enabled\":true, \"filter\":{\"prefix\":\"backups/\"}, \"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}, \"noncurrentTransitions\":[{\"noncurrentDays\":\"30\", \"storageClass\":\"COLD\"}]}], \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}"
+    },
+    {
+      "method": "GET",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
+      "body": null,
+      "status": 200,
+      "response": "{\"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_SUSPENDED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"lifecycleRules\":[{\"id\":\"backups-cold\", \"enabled\":true, \"filter\":{\"prefix\":\"backups/\"}, \"noncurrentExpiration\":{\"noncurrentDays\":\"365\"}, \"noncurrentTransitions\":[{\"noncurrentDays\":\"30\", \"storageClass\":\"COLD\"}]}], \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}"
+    },
+    {
+      "method": "PATCH",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?updateMask=defaultStorageClass,maxSize,tags,lifecycleRules",
+      "body": "{\"versioning\":\"VERSIONING_ENABLED\",\"defaultStorageClass\":\"COLD\",\"maxSize\":\"2147483648\",\"tags\":[{\"key\":\"env\",\"value\":\"test\"},{\"key\":\"team\",\"value\":\"nerpa\"}],\"allowedPrivateEndpoints\":{\"enabled\":false,\"forceCloudConsoleAccess\":true},\"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"},\"websiteSettings\":{\"index\":\"index.html\",\"error\":\"404.html\"}}",
+      "status": 200,
+      "response": "{\"id\":\"e3e04nhunqvrs9rfi6bl\", \"description\":\"update bucket\", \"createdAt\":\"2026-11-06T10:24:08.072849Z\", \"createdBy\":\"ajem6atub9llee853fno\", \"modifiedAt\":\"2026-11-06T10:24:08.072849Z\", \"done\":true, \"metadata\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.UpdateBucketMetadata\", \"name\":\"nerpa-lifecycle-recording\"}, \"response\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.Bucket\", \"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_ENABLED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}}"
+    },
+    {
+      "method": "PUT",
+      "url": "https://storage.yandexcloud.net/nerpa-lifecycle-recording?versioning",
+      "body": "<VersioningConfiguration><Status>Suspended</Status></VersioningConfiguration>",
+      "status": 200,
+      "response": ""
+    },
+    {
+      "method": "GET",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
+      "body": null,
+      "status": 200,
+      "response": "{\"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_SUSPENDED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}"
+    },
+    {
+      "method": "GET",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
+      "body": null,
+      "status": 200,
+      "response": "{\"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_SUSPENDED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}"
+    },
+    {
+      "method": "GET",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording?view=VIEW_FULL",
+      "body": null,
+      "status": 200,
+      "response": "{\"name\":\"nerpa-lifecycle-recording\", \"folderId\":\"b1g5kreli0ft87heedo0\", \"anonymousAccessFlags\":{\"read\":true, \"list\":true, \"configRead\":false}, \"defaultStorageClass\":\"COLD\", \"versioning\":\"VERSIONING_SUSPENDED\", \"maxSize\":\"2147483648\", \"acl\":{}, \"createdAt\":\"2026-11-06T10:22:07.858398Z\", \"websiteSettings\":{\"index\":\"index.html\", \"error\":\"404.html\", \"redirectAllRequests\":{}}, \"tags\":[{\"key\":\"env\", \"value\":\"test\"}, {\"key\":\"team\", \"value\":\"nerpa\"}], \"objectLock\":{\"status\":\"OBJECT_LOCK_STATUS_DISABLED\"}, \"allowedPrivateEndpoints\":{\"enabled\":false, \"forceCloudConsoleAccess\":true}, \"resourceId\":\"e3egiv1cin829ifr79p1\", \"disabledStatickeyAuth\":false}"
     },
     {
       "method": "DELETE",
-      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-site-recording",
+      "url": "https://storage.api.cloud.yandex.net/storage/v1/buckets/nerpa-lifecycle-recording",
       "body": null,
       "status": 200,
-      "response": "{\"id\":\"e3ebknvnhslbdhen429v\", \"description\":\"delete bucket\", \"createdAt\":\"2026-11-06T08:47:48.476286Z\", \"createdBy\":\"ajem6atub9llee853fno\", \"modifiedAt\":\"2026-11-06T08:47:48.476286Z\", \"done\":false, \"metadata\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.DeleteBucketMetadata\", \"name\":\"nerpa-site-recording\"}}"
+      "response": "{\"id\":\"e3erg0nmdfvr5di50t60\", \"description\":\"delete bucket\", \"createdAt\":\"2026-11-06T10:24:44.810399Z\", \"createdBy\":\"ajem6atub9llee853fno\", \"modifiedAt\":\"2026-11-06T10:24:44.810399Z\", \"done\":false, \"metadata\":{\"@type\":\"type.googleapis.com/yandex.cloud.storage.v1.DeleteBucketMetadata\", \"name\":\"nerpa-lifecycle-recording\"}}"
     }
   ]
 }
