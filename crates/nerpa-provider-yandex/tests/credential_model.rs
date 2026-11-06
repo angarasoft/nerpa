@@ -109,6 +109,17 @@ struct Cloud {
 struct Shared(Arc<Cloud>);
 
 impl Api for Shared {
+    fn put(
+        &self,
+        _url: &str,
+        _headers: &[(&str, &str)],
+        _body: &str,
+    ) -> Result<Response, ApiError> {
+        Err(ApiError::Transport(
+            "the cloud in this test is not written to".to_owned(),
+        ))
+    }
+
     fn get(&self, _url: &str, headers: &[(&str, &str)]) -> Result<Response, ApiError> {
         let authorization = headers
             .iter()

@@ -86,18 +86,15 @@ pub trait Api: Send + Sync {
     fn patch(&self, url: &str, headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError>;
 
     /// Writes a resource whole, the way the S3 door asks: a sub-resource
-    /// carries its document as a PUT, not a patch.
+    /// carries its document as a PUT, not a patch. Required of every wire —
+    /// a provider function that is declared is not an option, and a wire
+    /// that cannot write the document is a compile error, not a live-cloud
+    /// surprise.
     ///
     /// # Errors
     ///
-    /// Returns [`ApiError::Transport`] when the call could not be carried —
-    /// the only answer a wire that does not speak the verb can give.
-    fn put(&self, url: &str, headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError> {
-        let _ = (url, headers, body);
-        Err(ApiError::Transport(
-            "this wire does not speak PUT".to_owned(),
-        ))
-    }
+    /// Returns [`ApiError::Transport`] when the call could not be carried.
+    fn put(&self, url: &str, headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError>;
 
     /// Removes a resource.
     ///
@@ -161,9 +158,16 @@ impl Api for Http {
         for (name, value) in headers {
             request = request.header(*name, *value);
         }
-        // A JSON body is labelled JSON: a gateway that reads the body by its
-        // content type refuses a body that claims nothing.
-        request = request.header("Content-Type", "application/json");
+        // A JSON body is labelled JSON where the caller named no label of
+        // its own: a gateway that reads the body by its content type refuses
+        // a body that claims nothing, and a caller that named one sends
+        // exactly that one, not two.
+        if !headers
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+        {
+            request = request.header("Content-Type", "application/json");
+        }
         Self::read(request.send(body))
     }
 
@@ -172,7 +176,12 @@ impl Api for Http {
         for (name, value) in headers {
             request = request.header(*name, *value);
         }
-        request = request.header("Content-Type", "application/json");
+        if !headers
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+        {
+            request = request.header("Content-Type", "application/json");
+        }
         Self::read(request.send(body))
     }
 

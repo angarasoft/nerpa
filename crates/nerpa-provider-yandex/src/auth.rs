@@ -373,6 +373,15 @@ mod tests {
     }
 
     impl Api for Replay {
+        fn put(
+            &self,
+            _url: &str,
+            _headers: &[(&str, &str)],
+            _body: &str,
+        ) -> Result<Response, ApiError> {
+            Err(ApiError::Transport("not asked in this test".to_owned()))
+        }
+
         fn get(&self, _url: &str, _headers: &[(&str, &str)]) -> Result<Response, ApiError> {
             unreachable!("only the exchange POST is exercised")
         }
@@ -445,6 +454,15 @@ mod tests {
         // exchange drops that, as it drops the answer it can read itself.
         struct Refusing;
         impl Api for Refusing {
+            fn put(
+                &self,
+                _url: &str,
+                _headers: &[(&str, &str)],
+                _body: &str,
+            ) -> Result<Response, ApiError> {
+                Err(ApiError::Transport("not asked".to_owned()))
+            }
+
             fn get(&self, _url: &str, _headers: &[(&str, &str)]) -> Result<Response, ApiError> {
                 Err(ApiError::Transport("not asked".to_owned()))
             }
