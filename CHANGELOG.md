@@ -59,6 +59,16 @@ without ceremony until the first stage is complete.
 
 ### Changed
 
+- A declared change to a bucket's versioning is applied in place through the
+  S3 door (adr-2026-081): a PUT of the versioning document to
+  storage.yandexcloud.net, taken with the same short-lived IAM token as a
+  bearer — no request signature, no static key. The declared vocabulary is
+  `enabled` and `suspended`; a bucket that was never versioned reads as
+  disabled until it is declared, because no door can unversion one, and an
+  update that does not manage versioning on a bucket without it is refused by
+  name. The management update still runs first, carrying the enabled word its
+  validation demands; the S3 door has the final word. The wire is pinned
+  against a recording from a real folder, the S3 exchanges among them.
 - The Yandex HTTP seam labels every JSON body it sends `application/json`, and
   a refused call carries what the API answered, to a readable length — the
   token exchange still names the status and nothing of the answer. A replayed
