@@ -60,9 +60,9 @@ pub enum ApiError {
 
 /// The seam between the provider and the wire.
 ///
-/// Four verbs, because that is all a cloud provider asks: read, make, change,
-/// remove. A provider never builds a URL with a body for a read, so the verbs
-/// keep that apart in the type rather than in a string.
+/// Five verbs, because that is all a cloud provider asks: read, make, change,
+/// write whole and remove. A provider never builds a URL with a body for a
+/// read, so the verbs keep that apart in the type rather than in a string.
 pub trait Api: Send + Sync {
     /// Reads a resource or a list of them.
     ///
@@ -84,6 +84,20 @@ pub trait Api: Send + Sync {
     ///
     /// Returns [`ApiError::Transport`] when the call could not be carried.
     fn patch(&self, url: &str, headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError>;
+
+    /// Writes a resource whole, the way the S3 door asks: a sub-resource
+    /// carries its document as a PUT, not a patch.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ApiError::Transport`] when the call could not be carried —
+    /// the only answer a wire that does not speak the verb can give.
+    fn put(&self, url: &str, headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError> {
+        let _ = (url, headers, body);
+        Err(ApiError::Transport(
+            "this wire does not speak PUT".to_owned(),
+        ))
+    }
 
     /// Removes a resource.
     ///
@@ -159,6 +173,14 @@ impl Api for Http {
             request = request.header(*name, *value);
         }
         request = request.header("Content-Type", "application/json");
+        Self::read(request.send(body))
+    }
+
+    fn put(&self, url: &str, headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError> {
+        let mut request = self.agent.put(url);
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
         Self::read(request.send(body))
     }
 

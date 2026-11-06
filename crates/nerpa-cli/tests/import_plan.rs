@@ -95,6 +95,7 @@ fn provider() -> Yandex {
         "https://compute.api.cloud.yandex.net/compute/v1",
         "https://vpc.api.cloud.yandex.net/vpc/v1",
         "https://storage.api.cloud.yandex.net/storage/v1",
+        "https://storage.yandexcloud.net",
         Auth::IamToken("token".to_owned()),
         Box::new(Recorded::new(vec![Exchange {
             method: "GET",

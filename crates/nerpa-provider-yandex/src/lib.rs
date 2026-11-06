@@ -41,6 +41,7 @@ pub struct Yandex {
     compute: String,
     vpc: String,
     storage: String,
+    s3: String,
     auth: Auth,
     api: Box<dyn Api>,
     token_cache: TokenCache,
@@ -54,6 +55,7 @@ impl std::fmt::Debug for Yandex {
             .field("compute", &self.compute)
             .field("vpc", &self.vpc)
             .field("storage", &self.storage)
+            .field("s3", &self.s3)
             .field("auth", &self.auth)
             .finish_non_exhaustive()
     }
@@ -63,9 +65,10 @@ impl Yandex {
     /// A provider for `yandex:instance`, `yandex:network`, `yandex:subnet` and
     /// `yandex:bucket` in `folder_id`, reached through `api`.
     ///
-    /// `compute`, `vpc` and `storage` are the three service endpoints —
+    /// `compute`, `vpc` and `storage` are the management endpoints —
     /// instances live under Compute, networks and subnets under VPC, buckets
-    /// under Storage.
+    /// under Storage — and `s3` is the object endpoint a bucket's versioning
+    /// is written through (adr-2026-081).
     ///
     /// # Panics
     ///
@@ -81,6 +84,7 @@ impl Yandex {
         compute: impl Into<String>,
         vpc: impl Into<String>,
         storage: impl Into<String>,
+        s3: impl Into<String>,
         auth: Auth,
         api: Box<dyn Api>,
     ) -> Self {
@@ -90,6 +94,7 @@ impl Yandex {
             compute: compute.into(),
             vpc: vpc.into(),
             storage: storage.into(),
+            s3: s3.into(),
             auth,
             api,
             token_cache: TokenCache::default(),
@@ -466,19 +471,33 @@ impl Yandex {
         }
     }
 
-    /// Corrects a bucket in place. The storage API applies what the body
-    /// carries whether the mask names it or not, so the body carries what the
-    /// bucket already holds for everything the declaration does not manage,
-    /// and what it asks for where it does. The versioning the body carries is
-    /// the enabled one the API accepts; a bucket whose versioning is not
-    /// enabled cannot be corrected through this door, and that is refused by
-    /// name rather than flipping it silently.
+    /// Corrects a bucket in place. The management update cannot carry a
+    /// versioning but the enabled word its validation demands, so the
+    /// attributes it manages are corrected first with that word in the body,
+    /// and the S3 door then writes the versioning the declaration asks for —
+    /// the final word (adr-2026-081). A declaration that does not manage
+    /// versioning, on a bucket whose versioning is not enabled, is refused by
+    /// name: the enabled word the management body carries would flip it.
     fn correct_bucket(
         &self,
         change: &Prepared<'_>,
         headers: &[(&str, &str)],
         name: &str,
     ) -> Result<(), ProviderError> {
+        let desired = change.desired;
+        let manages = ["default_storage_class", "max_size", "tags"]
+            .iter()
+            .any(|attribute| desired.get(*attribute).is_some());
+        if !manages {
+            if desired.get("versioning").is_some() {
+                return self.write_versioning(change, headers, name);
+            }
+            return Err(ProviderError::Declaration {
+                address: change.address.clone(),
+                problem: "an update with nothing the storage API can change".to_owned(),
+            });
+        }
+
         let current = self
             .get_bucket(name, headers, change.address)?
             .ok_or_else(|| ProviderError::World {
@@ -489,16 +508,16 @@ impl Yandex {
             .versioning
             .clone()
             .unwrap_or_else(|| "VERSIONING_DISABLED".to_owned());
-        if held != "VERSIONING_ENABLED" {
+        if held != "VERSIONING_ENABLED" && desired.get("versioning").is_none() {
             return Err(ProviderError::World {
                 address: change.address.clone(),
                 problem: format!(
-                    "the storage API updates a bucket only with versioning \
-                     enabled, and this one's is {held}"
+                    "the management update carries the enabled word, which \
+                     would flip this bucket's versioning ({held}); declare \
+                     versioning to change it, or enable it first"
                 ),
             });
         }
-        let desired = change.desired;
         let patch = PatchBucket {
             versioning: "VERSIONING_ENABLED".to_owned(),
             default_storage_class: optional_text(desired, "default_storage_class", change.address)?
@@ -526,12 +545,6 @@ impl Yandex {
         if desired.get("tags").is_some() {
             mask.push("tags");
         }
-        if mask.is_empty() {
-            return Err(ProviderError::Declaration {
-                address: change.address.clone(),
-                problem: "an update with nothing the storage API can change".to_owned(),
-            });
-        }
         let body = serde_json::to_string(&patch).map_err(|error| ProviderError::World {
             address: change.address.clone(),
             problem: error.to_string(),
@@ -543,7 +556,38 @@ impl Yandex {
             mask.join(",")
         );
         world(change.address, self.api.patch(&url, headers, &body))?;
+        if desired.get("versioning").is_some() {
+            return self.write_versioning(change, headers, name);
+        }
         Ok(())
+    }
+
+    /// Writes a bucket's versioning through the S3 door: the one document
+    /// that door speaks, with the word the declaration asks for
+    /// (adr-2026-081). The token the door takes is the same short-lived one
+    /// the management door takes, as a bearer and with no signature.
+    fn write_versioning(
+        &self,
+        change: &Prepared<'_>,
+        headers: &[(&str, &str)],
+        name: &str,
+    ) -> Result<(), ProviderError> {
+        let Some(declared) = optional_versioning(change.desired, change.address)? else {
+            return Err(ProviderError::Declaration {
+                address: change.address.clone(),
+                problem: "a versioning update with no versioning declared".to_owned(),
+            });
+        };
+        let status = match declared {
+            "enabled" => "Enabled",
+            _ => "Suspended",
+        };
+        let body =
+            format!("<VersioningConfiguration><Status>{status}</Status></VersioningConfiguration>");
+        let url = format!("{}/{name}?versioning", self.s3);
+        let mut xml = headers.to_vec();
+        xml.push(("Content-Type", "application/xml"));
+        world(change.address, self.api.put(&url, &xml, &body)).map(|_| ())
     }
 
     /// Applies a bucket change, and reports what it became. The storage API
@@ -1008,13 +1052,11 @@ fn tag_map(tags: &[WireTag]) -> BTreeMap<String, Value> {
         .collect()
 }
 
-/// A declared versioning word, in the API's spelling.
-fn wire_versioning(declared: &str) -> Option<&'static str> {
+/// A declared versioning word, in the management API's spelling.
+fn wire_versioning(declared: &str) -> &'static str {
     match declared {
-        "enabled" => Some("VERSIONING_ENABLED"),
-        "suspended" => Some("VERSIONING_SUSPENDED"),
-        "disabled" => Some("VERSIONING_DISABLED"),
-        _ => None,
+        "enabled" => "VERSIONING_ENABLED",
+        _ => "VERSIONING_SUSPENDED",
     }
 }
 
@@ -1084,20 +1126,24 @@ fn optional_integer(
     }
 }
 
-/// The versioning a declaration manages, in the API's spelling, or `None`
-/// where the declaration leaves it alone.
-fn optional_versioning(
-    desired: &Attributes,
+/// The versioning a declaration manages, as the word it declared, or `None`
+/// where the declaration leaves it alone. The words are the two the doors can
+/// write: a bucket that was never versioned reads as disabled and stays so
+/// until it is declared, because no door can unversion one (adr-2026-081).
+fn optional_versioning<'a>(
+    desired: &'a Attributes,
     address: &Address,
-) -> Result<Option<String>, ProviderError> {
+) -> Result<Option<&'a str>, ProviderError> {
     match desired.get("versioning") {
         None => Ok(None),
-        Some(Value::Text(text)) => match wire_versioning(text) {
-            Some(wire) => Ok(Some(wire.to_owned())),
-            None => Err(ProviderError::Declaration {
+        Some(Value::Text(text)) => match text.as_str() {
+            "enabled" | "suspended" => Ok(Some(text.as_str())),
+            word => Err(ProviderError::Declaration {
                 address: address.clone(),
                 problem: format!(
-                    "versioning is {text}; it is one of enabled, suspended and disabled"
+                    "versioning is {word}; it is one of enabled and suspended, \
+                     and a bucket that was never versioned reads as disabled \
+                     until it is declared"
                 ),
             }),
         },
@@ -1145,7 +1191,9 @@ fn create_bucket(
         folder_id: folder_id.to_owned(),
         name: wire_name(address),
         default_storage_class: optional_text(desired, "default_storage_class", address)?,
-        versioning: optional_versioning(desired, address)?,
+        versioning: optional_versioning(desired, address)?
+            .map(wire_versioning)
+            .map(str::to_owned),
         max_size: optional_integer(desired, "max_size", address)?,
         tags: wire_tags(desired, address)?,
     })
@@ -1186,10 +1234,8 @@ impl Provider for Yandex {
             .immutable(self.name.clone(), subnet.clone(), "network_id")
             .immutable(self.name.clone(), subnet.clone(), "zone_id")
             .immutable(self.name.clone(), subnet, "v4_cidr_blocks")
-            // The storage API cannot change a bucket's versioning: the update
-            // accepts the enabled word alone. A declared change replaces the
-            // bucket rather than pretending the door is open.
-            .immutable(self.name.clone(), bucket.clone(), "versioning")
+            // The S3 door changes a bucket's versioning in place
+            // (adr-2026-081); the management update alone could not.
             .monotonic(self.name.clone(), bucket, "max_size")
     }
 
@@ -1328,6 +1374,7 @@ impl Provider for Yandex {
             "http://fake-compute",
             "http://fake-vpc",
             "http://fake-storage",
+            "http://fake-s3",
             Auth::IamToken("fake".to_owned()),
             Box::new(Memory::default()),
         )
@@ -1515,6 +1562,37 @@ impl Api for Memory {
         Ok(Response {
             status: 200,
             body: "{}".to_owned(),
+        })
+    }
+
+    fn put(&self, url: &str, _headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError> {
+        // The S3 door writes the versioning document: the one sub-resource
+        // this fake answers for, the one the real door speaks.
+        if !url.contains("?versioning") {
+            return Err(ApiError::Transport(format!(
+                "this fake does not speak PUT for {url}"
+            )));
+        }
+        let path = url.split('?').next().unwrap_or("");
+        let name = path.rsplit('/').next().unwrap_or("");
+        let enabled = body.contains("<Status>Enabled</Status>");
+        let suspended = body.contains("<Status>Suspended</Status>");
+        if !enabled && !suspended {
+            return Err(ApiError::Transport(format!(
+                "this fake does not read the versioning document: {body}"
+            )));
+        }
+        let mut buckets = self.buckets.lock().map_err(|_| poisoned())?;
+        if let Some(bucket) = buckets.get_mut(name) {
+            bucket.versioning = Some(if enabled {
+                "VERSIONING_ENABLED".to_owned()
+            } else {
+                "VERSIONING_SUSPENDED".to_owned()
+            });
+        }
+        Ok(Response {
+            status: 200,
+            body: String::new(),
         })
     }
 

@@ -42,14 +42,14 @@ fn secrets() -> Secrets<'static> {
 }
 
 /// The declaration the bucket scenario starts from: the bucket is made with
-/// every managed attribute, and the run after it has nothing to do.
+/// every managed attribute but versioning — a bucket that was never
+/// versioned reads as disabled — and the run after it has nothing to do.
 fn first_declaration(bucket: &nerpa_core::Address) -> Graph {
     let mut graph = Graph::new();
     graph
         .insert(
             Resource::new(bucket.clone())
                 .with("default_storage_class", "STANDARD")
-                .with("versioning", "enabled")
                 .with("max_size", 1_073_741_824)
                 .with(
                     "tags",
@@ -63,10 +63,9 @@ fn first_declaration(bucket: &nerpa_core::Address) -> Graph {
     graph
 }
 
-/// The declaration it becomes: the storage class, the size cap and the tags
-/// change, each in place. Versioning does not: the storage API cannot change
-/// a bucket's versioning, so the schema declares it immutable and a change
-/// would replace the bucket.
+/// The declaration it becomes: versioning is declared enabled — the S3 door
+/// writes it in place — and the storage class, the size cap and the tags
+/// change with it.
 fn second_declaration(bucket: &nerpa_core::Address) -> Graph {
     let mut graph = Graph::new();
     graph
@@ -87,8 +86,31 @@ fn second_declaration(bucket: &nerpa_core::Address) -> Graph {
     graph
 }
 
+/// The declaration it becomes after that: versioning alone changes, to the
+/// suspended word, with everything else left as it was declared.
+fn third_declaration(bucket: &nerpa_core::Address) -> Graph {
+    let mut graph = Graph::new();
+    graph
+        .insert(
+            Resource::new(bucket.clone())
+                .with("default_storage_class", "COLD")
+                .with("versioning", "suspended")
+                .with("max_size", 2_147_483_648)
+                .with(
+                    "tags",
+                    Value::Map(BTreeMap::from([
+                        ("team".to_owned(), Value::Text("nerpa".to_owned())),
+                        ("env".to_owned(), Value::Text("test".to_owned())),
+                    ])),
+                ),
+        )
+        .expect("a resource");
+    graph
+}
+
 /// Drives the bucket scenario a recording and a replay both walk: the bucket
-/// is made, settles, changes in place, settles, goes, and settles again. The
+/// is made, settles, gains versioning alongside its other changes, settles,
+/// suspends its versioning, settles, goes, and settles again. The
 /// declarations are shared, so the requests a replay makes are the requests
 /// the recording took. The credential differs between the two walks — the
 /// live one for the recording, a token for the replay — but no credential
@@ -100,6 +122,7 @@ fn the_scenario(api: Box<dyn Api>, auth: Auth, folder: &str, bucket: &str) {
         "https://compute.api.cloud.yandex.net/compute/v1",
         "https://vpc.api.cloud.yandex.net/vpc/v1",
         "https://storage.api.cloud.yandex.net/storage/v1",
+        "https://storage.yandexcloud.net",
         auth,
         api,
     )));
@@ -110,6 +133,8 @@ fn the_scenario(api: Box<dyn Api>, auth: Auth, folder: &str, bucket: &str) {
         first_declaration(&address),
         second_declaration(&address),
         second_declaration(&address),
+        third_declaration(&address),
+        third_declaration(&address),
         Graph::new(),
         Graph::new(),
     ] {
@@ -225,6 +250,88 @@ fn a_bucket_changes_in_place_where_the_api_allows() {
         0,
         "the corrected bucket is what the declaration asks for"
     );
+
+    // The versioning alone changes after that: the S3 door writes the
+    // suspended word, and nothing else moves.
+    let suspended = third_declaration(&bucket);
+    let observed = observe(&suspended, &providers, &machines, &state).expect("observed");
+    let update = plan(
+        &suspended,
+        &observed,
+        &state,
+        &providers.schema(),
+        secrets(),
+    )
+    .expect("plannable");
+    assert_eq!(
+        update.stages()[0].changes()[0].kind(),
+        ChangeKind::Update,
+        "a change to versioning alone is made in place"
+    );
+    apply(
+        &update,
+        &providers,
+        &machines,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |_| Ok(()),
+    )
+    .expect("applied");
+
+    let observed = observe(&suspended, &providers, &machines, &state).expect("observed");
+    let settled = plan(
+        &suspended,
+        &observed,
+        &state,
+        &providers.schema(),
+        secrets(),
+    )
+    .expect("plannable");
+    assert_eq!(
+        settled.changes().count(),
+        0,
+        "the suspended bucket is what the declaration asks for"
+    );
+}
+
+#[test]
+fn a_declared_disabled_versioning_is_refused() {
+    // No door can unversion a bucket, so the word for the state none can
+    // reach is refused at the declaration, naming the two that are real.
+    let bucket = address("yandex:bucket.plain");
+
+    let mut state = State::new();
+    let providers = Providers::new().with(Box::new(Yandex::fake()));
+    let machines = Machines::new();
+
+    let mut disabled = Graph::new();
+    disabled
+        .insert(
+            Resource::new(bucket.clone())
+                .with("default_storage_class", "STANDARD")
+                .with("versioning", "disabled"),
+        )
+        .expect("a resource");
+
+    let observed = observe(&disabled, &providers, &machines, &state).expect("observed");
+    let first =
+        plan(&disabled, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    let refused = apply(
+        &first,
+        &providers,
+        &machines,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |_| Ok(()),
+    )
+    .expect_err("a word no door can write is refused");
+    let problem = refused.to_string();
+    assert!(
+        problem.contains("enabled and suspended"),
+        "the refusal names the two words that are real: {problem}"
+    );
 }
 
 #[test]
@@ -323,7 +430,6 @@ fn a_shrink_of_max_size_is_refused_while_planning() {
         .insert(
             Resource::new(bucket.clone())
                 .with("default_storage_class", "STANDARD")
-                .with("versioning", "enabled")
                 .with("max_size", 536_870_912)
                 .with(
                     "tags",
@@ -427,12 +533,14 @@ struct BucketRecording {
     exchanges: Vec<RecordedExchange>,
 }
 
-/// An API that answers from the real cloud and remembers the storage
-/// exchanges it made. The token exchange passes through unremembered: it is
-/// not storage, and its body is not reproducible.
+/// An API that answers from the real cloud and remembers the exchanges it
+/// made, on the management door and on the S3 one. The token exchange passes
+/// through unremembered: it is neither door, and its body is not
+/// reproducible.
 struct Recording {
     real: Http,
     storage: String,
+    s3: String,
     exchanges: Arc<Mutex<Vec<RecordedExchange>>>,
 }
 
@@ -447,7 +555,7 @@ impl Recording {
         body: Option<&str>,
         answer: &Result<Response, ApiError>,
     ) {
-        if !url.starts_with(&self.storage) {
+        if !url.starts_with(&self.storage) && !url.starts_with(&self.s3) {
             return;
         }
         let (status, said) = match answer {
@@ -487,6 +595,12 @@ impl Api for Recording {
         answer
     }
 
+    fn put(&self, url: &str, headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError> {
+        let answer = self.real.put(url, headers, body);
+        self.remember("PUT", url, Some(body), &answer);
+        answer
+    }
+
     fn delete(&self, url: &str, headers: &[(&str, &str)]) -> Result<Response, ApiError> {
         let answer = self.real.delete(url, headers);
         self.remember("DELETE", url, None, &answer);
@@ -503,11 +617,12 @@ fn take_a_recording_of_the_bucket_scenario() {
     // A bucket's name is unique across the whole platform, so the fixture owns
     // one of its own. The scenario deletes it before the recording is written,
     // so the replay walks a world that no longer exists there.
-    let bucket = "nerpa-recording-bucket";
+    let bucket = "nerpa-s3-recording";
     let exchanges: Arc<Mutex<Vec<RecordedExchange>>> = Arc::default();
     let api = Recording {
         real: Http::new(std::time::Duration::from_secs(30)),
         storage: "https://storage.api.cloud.yandex.net/storage/v1".to_owned(),
+        s3: "https://storage.yandexcloud.net".to_owned(),
         exchanges: Arc::clone(&exchanges),
     };
     the_scenario(Box::new(api), auth, &folder, bucket);

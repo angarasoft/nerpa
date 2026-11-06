@@ -45,7 +45,7 @@ dacc_knowledge::adr!(
         management door's full view carries the state both doors wrote.
     ",
     trade_offs: &[
-        "The update order means a suspension passes through the enabled word the management body forces: a window of one request in which the bucket takes versions. Accepted because the end state is what was declared, and the alternative — refusing every suspension alongside a class change — would close a change the S3 door plainly allows.",
+        "The update order means a suspension passes through the enabled word the management body forces: the cost is a window of one request in which the bucket takes versions. Accepted because the end state is what was declared, and the alternative — refusing every suspension alongside a class change — would close a change the S3 door plainly allows.",
         "The vocabulary loses 'disabled' as a declarable word. Unversioning a bucket is impossible in the cloud, and a word for a state no door can reach would be a promise the plan cannot keep; the absence of the declaration says it instead, and a never-versioned bucket reads as disabled either way.",
         "The S3 door is a second transport shape in the crate — an XML document over the object endpoint rather than JSON over the management one — held to one fixed document and one verb, so the shape does not become a second everything.",
     ],

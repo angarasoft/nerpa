@@ -82,6 +82,10 @@ impl Api for Recorded {
         self.replay("PATCH", url, Some(body))
     }
 
+    fn put(&self, url: &str, _headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError> {
+        self.replay("PUT", url, Some(body))
+    }
+
     fn delete(&self, url: &str, _headers: &[(&str, &str)]) -> Result<Response, ApiError> {
         self.replay("DELETE", url, None)
     }
