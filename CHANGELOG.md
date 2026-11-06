@@ -44,6 +44,12 @@ without ceremony until the first stage is complete.
 
 ### Fixed
 
+- An empty folder reads as no instances, networks or subnets. It used to be a
+  transport failure naming a missing field, because the API omits a list that
+  is empty — proto3 JSON omits the zero value — and the lists demanded theirs,
+  so a first plan against a fresh folder could not be written. Each list reads
+  a missing list as an empty one now, held by a pinned exchange that was red
+  before the fix (w-yc-empty-lists).
 - The fleet document refuses a table it does not know. It used to skip one
   without a word, and a fleet that names no approvers asks for no signature, so
   a misspelt `[approval]` turned the signature requirement off silently. A known
