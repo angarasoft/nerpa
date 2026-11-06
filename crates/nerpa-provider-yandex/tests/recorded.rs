@@ -124,6 +124,68 @@ fn a_subnet_reads_a_recorded_list() {
 }
 
 #[test]
+fn an_empty_folder_reads_as_no_instances() {
+    let instance = address("yandex:instance.db");
+    let provider = provider_with(Exchange {
+        method: "GET",
+        url: "https://compute.api.cloud.yandex.net/compute/v1/instances?folderId=folder".to_owned(),
+        body: None,
+        // The API omits a list that is empty — proto3 JSON omits the zero
+        // value — so a folder with no instances answers with an empty object.
+        response: Response {
+            status: 200,
+            body: "{}".to_owned(),
+        },
+    });
+
+    let found = read(&provider, instance.clone());
+    assert!(
+        !found.attributes().contains_key(&instance),
+        "an empty folder holds no instance"
+    );
+}
+
+#[test]
+fn an_empty_folder_reads_as_no_networks() {
+    let network = address("yandex:network.main");
+    let provider = provider_with(Exchange {
+        method: "GET",
+        url: "https://vpc.api.cloud.yandex.net/vpc/v1/networks?folderId=folder".to_owned(),
+        body: None,
+        response: Response {
+            status: 200,
+            body: "{}".to_owned(),
+        },
+    });
+
+    let found = read(&provider, network.clone());
+    assert!(
+        !found.attributes().contains_key(&network),
+        "an empty folder holds no network"
+    );
+}
+
+#[test]
+fn an_empty_folder_reads_as_no_subnets() {
+    let subnet = address("yandex:subnet.db");
+    let provider = provider_with(Exchange {
+        method: "GET",
+        url: "https://vpc.api.cloud.yandex.net/vpc/v1/subnets?folderId=folder".to_owned(),
+        body: None,
+        response: Response {
+            status: 200,
+            body: "{}".to_owned(),
+        },
+    });
+
+    let found = read(&provider, subnet.clone());
+    assert!(
+        !found.attributes().contains_key(&subnet),
+        "an empty folder holds no subnet"
+    );
+}
+
+#[test]
 fn a_bucket_reads_a_recorded_get() {
     let bucket = address("yandex:bucket.backup");
     let provider = provider_with(Exchange {

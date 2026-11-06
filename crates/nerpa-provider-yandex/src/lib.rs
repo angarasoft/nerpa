@@ -684,9 +684,12 @@ mod optional_int64 {
     }
 }
 
-/// The answer to a list call.
+/// The answer to an instance list call. The field is absent where the folder
+/// holds no instances: proto3 JSON omits a list that is empty, so an empty
+/// folder answers `{}`.
 #[derive(Debug, Deserialize)]
 struct InstanceList {
+    #[serde(default)]
     instances: Vec<WireInstance>,
 }
 
@@ -719,9 +722,12 @@ struct WireNetwork {
     name: String,
 }
 
-/// The answer to a network list call.
+/// The answer to a network list call. The field is absent where the folder
+/// holds no networks: proto3 JSON omits a list that is empty, so an empty
+/// folder answers `{}`.
 #[derive(Debug, Deserialize)]
 struct NetworkList {
+    #[serde(default)]
     networks: Vec<WireNetwork>,
 }
 
@@ -746,9 +752,12 @@ struct WireSubnet {
     v4_cidr_blocks: Vec<String>,
 }
 
-/// The answer to a subnet list call.
+/// The answer to a subnet list call. The field is absent where the folder
+/// holds no subnets: proto3 JSON omits a list that is empty, so an empty
+/// folder answers `{}`.
 #[derive(Debug, Deserialize)]
 struct SubnetList {
+    #[serde(default)]
     subnets: Vec<WireSubnet>,
 }
 
