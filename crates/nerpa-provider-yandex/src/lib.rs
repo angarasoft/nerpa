@@ -606,18 +606,16 @@ impl Yandex {
         headers: &[(&str, &str)],
         name: &str,
     ) -> Result<(), ProviderError> {
-        let Some(declared) = optional_versioning(change.desired, change.address)? else {
+        let Some(versioning) = Versioning::declared_of(change.desired, change.address)? else {
             return Err(ProviderError::Declaration {
                 address: change.address.clone(),
                 problem: "a versioning update with no versioning declared".to_owned(),
             });
         };
-        let status = match declared {
-            "enabled" => "Enabled",
-            _ => "Suspended",
-        };
-        let body =
-            format!("<VersioningConfiguration><Status>{status}</Status></VersioningConfiguration>");
+        let body = format!(
+            "<VersioningConfiguration><Status>{}</Status></VersioningConfiguration>",
+            versioning.s3()
+        );
         let url = format!("{}/{name}?versioning", self.s3);
         let mut xml = headers.to_vec();
         xml.push(("Content-Type", "application/xml"));
@@ -1123,7 +1121,11 @@ fn bucket_attributes(bucket: &WireBucket) -> Attributes {
     }
     let versioning = bucket.versioning.as_deref().map_or_else(
         || "disabled".to_owned(),
-        |wire| declared_versioning(wire).map_or_else(|| wire.to_owned(), str::to_owned),
+        |word| {
+            Versioning::of_management(word)
+                .map_or_else(|| word, |versioning| versioning.declared())
+                .to_owned()
+        },
     );
     attributes.insert("versioning".to_owned(), Value::Text(versioning));
     if let Some(size) = bucket.max_size {
@@ -1140,21 +1142,84 @@ fn tag_map(tags: &[WireTag]) -> BTreeMap<String, Value> {
         .collect()
 }
 
-/// A declared versioning word, in the management API's spelling.
-fn wire_versioning(declared: &str) -> &'static str {
-    match declared {
-        "enabled" => "VERSIONING_ENABLED",
-        _ => "VERSIONING_SUSPENDED",
-    }
+/// The versioning a declaration may ask for: the two words the doors can
+/// write. A bucket that was never versioned reads as disabled — a reported
+/// state, not a declared one, because no door can unversion a bucket
+/// (adr-2026-081). The three spellings of the two words — the declaration's,
+/// the management API's and the S3 document's — are methods of this one
+/// type, so a word that forgot validation cannot compile into a wrong
+/// silence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Versioning {
+    /// New versions are kept.
+    Enabled,
+    /// Old versions are kept, new ones are not.
+    Suspended,
 }
 
-/// The API's versioning word, as a declaration spells it.
-fn declared_versioning(wire: &str) -> Option<&'static str> {
-    match wire {
-        "VERSIONING_ENABLED" => Some("enabled"),
-        "VERSIONING_SUSPENDED" => Some("suspended"),
-        "VERSIONING_DISABLED" => Some("disabled"),
-        _ => None,
+impl Versioning {
+    /// The word as a declaration spells it.
+    fn declared(self) -> &'static str {
+        match self {
+            Self::Enabled => "enabled",
+            Self::Suspended => "suspended",
+        }
+    }
+
+    /// The word as the management API spells it.
+    fn management(self) -> &'static str {
+        match self {
+            Self::Enabled => "VERSIONING_ENABLED",
+            Self::Suspended => "VERSIONING_SUSPENDED",
+        }
+    }
+
+    /// The word as the S3 document spells it.
+    fn s3(self) -> &'static str {
+        match self {
+            Self::Enabled => "Enabled",
+            Self::Suspended => "Suspended",
+        }
+    }
+
+    /// The versioning the management API's word says, where the word is one
+    /// a declaration can hold.
+    fn of_management(word: &str) -> Option<Self> {
+        match word {
+            "VERSIONING_ENABLED" => Some(Self::Enabled),
+            "VERSIONING_SUSPENDED" => Some(Self::Suspended),
+            _ => None,
+        }
+    }
+
+    /// The versioning a declaration manages, or `None` where the declaration
+    /// leaves it alone. Anything else is refused by name — including the
+    /// word for the state no door can reach.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ProviderError::Declaration`] where the declared value is
+    /// neither text nor one of the two words.
+    fn declared_of(desired: &Attributes, address: &Address) -> Result<Option<Self>, ProviderError> {
+        match desired.get("versioning") {
+            None => Ok(None),
+            Some(Value::Text(text)) => match text.as_str() {
+                "enabled" => Ok(Some(Self::Enabled)),
+                "suspended" => Ok(Some(Self::Suspended)),
+                word => Err(ProviderError::Declaration {
+                    address: address.clone(),
+                    problem: format!(
+                        "versioning is {word}; it is one of enabled and suspended, \
+                         and a bucket that was never versioned reads as disabled \
+                         until it is declared"
+                    ),
+                }),
+            },
+            Some(_) => Err(ProviderError::Declaration {
+                address: address.clone(),
+                problem: "versioning must be text where it is declared".to_owned(),
+            }),
+        }
     }
 }
 
@@ -1214,34 +1279,6 @@ fn optional_integer(
     }
 }
 
-/// The versioning a declaration manages, as the word it declared, or `None`
-/// where the declaration leaves it alone. The words are the two the doors can
-/// write: a bucket that was never versioned reads as disabled and stays so
-/// until it is declared, because no door can unversion one (adr-2026-081).
-fn optional_versioning<'a>(
-    desired: &'a Attributes,
-    address: &Address,
-) -> Result<Option<&'a str>, ProviderError> {
-    match desired.get("versioning") {
-        None => Ok(None),
-        Some(Value::Text(text)) => match text.as_str() {
-            "enabled" | "suspended" => Ok(Some(text.as_str())),
-            word => Err(ProviderError::Declaration {
-                address: address.clone(),
-                problem: format!(
-                    "versioning is {word}; it is one of enabled and suspended, \
-                     and a bucket that was never versioned reads as disabled \
-                     until it is declared"
-                ),
-            }),
-        },
-        Some(_) => Err(ProviderError::Declaration {
-            address: address.clone(),
-            problem: "versioning must be text where it is declared".to_owned(),
-        }),
-    }
-}
-
 /// The tags a declaration manages, in the API's spelling, or an empty list
 /// where the declaration leaves them alone. An empty declared map clears the
 /// tags, so it is carried as an empty list rather than as an absence.
@@ -1279,9 +1316,8 @@ fn create_bucket(
         folder_id: folder_id.to_owned(),
         name: wire_name(address),
         default_storage_class: optional_text(desired, "default_storage_class", address)?,
-        versioning: optional_versioning(desired, address)?
-            .map(wire_versioning)
-            .map(str::to_owned),
+        versioning: Versioning::declared_of(desired, address)?
+            .map(|versioning| versioning.management().to_owned()),
         max_size: optional_integer(desired, "max_size", address)?,
         tags: wire_tags(desired, address)?,
     })
