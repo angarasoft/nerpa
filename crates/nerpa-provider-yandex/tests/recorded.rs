@@ -25,6 +25,19 @@ fn provider_with(exchange: Exchange) -> Yandex {
     )
 }
 
+/// A provider that replays a run of recorded exchanges.
+fn provider_over(exchanges: Vec<Exchange>) -> Yandex {
+    Yandex::new(
+        "folder",
+        "https://compute.api.cloud.yandex.net/compute/v1",
+        "https://vpc.api.cloud.yandex.net/vpc/v1",
+        "https://storage.api.cloud.yandex.net/storage/v1",
+        "https://storage.yandexcloud.net",
+        Auth::IamToken("token".to_owned()),
+        Box::new(Recorded::new(exchanges)),
+    )
+}
+
 /// Reads one address through the provider.
 fn read(provider: &Yandex, address: nerpa_core::Address) -> Read {
     let observed = Observed::new();
@@ -121,6 +134,41 @@ fn a_subnet_reads_a_recorded_list() {
     assert_eq!(
         attributes.get("v4_cidr_blocks"),
         Some(&Value::List(vec![Value::Text("10.0.0.0/24".to_owned())]))
+    );
+}
+
+#[test]
+fn a_resource_past_the_first_page_is_read() {
+    // The API answers its lists in pages and names the next one; a resource
+    // on the second page is part of the world, not absent from it.
+    let instance = address("yandex:instance.db");
+    let provider = provider_over(vec![
+        Exchange {
+            method: "GET",
+            url: "https://compute.api.cloud.yandex.net/compute/v1/instances?folderId=folder"
+                .to_owned(),
+            body: None,
+            response: Response {
+                status: 200,
+                body: r#"{"instances":[],"nextPageToken":"the-second-page"}"#.to_owned(),
+            },
+        },
+        Exchange {
+            method: "GET",
+            url: "https://compute.api.cloud.yandex.net/compute/v1/instances?folderId=folder&pageToken=the-second-page"
+                .to_owned(),
+            body: None,
+            response: Response {
+                status: 200,
+                body: r#"{"instances":[{"id":"id-db","name":"db","zoneId":"ru-central1-b","platformId":"standard-v3","resources":{"cores":"2","memory":"2147483648"}}]}"#.to_owned(),
+            },
+        },
+    ]);
+
+    let found = read(&provider, instance.clone());
+    assert!(
+        found.attributes().contains_key(&instance),
+        "the second page is part of the world"
     );
 }
 

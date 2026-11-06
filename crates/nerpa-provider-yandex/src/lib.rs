@@ -134,37 +134,63 @@ impl Yandex {
         })
     }
 
-    /// The instances in the folder.
+    /// Every page of a list, from the first to the one that names no next:
+    /// the API answers in pages, and a read that stopped at the first would
+    /// call a folder larger than one page a smaller world than it is.
+    fn list_all<L>(
+        &self,
+        first: &str,
+        headers: &[(&str, &str)],
+        address: &Address,
+    ) -> Result<Vec<L::Item>, ProviderError>
+    where
+        L: Pages + serde::de::DeserializeOwned,
+    {
+        let mut all = Vec::new();
+        let mut token = None;
+        loop {
+            let url = match &token {
+                Some(page) => format!("{first}&pageToken={page}"),
+                None => first.to_owned(),
+            };
+            let page: L = self.list_of(&url, headers, address)?;
+            let (items, next) = page.parts();
+            all.extend(items);
+            if next.as_deref().is_none_or(str::is_empty) {
+                return Ok(all);
+            }
+            token = next;
+        }
+    }
+
+    /// The instances in the folder, every page of them.
     fn list_instances(
         &self,
         headers: &[(&str, &str)],
         address: &Address,
     ) -> Result<Vec<WireInstance>, ProviderError> {
         let url = format!("{}/instances?folderId={}", self.compute, self.folder_id);
-        let list: InstanceList = self.list_of(&url, headers, address)?;
-        Ok(list.instances)
+        self.list_all::<InstanceList>(&url, headers, address)
     }
 
-    /// The networks in the folder.
+    /// The networks in the folder, every page of them.
     fn list_networks(
         &self,
         headers: &[(&str, &str)],
         address: &Address,
     ) -> Result<Vec<WireNetwork>, ProviderError> {
         let url = format!("{}/networks?folderId={}", self.vpc, self.folder_id);
-        let list: NetworkList = self.list_of(&url, headers, address)?;
-        Ok(list.networks)
+        self.list_all::<NetworkList>(&url, headers, address)
     }
 
-    /// The subnets in the folder.
+    /// The subnets in the folder, every page of them.
     fn list_subnets(
         &self,
         headers: &[(&str, &str)],
         address: &Address,
     ) -> Result<Vec<WireSubnet>, ProviderError> {
         let url = format!("{}/subnets?folderId={}", self.vpc, self.folder_id);
-        let list: SubnetList = self.list_of(&url, headers, address)?;
-        Ok(list.subnets)
+        self.list_all::<SubnetList>(&url, headers, address)
     }
 
     /// One bucket by name, read in the API's full view: the basic one the
@@ -735,6 +761,9 @@ mod optional_int64 {
 struct InstanceList {
     #[serde(default)]
     instances: Vec<WireInstance>,
+    /// The page after this one, where the folder holds more than a page.
+    #[serde(rename = "nextPageToken", default)]
+    next_page_token: Option<String>,
 }
 
 /// What a create call is asked with.
@@ -773,6 +802,9 @@ struct WireNetwork {
 struct NetworkList {
     #[serde(default)]
     networks: Vec<WireNetwork>,
+    /// The page after this one, where the folder holds more than a page.
+    #[serde(rename = "nextPageToken", default)]
+    next_page_token: Option<String>,
 }
 
 /// What a network create call is asked with.
@@ -803,6 +835,40 @@ struct WireSubnet {
 struct SubnetList {
     #[serde(default)]
     subnets: Vec<WireSubnet>,
+    /// The page after this one, where the folder holds more than a page.
+    #[serde(rename = "nextPageToken", default)]
+    next_page_token: Option<String>,
+}
+
+/// One page of a list, and what names the next: the API answers its lists in
+/// pages, and a folder larger than one page is a folder like any other —
+/// everything in it is part of the world the read answers for.
+trait Pages {
+    /// The resource this page holds.
+    type Item;
+    /// The page's resources, and the token that names the page after it.
+    fn parts(self) -> (Vec<Self::Item>, Option<String>);
+}
+
+impl Pages for InstanceList {
+    type Item = WireInstance;
+    fn parts(self) -> (Vec<WireInstance>, Option<String>) {
+        (self.instances, self.next_page_token)
+    }
+}
+
+impl Pages for NetworkList {
+    type Item = WireNetwork;
+    fn parts(self) -> (Vec<WireNetwork>, Option<String>) {
+        (self.networks, self.next_page_token)
+    }
+}
+
+impl Pages for SubnetList {
+    type Item = WireSubnet;
+    fn parts(self) -> (Vec<WireSubnet>, Option<String>) {
+        (self.subnets, self.next_page_token)
+    }
 }
 
 /// What a subnet create call is asked with.
