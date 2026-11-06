@@ -553,13 +553,21 @@ impl Yandex {
                 Some(_) => wire_tags(desired, change.address)?,
                 None => current.tags.clone(),
             },
-            allowed_private_endpoints: WireAllowedPrivateEndpoints {
-                enabled: false,
-                force_cloud_console_access: true,
-            },
-            object_lock: WireObjectLock {
+            // Carried from the read, where the bucket holds them: the wire
+            // applies what the body carries, mask or no mask, so the fields
+            // the declaration does not name must say what the world already
+            // says. Where the read carried none, the shapes the validation
+            // demands are stated: the check off with the console forced,
+            // the lock disabled.
+            allowed_private_endpoints: current.allowed_private_endpoints.clone().unwrap_or(
+                WireAllowedPrivateEndpoints {
+                    enabled: false,
+                    force_cloud_console_access: true,
+                },
+            ),
+            object_lock: current.object_lock.clone().unwrap_or(WireObjectLock {
                 status: "OBJECT_LOCK_STATUS_DISABLED".to_owned(),
-            },
+            }),
         };
         let mut mask = Vec::new();
         if desired.get("default_storage_class").is_some() {
@@ -913,6 +921,21 @@ struct WireBucket {
     max_size: Option<i64>,
     #[serde(rename = "tags", default, skip_serializing_if = "Vec::is_empty")]
     tags: Vec<WireTag>,
+    /// The object lock the bucket holds, where the full view carries one
+    /// back: a WORM setting an update must carry as it found it, not reset.
+    #[serde(
+        rename = "objectLock",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    object_lock: Option<WireObjectLock>,
+    /// The private-endpoint policy the bucket holds, where it carries one.
+    #[serde(
+        rename = "allowedPrivateEndpoints",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    allowed_private_endpoints: Option<WireAllowedPrivateEndpoints>,
 }
 
 /// One tag on a bucket, as the API answers with it.
@@ -980,19 +1003,17 @@ struct PatchBucket {
     object_lock: WireObjectLock,
 }
 
-/// The private-endpoint policy an update carries, as the storage API asks:
-/// the check off with the console's access forced — a non-empty shape, which
-/// is what the validation demands of the field.
-#[derive(Debug, Serialize, Deserialize)]
+/// The private-endpoint policy a bucket holds and an update carries: the
+/// check, and whether the console's access is forced.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct WireAllowedPrivateEndpoints {
     enabled: bool,
     #[serde(rename = "forceCloudConsoleAccess")]
     force_cloud_console_access: bool,
 }
 
-/// The object lock an update carries, as the storage API asks: disabled,
-/// which is the lock a plain bucket holds.
-#[derive(Debug, Serialize, Deserialize)]
+/// The object lock a bucket holds and an update carries.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct WireObjectLock {
     status: String,
 }
@@ -1539,6 +1560,8 @@ impl Api for Memory {
                     versioning: create.versioning,
                     max_size: create.max_size,
                     tags: create.tags,
+                    object_lock: None,
+                    allowed_private_endpoints: None,
                 },
             );
             return Ok(Response {

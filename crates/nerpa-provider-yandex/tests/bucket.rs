@@ -296,6 +296,103 @@ fn a_bucket_changes_in_place_where_the_api_allows() {
 }
 
 #[test]
+fn an_update_carries_the_object_lock_the_bucket_holds() {
+    // The wire applies what the body carries, mask or no mask, so the body
+    // says what the bucket holds for the fields the declaration does not
+    // name: the object lock and the private-endpoint policy, carried from
+    // the read, so a tag change touches the tags alone.
+    let bucket = address("yandex:bucket.locked");
+    let mut graph = Graph::new();
+    graph
+        .insert(
+            Resource::new(bucket.clone())
+                .with("default_storage_class", "COLD")
+                .with("max_size", 1_073_741_824)
+                .with(
+                    "tags",
+                    Value::Map(BTreeMap::from([(
+                        "team".to_owned(),
+                        Value::Text("nerpa".to_owned()),
+                    )])),
+                ),
+        )
+        .expect("a resource");
+
+    let held = r#"{"name":"locked","folderId":"fake-folder","defaultStorageClass":"STANDARD","versioning":"VERSIONING_ENABLED","maxSize":"1073741824","tags":[],"objectLock":{"status":"OBJECT_LOCK_STATUS_ENABLED"},"allowedPrivateEndpoints":{"enabled":true,"forceCloudConsoleAccess":false}}"#;
+    let became = r#"{"name":"locked","folderId":"fake-folder","defaultStorageClass":"COLD","versioning":"VERSIONING_ENABLED","maxSize":"1073741824","tags":[{"key":"team","value":"nerpa"}],"objectLock":{"status":"OBJECT_LOCK_STATUS_ENABLED"},"allowedPrivateEndpoints":{"enabled":true,"forceCloudConsoleAccess":false}}"#;
+    let asked = r#"{"versioning":"VERSIONING_ENABLED","defaultStorageClass":"COLD","maxSize":"1073741824","tags":[{"key":"team","value":"nerpa"}],"allowedPrivateEndpoints":{"enabled":true,"forceCloudConsoleAccess":false},"objectLock":{"status":"OBJECT_LOCK_STATUS_ENABLED"}}"#;
+    let storage = "https://storage.example/storage/v1";
+    let exchanges = vec![
+        Exchange {
+            method: "GET",
+            url: format!("{storage}/buckets/locked?view=VIEW_FULL"),
+            body: None,
+            response: Response {
+                status: 200,
+                body: held.to_owned(),
+            },
+        },
+        Exchange {
+            method: "GET",
+            url: format!("{storage}/buckets/locked?view=VIEW_FULL"),
+            body: None,
+            response: Response {
+                status: 200,
+                body: held.to_owned(),
+            },
+        },
+        Exchange {
+            method: "PATCH",
+            url: format!("{storage}/buckets/locked?updateMask=defaultStorageClass,maxSize,tags"),
+            body: Some(asked.to_owned()),
+            response: Response {
+                status: 200,
+                body: "{}".to_owned(),
+            },
+        },
+        Exchange {
+            method: "GET",
+            url: format!("{storage}/buckets/locked?view=VIEW_FULL"),
+            body: None,
+            response: Response {
+                status: 200,
+                body: became.to_owned(),
+            },
+        },
+    ];
+    let providers = Providers::new().with(Box::new(Yandex::new(
+        "fake-folder",
+        "https://compute.example/compute/v1",
+        "https://vpc.example/vpc/v1",
+        storage,
+        "https://s3.example",
+        Auth::IamToken("token".to_owned()),
+        Box::new(Recorded::new(exchanges)),
+    )));
+    let machines = Machines::new();
+    let mut state = State::new();
+
+    let observed = observe(&graph, &providers, &machines, &state).expect("observed");
+    let update =
+        plan(&graph, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    assert_eq!(
+        update.stages()[0].changes()[0].kind(),
+        ChangeKind::Update,
+        "the class change is made in place"
+    );
+    apply(
+        &update,
+        &providers,
+        &machines,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |_| Ok(()),
+    )
+    .expect("the body the update carries is the body the recording holds");
+}
+
+#[test]
 fn a_declared_disabled_versioning_is_refused() {
     // No door can unversion a bucket, so the word for the state none can
     // reach is refused at the declaration, naming the two that are real.
