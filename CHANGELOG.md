@@ -55,6 +55,13 @@ without ceremony until the first stage is complete.
   them — and the wire applies what the body carries whether the mask names it
   or not, so correcting a tag reset both. The shapes the validation demands
   are stated only where the read carried none (w-yc-patch-carries-current).
+- A bucket's name is refused unless the cloud can hold it. The address grammar
+  is wider than the cloud — a foreign name may carry a slash — and a bucket's
+  name goes into the URL path as it stands, so `yandex:bucket.a/b` addressed
+  another resource's path. The doors are addressed by a name the storage can
+  hold — three to sixty-three characters, lower case, digits and hyphens, a
+  letter or digit at each end — and anything else is refused by name
+  (w-yc-bucket-name).
 - An empty folder reads as no instances, networks or subnets. It used to be a
   transport failure naming a missing field, because the API omits a list that
   is empty — proto3 JSON omits the zero value — and the lists demanded theirs,
@@ -80,6 +87,22 @@ without ceremony until the first stage is complete.
   name. The management update still runs first, carrying the enabled word its
   validation demands; the S3 door has the final word. The wire is pinned
   against a recording from a real folder, the S3 exchanges among them.
+- The PUT verb is required of every wire on the `Api` seam, so a wire that
+  cannot write the versioning document does not compile instead of failing at
+  apply; and the JSON verbs set the Content-Type where the caller named none,
+  so a caller that names one sends exactly that one, not two
+  (w-yc-put-required).
+- The versioning vocabulary is one type — Enabled and Suspended, parsed once
+  and refused everywhere else, with the declaration's, the management API's
+  and the S3 document's spellings as methods of it — where four string maps
+  used to stand, two of them with a fallback arm that silently chose a word
+  (w-yc-versioning-one-word).
+- The Yandex provider's one file is four: the wire's shapes, the attribute
+  mapping, the bucket's two doors, and the in-memory fake — split along the
+  seams the file already showed, the behaviour unmoved. The fake's patch and
+  put answer 404 to a bucket that is not there rather than a silent 200, and
+  a read's refusal names the address that caused it rather than the first of
+  the batch (w-yc-provider-split).
 - The Yandex HTTP seam labels every JSON body it sends `application/json`, and
   a refused call carries what the API answered, to a readable length — the
   token exchange still names the status and nothing of the answer. A replayed
