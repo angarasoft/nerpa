@@ -7,6 +7,14 @@ without ceremony until the first stage is complete.
 
 ### Added
 
+- The lifecycle on a declared bucket (adr-2026-083): `lifecycle`, a list of
+  rules — each with an id, an enabled that defaults to on, a prefix,
+  transitions and expirations for the current and the noncurrent versions,
+  and at least one action, refused where a rule names none. The rules are
+  created with the bucket, carried from the read into every update so a
+  change to a tag does not wipe the schedule, and cleared by an empty list.
+  The report folds the wire's zero subfields back into the words the
+  declaration speaks (w-yc-bucket-lifecycle).
 - The static-site pair on a declared bucket (adr-2026-082): `website` — a map
   of an index page, which the wire demands, and an error page — and
   `anonymous_access`, the flags that open a bucket to the public, which is
