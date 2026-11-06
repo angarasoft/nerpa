@@ -26,7 +26,8 @@ dacc_knowledge::adr!(
         resolves is the credential this door takes. Probes against the owner's
         folder confirmed all of it: the token works as a bearer on the S3
         endpoint, a PUT of the versioning document with Enabled or Suspended
-        is accepted on an unversioned, enabled or suspended bucket alike, and
+        is accepted on an unversioned, enabled or suspended bucket alike, a
+        create carries the suspended word as it carries the enabled one, and
         the management read carries what the S3 door wrote.
     ",
     decision: r"
@@ -46,6 +47,7 @@ dacc_knowledge::adr!(
     ",
     trade_offs: &[
         "The update order means a suspension passes through the enabled word the management body forces: the cost is a window of one request in which the bucket takes versions. Accepted because the end state is what was declared, and the alternative — refusing every suspension alongside a class change — would close a change the S3 door plainly allows.",
+        "The two doors are not one transaction. The management update can land — and flip the bucket to the enabled word its body carries — while the S3 write after it fails, leaving the bucket enabled where the declaration asked for suspended. The next run reads the world, plans the change again and closes it; the cost is a run that ends in the wrong state, not a state nobody can see.",
         "The vocabulary loses 'disabled' as a declarable word. Unversioning a bucket is impossible in the cloud, and a word for a state no door can reach would be a promise the plan cannot keep; the absence of the declaration says it instead, and a never-versioned bucket reads as disabled either way.",
         "The S3 door is a second transport shape in the crate — an XML document over the object endpoint rather than JSON over the management one — held to one fixed document and one verb, so the shape does not become a second everything.",
     ],

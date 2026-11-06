@@ -44,6 +44,17 @@ without ceremony until the first stage is complete.
 
 ### Fixed
 
+- The three lists read every page of a folder. The API answers its lists in
+  pages and names the next one, and the instance, network and subnet lists
+  took the first page and stopped, so a resource past the boundary read as
+  absent and the plan proposed creating a second copy of a thing that
+  existed — on the road to a thousand machines, the main road. One shared
+  walk follows the token to the page that names no next (w-yc-list-pagination).
+- A bucket update carries the object lock and the private-endpoint policy the
+  read carried. The body held hard-coded words for them — a WORM setting among
+  them — and the wire applies what the body carries whether the mask names it
+  or not, so correcting a tag reset both. The shapes the validation demands
+  are stated only where the read carried none (w-yc-patch-carries-current).
 - An empty folder reads as no instances, networks or subnets. It used to be a
   transport failure naming a missing field, because the API omits a list that
   is empty — proto3 JSON omits the zero value — and the lists demanded theirs,
