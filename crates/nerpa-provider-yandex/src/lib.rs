@@ -630,8 +630,9 @@ impl Yandex {
         &self,
         change: &Prepared<'_>,
         headers: &[(&str, &str)],
-        name: &str,
     ) -> Result<Concluded, ProviderError> {
+        let name = held_bucket_name(change.address)?;
+        let name = name.as_str();
         match change.kind {
             Sending::Delete => {
                 self.remove_bucket(change, headers, name)?;
@@ -1299,6 +1300,45 @@ fn wire_name(address: &Address) -> String {
     address.name().as_str().to_owned()
 }
 
+/// The name a bucket's doors are addressed by: one the cloud can hold. The
+/// address grammar is wider than the cloud — a foreign name may carry a
+/// slash, which portage paths asked for — and a bucket's name goes into the
+/// URL path as it stands, so the wall is drawn here: a name the storage
+/// cannot hold is refused by name rather than addressing another resource's
+/// path (w-yc-bucket-name).
+///
+/// # Errors
+///
+/// Returns [`ProviderError::Declaration`] where the name is not one the
+/// storage holds: three to sixty-three characters, lower case, digits and
+/// hyphens, a letter or digit at each end.
+fn held_bucket_name(address: &Address) -> Result<String, ProviderError> {
+    let name = address.name().as_str();
+    let shape = (3..=63).contains(&name.len())
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        && name
+            .bytes()
+            .next()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric())
+        && name
+            .bytes()
+            .last()
+            .is_some_and(|byte| byte.is_ascii_alphanumeric());
+    if shape {
+        Ok(name.to_owned())
+    } else {
+        Err(ProviderError::Declaration {
+            address: address.clone(),
+            problem: format!(
+                "{name:?} is not a name the storage holds: three to sixty-three \
+                 characters, lower case, digits and hyphens, a letter or digit at each end"
+            ),
+        })
+    }
+}
+
 impl Provider for Yandex {
     fn name(&self) -> &ProviderName {
         &self.name
@@ -1398,7 +1438,7 @@ impl Provider for Yandex {
                 }
                 "bucket" => {
                     for reading in readings {
-                        let name = wire_name(reading.address());
+                        let name = held_bucket_name(reading.address())?;
                         if let Some(bucket) = self.get_bucket(&name, &headers, reading.address())? {
                             found = found.with(
                                 reading.address().clone(),
@@ -1434,7 +1474,7 @@ impl Provider for Yandex {
             "instance" => self.act_instance(change, &headers, &name),
             "network" => self.act_network(change, &headers, &name),
             "subnet" => self.act_subnet(change, &headers, &name),
-            "bucket" => self.act_bucket(change, &headers, &name),
+            "bucket" => self.act_bucket(change, &headers),
             _ => Err(ProviderError::UnknownKind {
                 provider: self.name.clone(),
                 address: change.address.clone(),

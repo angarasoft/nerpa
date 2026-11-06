@@ -296,6 +296,31 @@ fn a_bucket_changes_in_place_where_the_api_allows() {
 }
 
 #[test]
+fn a_name_the_cloud_cannot_hold_is_refused_by_name() {
+    // The address grammar is wider than the cloud: a foreign name may carry
+    // a slash, which portage paths asked for. A bucket's doors are addressed
+    // by its name in the URL path, so a name the cloud cannot hold is
+    // refused by name at the read — addressing another resource's path is
+    // not a misspelling.
+    let bucket = address("yandex:bucket.a/b");
+    let mut graph = Graph::new();
+    graph
+        .insert(Resource::new(bucket.clone()).with("default_storage_class", "STANDARD"))
+        .expect("a resource");
+
+    let providers = Providers::new().with(Box::new(Yandex::fake()));
+    let machines = Machines::new();
+    let state = State::new();
+
+    let refused = observe(&graph, &providers, &machines, &state)
+        .expect_err("a name the cloud cannot hold is refused at the read");
+    assert!(
+        refused.to_string().contains("a name the storage holds"),
+        "the refusal names what a name must be: {refused}"
+    );
+}
+
+#[test]
 fn an_update_carries_the_object_lock_the_bucket_holds() {
     // The wire applies what the body carries, mask or no mask, so the body
     // says what the bucket holds for the fields the declaration does not
