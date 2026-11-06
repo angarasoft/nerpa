@@ -6,10 +6,11 @@ use nerpa_core::address::Address;
 use nerpa_core::provider::{Concluded, Prepared, ProviderError, Sending};
 
 use crate::attributes::{
-    bucket_attributes, create_bucket, optional_integer, optional_text, wire_tags,
+    bucket_attributes, create_bucket, declared_anonymous, declared_website, optional_integer,
+    optional_text, wire_tags,
 };
 use crate::wire::{
-    PatchBucket, Versioning, WireAllowedPrivateEndpoints, WireBucket, WireObjectLock,
+    PatchBucket, Versioning, WireAllowedPrivateEndpoints, WireBucket, WireObjectLock, WireWebsite,
 };
 use crate::{ApiError, Response, Yandex, world};
 
@@ -174,6 +175,16 @@ impl Yandex {
             object_lock: current.object_lock.clone().unwrap_or(WireObjectLock {
                 status: "OBJECT_LOCK_STATUS_DISABLED".to_owned(),
             }),
+            // The site is carried from the read wherever the bucket holds
+            // one, declared or not: the wire replaces what the body omits,
+            // and what it omits here is the site (adr-2026-082). The flags
+            // are carried only where declared: the wire leaves them alone
+            // when they are absent.
+            website: match desired.get("website") {
+                Some(_) => declared_website(desired, change.address)?,
+                None => current.website.clone().filter(WireWebsite::carries),
+            },
+            anonymous: declared_anonymous(desired, change.address)?,
         };
         let mut mask = Vec::new();
         if desired.get("default_storage_class").is_some() {
@@ -184,6 +195,12 @@ impl Yandex {
         }
         if desired.get("tags").is_some() {
             mask.push("tags");
+        }
+        if desired.get("website").is_some() {
+            mask.push("websiteSettings");
+        }
+        if desired.get("anonymous_access").is_some() {
+            mask.push("anonymousAccessFlags");
         }
         let body = serde_json::to_string(&patch).map_err(|error| ProviderError::World {
             address: change.address.clone(),

@@ -9,7 +9,8 @@ use nerpa_core::provider::{Attributes, ProviderError};
 use nerpa_core::value::Value;
 
 use crate::wire::{
-    CreateBucket, Versioning, WireBucket, WireInstance, WireResources, WireSubnet, WireTag,
+    CreateBucket, Versioning, WireAnonymous, WireBucket, WireInstance, WireResources, WireSubnet,
+    WireTag, WireWebsite,
 };
 
 /// One gibibyte: Yandex Cloud counts memory in bytes, a person counts in GiB.
@@ -133,6 +134,32 @@ pub(crate) fn bucket_attributes(bucket: &WireBucket) -> Attributes {
         attributes.insert("max_size".to_owned(), Value::Integer(size));
     }
     attributes.insert("tags".to_owned(), Value::Map(tag_map(&bucket.tags)));
+    if let Some(website) = &bucket.website {
+        let mut pages = BTreeMap::new();
+        if let Some(index) = &website.index {
+            pages.insert("index".to_owned(), Value::Text(index.clone()));
+        }
+        if let Some(error) = &website.error {
+            pages.insert("error".to_owned(), Value::Text(error.clone()));
+        }
+        attributes.insert("website".to_owned(), Value::Map(pages));
+    }
+    // The flags that are on, and only those: the map is the set of the on
+    // flags, the shape the declaration speaks and the wire itself omits the
+    // off ones in.
+    if let Some(anonymous) = bucket.anonymous {
+        let mut flags = BTreeMap::new();
+        if anonymous.read {
+            flags.insert("read".to_owned(), Value::Boolean(true));
+        }
+        if anonymous.list {
+            flags.insert("list".to_owned(), Value::Boolean(true));
+        }
+        if anonymous.config_read {
+            flags.insert("config_read".to_owned(), Value::Boolean(true));
+        }
+        attributes.insert("anonymous_access".to_owned(), Value::Map(flags));
+    }
     attributes
 }
 
@@ -228,6 +255,105 @@ pub(crate) fn wire_tags(
     }
 }
 
+/// The website a declaration manages, in the wire's shape. The index page
+/// is required — the wire refuses a document without one — and the error
+/// page is the declaration's to name.
+///
+/// # Errors
+///
+/// Returns [`ProviderError::Declaration`] where the website is declared
+/// without an index page, or with a value that is not a map of pages.
+pub(crate) fn declared_website(
+    desired: &Attributes,
+    address: &Address,
+) -> Result<Option<WireWebsite>, ProviderError> {
+    match desired.get("website") {
+        None => Ok(None),
+        Some(Value::Map(pages)) => {
+            let index = match pages.get("index") {
+                Some(Value::Text(page)) => Some(page.clone()),
+                None => None,
+                Some(_) => {
+                    return Err(ProviderError::Declaration {
+                        address: address.clone(),
+                        problem: "website pages hold text; index does not".to_owned(),
+                    });
+                }
+            };
+            let error = match pages.get("error") {
+                Some(Value::Text(page)) => Some(page.clone()),
+                None => None,
+                Some(_) => {
+                    return Err(ProviderError::Declaration {
+                        address: address.clone(),
+                        problem: "website pages hold text; error does not".to_owned(),
+                    });
+                }
+            };
+            if index.as_deref().is_none_or(str::is_empty) {
+                return Err(ProviderError::Declaration {
+                    address: address.clone(),
+                    problem: "a website is declared without an index page; the wire                               refuses a document without one"
+                        .to_owned(),
+                });
+            }
+            Ok(Some(WireWebsite { index, error }))
+        }
+        Some(_) => Err(ProviderError::Declaration {
+            address: address.clone(),
+            problem: "website must be a map of pages where it is declared".to_owned(),
+        }),
+    }
+}
+
+/// The anonymous access flags a declaration manages, in the wire's shape:
+/// the whole document, for a flag the declaration does not name reads as
+/// false.
+///
+/// # Errors
+///
+/// Returns [`ProviderError::Declaration`] where the flags are declared as
+/// something other than a map of booleans.
+pub(crate) fn declared_anonymous(
+    desired: &Attributes,
+    address: &Address,
+) -> Result<Option<WireAnonymous>, ProviderError> {
+    match desired.get("anonymous_access") {
+        None => Ok(None),
+        Some(Value::Map(flags)) => {
+            // A flag the declaration names is on; an unnamed flag is off
+            // already. Naming one off is refused: the map is the set of the
+            // flags that are on, and the read answers in the same shape.
+            let flag = |name: &str| -> Result<bool, ProviderError> {
+                match flags.get(name) {
+                    None => Ok(false),
+                    Some(Value::Boolean(true)) => Ok(true),
+                    Some(Value::Boolean(false)) => Err(ProviderError::Declaration {
+                        address: address.clone(),
+                        problem: format!(
+                            "anonymous_access names the flags that are on; {name} is \
+                             named off, and an unnamed flag is off already"
+                        ),
+                    }),
+                    Some(_) => Err(ProviderError::Declaration {
+                        address: address.clone(),
+                        problem: format!("anonymous_access holds booleans; {name} does not"),
+                    }),
+                }
+            };
+            Ok(Some(WireAnonymous {
+                read: flag("read")?,
+                list: flag("list")?,
+                config_read: flag("config_read")?,
+            }))
+        }
+        Some(_) => Err(ProviderError::Declaration {
+            address: address.clone(),
+            problem: "anonymous_access must be a map of booleans where it is declared".to_owned(),
+        }),
+    }
+}
+
 /// The create request a declared bucket becomes. Only what the declaration
 /// manages is carried.
 pub(crate) fn create_bucket(
@@ -243,6 +369,10 @@ pub(crate) fn create_bucket(
             .map(|versioning| versioning.management().to_owned()),
         max_size: optional_integer(desired, "max_size", address)?,
         tags: wire_tags(desired, address)?,
+        // The site is not carried: the wire ignores the document at
+        // creation — the site joins a bucket through its first update
+        // (adr-2026-082). The flags are carried: the wire takes them there.
+        anonymous: declared_anonymous(desired, address)?,
     })
 }
 

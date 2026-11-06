@@ -285,6 +285,60 @@ pub(crate) struct WireBucket {
         skip_serializing_if = "Option::is_none"
     )]
     pub(crate) allowed_private_endpoints: Option<WireAllowedPrivateEndpoints>,
+    /// The website document the bucket holds, where it carries one. Carried
+    /// through every update: the wire replaces what the body omits
+    /// (adr-2026-082).
+    #[serde(
+        rename = "websiteSettings",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) website: Option<WireWebsite>,
+    /// The anonymous access flags the bucket holds.
+    #[serde(
+        rename = "anonymousAccessFlags",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) anonymous: Option<WireAnonymous>,
+}
+
+/// The website document a bucket holds: the index page a request without a
+/// name is served, and the page an error is served instead. The wire
+/// replaces the document whole — see the carry in the update (adr-2026-082).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct WireWebsite {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) index: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) error: Option<String>,
+}
+
+impl WireWebsite {
+    /// Whether the document says anything to carry: a page to serve, or
+    /// nothing but the wire's empty placeholder.
+    #[must_use]
+    pub(crate) fn carries(&self) -> bool {
+        self.index.as_deref().is_some_and(|page| !page.is_empty())
+            || self.error.as_deref().is_some_and(|page| !page.is_empty())
+    }
+}
+
+/// The anonymous access flags a bucket holds: what the public may read
+/// without a credential. The whole document — a flag the declaration does
+/// not name reads as false (adr-2026-082).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub(crate) struct WireAnonymous {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) read: bool,
+    #[serde(rename = "list", default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) list: bool,
+    #[serde(
+        rename = "configRead",
+        default,
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub(crate) config_read: bool,
 }
 
 /// One tag on a bucket, as the API answers with it.
@@ -317,6 +371,12 @@ pub(crate) struct CreateBucket {
     pub(crate) max_size: Option<i64>,
     #[serde(rename = "tags", default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) tags: Vec<WireTag>,
+    #[serde(
+        rename = "anonymousAccessFlags",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) anonymous: Option<WireAnonymous>,
 }
 
 /// What a bucket update call is asked with. The update mask travels in the
@@ -350,6 +410,22 @@ pub(crate) struct PatchBucket {
     pub(crate) allowed_private_endpoints: WireAllowedPrivateEndpoints,
     #[serde(rename = "objectLock")]
     pub(crate) object_lock: WireObjectLock,
+    /// Carried from the read where the bucket holds a site: the wire
+    /// replaces what the body omits (adr-2026-082).
+    #[serde(
+        rename = "websiteSettings",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) website: Option<WireWebsite>,
+    /// Carried only where declared: the wire leaves the flags alone when
+    /// they are absent (adr-2026-082).
+    #[serde(
+        rename = "anonymousAccessFlags",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) anonymous: Option<WireAnonymous>,
 }
 
 /// The private-endpoint policy a bucket holds and an update carries: the

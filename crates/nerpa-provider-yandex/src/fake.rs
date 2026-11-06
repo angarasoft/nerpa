@@ -106,6 +106,8 @@ impl Api for Memory {
                     tags: create.tags,
                     object_lock: None,
                     allowed_private_endpoints: None,
+                    website: None,
+                    anonymous: create.anonymous,
                 },
             );
             return Ok(Response {
@@ -188,6 +190,12 @@ impl Api for Memory {
             bucket.versioning = Some(patch.versioning);
             bucket.max_size = patch.max_size;
             bucket.tags = patch.tags;
+            bucket.website = patch.website;
+            // The wire leaves the flags alone when the body omits them: the
+            // probe showed an update without the field keeping them.
+            if let Some(anonymous) = patch.anonymous {
+                bucket.anonymous = Some(anonymous);
+            }
             return Ok(Response {
                 status: 200,
                 body: "{}".to_owned(),

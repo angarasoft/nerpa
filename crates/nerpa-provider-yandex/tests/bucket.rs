@@ -44,6 +44,9 @@ fn secrets() -> Secrets<'static> {
 /// The declaration the bucket scenario starts from: the bucket is made with
 /// every managed attribute but versioning — a bucket that was never
 /// versioned reads as disabled — and the run after it has nothing to do.
+/// The declaration the bucket scenario starts from. The site is not here:
+/// the wire ignores the document at creation, so the site joins through the
+/// first update (adr-2026-082).
 fn first_declaration(bucket: &nerpa_core::Address) -> Graph {
     let mut graph = Graph::new();
     graph
@@ -51,6 +54,13 @@ fn first_declaration(bucket: &nerpa_core::Address) -> Graph {
             Resource::new(bucket.clone())
                 .with("default_storage_class", "STANDARD")
                 .with("max_size", 1_073_741_824)
+                .with(
+                    "anonymous_access",
+                    Value::Map(BTreeMap::from([
+                        ("read".to_owned(), Value::Boolean(true)),
+                        ("list".to_owned(), Value::Boolean(true)),
+                    ])),
+                )
                 .with(
                     "tags",
                     Value::Map(BTreeMap::from([(
@@ -75,6 +85,20 @@ fn second_declaration(bucket: &nerpa_core::Address) -> Graph {
                 .with("versioning", "enabled")
                 .with("max_size", 2_147_483_648)
                 .with(
+                    "website",
+                    Value::Map(BTreeMap::from([
+                        ("index".to_owned(), Value::Text("index.html".to_owned())),
+                        ("error".to_owned(), Value::Text("404.html".to_owned())),
+                    ])),
+                )
+                .with(
+                    "anonymous_access",
+                    Value::Map(BTreeMap::from([
+                        ("read".to_owned(), Value::Boolean(true)),
+                        ("list".to_owned(), Value::Boolean(true)),
+                    ])),
+                )
+                .with(
                     "tags",
                     Value::Map(BTreeMap::from([
                         ("team".to_owned(), Value::Text("nerpa".to_owned())),
@@ -88,6 +112,9 @@ fn second_declaration(bucket: &nerpa_core::Address) -> Graph {
 
 /// The declaration it becomes after that: versioning alone changes, to the
 /// suspended word, with everything else left as it was declared.
+/// The site is NOT declared here: the update that follows must carry it
+/// from the read, for the wire replaces what the body omits — and what it
+/// omits here is the site (adr-2026-082).
 fn third_declaration(bucket: &nerpa_core::Address) -> Graph {
     let mut graph = Graph::new();
     graph
@@ -418,6 +445,106 @@ fn an_update_carries_the_object_lock_the_bucket_holds() {
 }
 
 #[test]
+fn a_site_survives_an_update_that_does_not_declare_it() {
+    // The wire replaces the website document the body omits, so a change to
+    // a tag would wipe the site; the update carries the document the read
+    // carried, and the site survives (adr-2026-082).
+    let bucket = address("yandex:bucket.site");
+
+    let mut state = State::new();
+    let providers = Providers::new().with(Box::new(Yandex::fake()));
+    let machines = Machines::new();
+
+    // The bucket is born without a site — the wire ignores the document at
+    // creation — and the site joins through the update that follows.
+    let plain = first_declaration(&bucket);
+    let observed = observe(&plain, &providers, &machines, &state).expect("observed");
+    let created =
+        plan(&plain, &observed, &state, &providers.schema(), secrets()).expect("plannable");
+    apply(
+        &created,
+        &providers,
+        &machines,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |_| Ok(()),
+    )
+    .expect("applied");
+
+    let with_site = second_declaration(&bucket);
+    let observed = observe(&with_site, &providers, &machines, &state).expect("observed");
+    let sited = plan(
+        &with_site,
+        &observed,
+        &state,
+        &providers.schema(),
+        secrets(),
+    )
+    .expect("plannable");
+    apply(
+        &sited,
+        &providers,
+        &machines,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |_| Ok(()),
+    )
+    .expect("applied");
+
+    // The declaration drops the website and suspends the versioning: the
+    // update must still carry the site the read carried.
+    let without_site = third_declaration(&bucket);
+    let observed = observe(&without_site, &providers, &machines, &state).expect("observed");
+    let update = plan(
+        &without_site,
+        &observed,
+        &state,
+        &providers.schema(),
+        secrets(),
+    )
+    .expect("plannable");
+    apply(
+        &update,
+        &providers,
+        &machines,
+        &observed,
+        &mut state,
+        secrets(),
+        &mut |_| Ok(()),
+    )
+    .expect("applied");
+
+    let observed = observe(&without_site, &providers, &machines, &state).expect("observed");
+    let settled = plan(
+        &without_site,
+        &observed,
+        &state,
+        &providers.schema(),
+        secrets(),
+    )
+    .expect("plannable");
+    assert_eq!(
+        settled.changes().count(),
+        0,
+        "the suspended bucket without a declared site still has nothing to do"
+    );
+    // And the site is still there: the read reports it, undeclared and
+    // untouched.
+    let site = observed
+        .attribute(&bucket, "website")
+        .expect("the site the read carried is the site the world still holds");
+    assert_eq!(
+        site,
+        &Value::Map(BTreeMap::from([
+            ("index".to_owned(), Value::Text("index.html".to_owned())),
+            ("error".to_owned(), Value::Text("404.html".to_owned())),
+        ]))
+    );
+}
+
+#[test]
 fn a_declared_disabled_versioning_is_refused() {
     // No door can unversion a bucket, so the word for the state none can
     // reach is refused at the declaration, naming the two that are real.
@@ -739,7 +866,7 @@ fn take_a_recording_of_the_bucket_scenario() {
     // A bucket's name is unique across the whole platform, so the fixture owns
     // one of its own. The scenario deletes it before the recording is written,
     // so the replay walks a world that no longer exists there.
-    let bucket = "nerpa-s3-recording";
+    let bucket = "nerpa-site-recording";
     let exchanges: Arc<Mutex<Vec<RecordedExchange>>> = Arc::default();
     let api = Recording {
         real: Http::new(std::time::Duration::from_secs(30)),
