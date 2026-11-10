@@ -19,6 +19,37 @@ pub(crate) struct WireInstance {
     pub(crate) resources: WireResources,
     #[serde(rename = "networkInterfaces", default)]
     pub(crate) network_interfaces: Vec<WireInterface>,
+    /// `RUNNING`, `STOPPED`, or one of the states between: the resources
+    /// change only while the instance is stopped, so the answer is what says
+    /// whether a stop is owed first.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) status: Option<String>,
+    /// The disk the instance boots from, named by the id the cloud gave the
+    /// disk; what the disk holds is the disk's own answer.
+    #[serde(rename = "bootDisk", default, skip_serializing_if = "Option::is_none")]
+    pub(crate) boot_disk: Option<WireAttachedDisk>,
+}
+
+/// The boot disk an instance carries, as the instance answers with it.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct WireAttachedDisk {
+    #[serde(rename = "diskId")]
+    pub(crate) disk_id: String,
+}
+
+/// A disk, as the API answers with it: the size it holds, and the image it
+/// was made from where it was made from one.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub(crate) struct WireDisk {
+    pub(crate) id: String,
+    #[serde(with = "int64")]
+    pub(crate) size: i64,
+    #[serde(
+        rename = "sourceImageId",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) source_image_id: Option<String>,
 }
 
 /// One network interface of an instance.
@@ -135,13 +166,86 @@ pub(crate) struct CreateInstance {
     pub(crate) platform_id: String,
     #[serde(rename = "resourcesSpec")]
     pub(crate) resources_spec: WireResources,
+    /// The disk the instance boots from, made from the declared image: an
+    /// instance born without one cannot boot, and the cloud refuses the
+    /// create that carries no disk spec.
+    #[serde(rename = "bootDiskSpec")]
+    pub(crate) boot_disk_spec: WireBootDiskSpec,
+    /// The interfaces the instance is born with. One, in the declared
+    /// subnet: the declaration speaks one `subnet_id`, and an interface is
+    /// what carries it.
+    #[serde(rename = "networkInterfaceSpecs")]
+    pub(crate) network_interface_specs: Vec<WireInterfaceSpec>,
+}
+
+/// The boot disk an instance is born with. The disk is the instance's own:
+/// it dies with the instance, for a replacement that left it behind would
+/// leave a disk nobody declared.
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct WireBootDiskSpec {
+    pub(crate) mode: String,
+    #[serde(rename = "autoDelete")]
+    pub(crate) auto_delete: bool,
+    pub(crate) disk: WireBootDiskSpecDisk,
+}
+
+/// The disk spec a create carries: the image it is made from, and the size
+/// where the declaration names one — the image's own size otherwise.
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct WireBootDiskSpecDisk {
+    #[serde(rename = "imageId")]
+    pub(crate) image_id: String,
+    #[serde(
+        with = "optional_int64",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) size: Option<i64>,
+}
+
+/// One network interface an instance is born with.
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct WireInterfaceSpec {
+    #[serde(rename = "subnetId")]
+    pub(crate) subnet_id: String,
 }
 
 /// What an update call is asked with: the parts that may change in place.
+/// The update mask travels in the URL naming the resources; the cloud
+/// touches what the mask says and no more.
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct PatchInstance {
     #[serde(rename = "resourcesSpec")]
     pub(crate) resources_spec: WireResources,
+}
+
+/// What a disk grow call is asked with: the size the disk grows to, for a
+/// disk only grows.
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct PatchDisk {
+    #[serde(with = "int64")]
+    pub(crate) size: i64,
+}
+
+/// An operation, as the API answers a make, change or removal with: the
+/// work the cloud has taken on. A call answered with an operation is a
+/// promise, not a fact — the resource it promises is not there until the
+/// promise says it is kept.
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct WireOperation {
+    pub(crate) id: String,
+    #[serde(default)]
+    pub(crate) done: bool,
+    /// Why the work failed, where the cloud says it did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) error: Option<WireProblem>,
+}
+
+/// The refusal a failed operation carries.
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct WireProblem {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) message: Option<String>,
 }
 
 /// A VPC network, as the API answers with it. A network has no state beyond its

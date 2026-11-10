@@ -9,16 +9,20 @@ use nerpa_core::provider::{Attributes, ProviderError};
 use nerpa_core::value::Value;
 
 use crate::wire::{
-    CreateBucket, Versioning, WireAnonymous, WireBucket, WireExpiration, WireInstance,
-    WireNoncurrentExpiration, WireNoncurrentTransition, WireResources, WireRule, WireRuleFilter,
-    WireSubnet, WireTag, WireTransition, WireWebsite,
+    CreateBucket, Versioning, WireAnonymous, WireBootDiskSpec, WireBootDiskSpecDisk, WireBucket,
+    WireDisk, WireExpiration, WireInstance, WireInterfaceSpec, WireNoncurrentExpiration,
+    WireNoncurrentTransition, WireResources, WireRule, WireRuleFilter, WireSubnet, WireTag,
+    WireTransition, WireWebsite,
 };
 
 /// One gibibyte: Yandex Cloud counts memory in bytes, a person counts in GiB.
 const GIB: i64 = 1024 * 1024 * 1024;
 
-/// The attributes a wire instance reads back as.
-pub(crate) fn attributes(instance: &WireInstance) -> Attributes {
+/// The attributes a wire instance reads back as, with the boot disk it
+/// boots from: the instance names the disk by its id, and the disk answers
+/// with the image it was made from — a birth attribute, reported and never
+/// turned into work — and the size it holds, which only grows.
+pub(crate) fn attributes(instance: &WireInstance, disk: Option<&WireDisk>) -> Attributes {
     let mut attributes = Attributes::new();
     attributes.insert("zone_id".to_owned(), Value::Text(instance.zone_id.clone()));
     attributes.insert(
@@ -35,6 +39,12 @@ pub(crate) fn attributes(instance: &WireInstance) -> Attributes {
             "subnet_id".to_owned(),
             Value::Text(interface.subnet_id.clone()),
         );
+    }
+    if let Some(disk) = disk {
+        if let Some(image) = &disk.source_image_id {
+            attributes.insert("boot_disk_image_id".to_owned(), Value::Text(image.clone()));
+        }
+        attributes.insert("boot_disk_gb".to_owned(), Value::Integer(disk.size / GIB));
     }
     attributes
 }
@@ -83,6 +93,66 @@ pub(crate) fn resources(
                 problem: "memory_gb overflows".to_owned(),
             })?,
     })
+}
+
+/// The boot disk a declaration asks an instance to be born with: made from
+/// its required image, and sized where the declaration names a size — the
+/// image's own size where it does not. The disk dies with the instance, so
+/// a replacement leaves nothing behind it.
+///
+/// # Errors
+///
+/// Returns [`ProviderError::Declaration`] where the image is missing, or
+/// the size is not an integer.
+pub(crate) fn boot_disk(
+    desired: &Attributes,
+    address: &Address,
+) -> Result<WireBootDiskSpec, ProviderError> {
+    Ok(WireBootDiskSpec {
+        mode: "READ_WRITE".to_owned(),
+        auto_delete: true,
+        disk: WireBootDiskSpecDisk {
+            image_id: required_text(desired, "boot_disk_image_id", address)?,
+            size: desired_disk_size(desired, address)?,
+        },
+    })
+}
+
+/// The interfaces a declaration asks an instance to be born with: one, in
+/// the subnet it names.
+///
+/// # Errors
+///
+/// Returns [`ProviderError::Declaration`] where `subnet_id` is missing.
+pub(crate) fn interface_specs(
+    desired: &Attributes,
+    address: &Address,
+) -> Result<Vec<WireInterfaceSpec>, ProviderError> {
+    Ok(vec![WireInterfaceSpec {
+        subnet_id: required_text(desired, "subnet_id", address)?,
+    }])
+}
+
+/// The boot disk size a declaration manages, in the wire's bytes, or `None`
+/// where it leaves the size to the image.
+///
+/// # Errors
+///
+/// Returns [`ProviderError::Declaration`] where `boot_disk_gb` is not an
+/// integer or overflows the wire's unit.
+pub(crate) fn desired_disk_size(
+    desired: &Attributes,
+    address: &Address,
+) -> Result<Option<i64>, ProviderError> {
+    optional_integer(desired, "boot_disk_gb", address)?
+        .map(|gib| {
+            gib.checked_mul(GIB)
+                .ok_or_else(|| ProviderError::Declaration {
+                    address: address.clone(),
+                    problem: "boot_disk_gb overflows".to_owned(),
+                })
+        })
+        .transpose()
 }
 
 /// The attributes a subnet reads back as.

@@ -164,6 +164,7 @@ fn provider(auth: Auth, cloud: &Arc<Cloud>) -> Yandex {
         "folder",
         "https://compute.example/compute/v1",
         "https://vpc.example/vpc/v1",
+        "https://operations.example/operations",
         "https://storage.example/storage/v1",
         "https://s3.example",
         auth,
