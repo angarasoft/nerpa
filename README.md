@@ -91,28 +91,21 @@ the signature is refused, naming what moved. Every run says who is acting
 
 - **One graph, two domains.** A resource's state is read either through an API
   (`control` — a VM, a subnet) or only by running code on one machine (`target`
-  — a package, a file). Naming that difference puts a VM and the packages on it
-  in one graph, with real edges between them. →
-  [execution domains](docs/book/chapters/execution-domains.md)
+  — a package, a file), and naming that difference puts a VM and the packages on
+  it in one graph, with real edges between them.
 - **Configuration is a Starlark program**, evaluated with no I/O, no clock and
   no network, so the same source always yields the same graph — which is what
-  makes a plan worth signing. →
-  [a single planning pass](docs/book/chapters/a-single-planning-pass.md)
+  makes a plan worth signing.
 - **The set of resources is known before anything runs.** Values that do not
   exist yet are opaque handles you can pass around but not branch on, so planning
-  is one pass over the whole graph. →
-  [facts as values](docs/book/chapters/facts-as-values.md)
+  is one pass over the whole graph.
 - **Identity, not keys.** A run carries who acts, not a static credential;
-  secrets travel as references and never reach the state file or the plan. →
-  [zero trust](docs/book/chapters/zero-trust.md),
-  [secrets](docs/book/chapters/secrets.md)
+  secrets travel as references and never reach the state file or the plan.
 - **The engine carries its own executor** to each machine over the transport,
-  and a provider that reaches a cloud API stays synchronous and inside its
-  crate. →
-  [the executor and transports](docs/book/chapters/the-executor-and-transports.md),
-  [providers](docs/book/chapters/providers.md)
+  and a provider that reaches a cloud API stays synchronous and inside its crate.
 
-New to it? Start with the [book](docs/book/index.md).
+Each idea has a chapter in the [book](docs/book/index.md); the contracts behind
+them are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Next to Terraform and Ansible
 
