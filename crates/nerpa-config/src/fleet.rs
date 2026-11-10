@@ -291,10 +291,21 @@ impl Fleet {
         ))
     }
 
+    /// Whether the document describes a machine.
+    ///
+    /// Asked apart from [`Fleet::route`], which answers for a machine the
+    /// document does not describe as well.
+    #[must_use]
+    pub fn describes(&self, node: &Target) -> bool {
+        self.nodes.contains_key(node)
+    }
+
     /// How to reach a machine.
     ///
     /// A machine the document does not describe is this one, which is what a
-    /// configuration naming its own nodes means by `node("localhost")`.
+    /// configuration naming its own nodes means by `node("localhost")`. A node a
+    /// resource creates is not a machine the configuration names itself, so a
+    /// caller asks [`Fleet::describes`] before trusting that answer for one.
     #[must_use]
     pub fn route(&self, node: &Target) -> Route {
         self.nodes.get(node).map_or_else(

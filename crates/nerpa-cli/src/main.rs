@@ -37,7 +37,7 @@ use nerpa_core::provider::{Machines, Reach};
 use nerpa_core::secret::{Remembered, Secrets};
 use nerpa_core::shards;
 use nerpa_core::state::{Released, State};
-use nerpa_core::{Actor, Grant};
+use nerpa_core::{Actor, Grant, Inventory, Provenance};
 use nerpa_engine::Engine;
 
 #[derive(Parser)]
@@ -233,7 +233,10 @@ fn reachable(graph: &nerpa_core::Graph, fleet: &Fleet) -> Result<Machines, Strin
     // over `ssh` has no use for it, and one that does is refused machine by
     // machine, with the reason.
     let carried = portable(&beside);
-    let (machines, refused) = registry(&nodes, &|node| speaking(node, fleet, &beside, &carried));
+    let inventory = graph.inventory();
+    let (machines, refused) = registry(&nodes, &|node| {
+        speaking(node, fleet, inventory, &beside, &carried)
+    });
     for problem in refused {
         eprintln!("nerpa: {problem}");
     }
@@ -283,9 +286,20 @@ fn registry(nodes: &[Target], open: &Opening<'_>) -> (Machines, Vec<String>) {
 fn speaking(
     node: &Target,
     fleet: &Fleet,
+    inventory: &Inventory,
     beside: &Path,
     carried: &Result<Carried, String>,
 ) -> Result<Box<dyn Reach>, String> {
+    // Refused rather than reached here: a node a resource creates is a machine
+    // other than this one, and `route` answers `Here` for any node the fleet does
+    // not describe. Only a route the fleet names says where it is.
+    if let Some(Provenance::Managed(creator)) = inventory.provenance(node)
+        && !fleet.describes(node)
+    {
+        return Err(format!(
+            "{node}: created by {creator}, and the fleet document names no route to it"
+        ));
+    }
     let (program, arguments, expected) = match fleet.route(node) {
         // Not asked which build it is: the executor here is the file beside this
         // program, from the same build by construction.
@@ -792,7 +806,10 @@ fn journal_verified(state: &Path) -> Result<(), String> {
     reason = "tests may be blunt: see docs/CODING_STANDARDS.md"
 )]
 mod tests {
-    use super::{Machines, Reach, Target, registry};
+    use super::{Machines, Reach, Target, registry, speaking};
+    use nerpa_config::fleet::Fleet;
+    use nerpa_core::Inventory;
+    use nerpa_core::address::address;
     use nerpa_transport::Here;
 
     fn node(name: &str) -> Target {
@@ -892,5 +909,33 @@ mod tests {
             "no machine is invented to stand in for one that is not there"
         );
         let _: Machines = machines;
+    }
+
+    #[test]
+    fn a_node_a_resource_creates_is_refused_when_the_fleet_names_no_route_to_it() {
+        let mut inventory = Inventory::new();
+        inventory.managed_by(node("db"), address("yandex:instance.db"));
+        inventory.preexisting(node("localhost"));
+        let nodes = [node("db")];
+        let beside = std::path::Path::new("nerpa-executor");
+        let carried = Err("not looked for".to_owned());
+
+        let (machines, refused) = registry(&nodes, &|node| {
+            speaking(node, &Fleet::empty(), &inventory, beside, &carried)
+        });
+
+        assert_eq!(refused.len(), 1, "one machine refused, one complaint");
+        assert!(
+            refused[0].contains("db")
+                && refused[0].contains("yandex:instance.db")
+                && refused[0].contains("the fleet document names no route to it"),
+            "the complaint names the node, the resource that creates it, and what \
+             the fleet lacks: {:?}",
+            refused[0]
+        );
+        assert!(
+            machines.reach(Some(&node("db"))).is_err(),
+            "the node is not reached on the machine nerpa runs on"
+        );
     }
 }
