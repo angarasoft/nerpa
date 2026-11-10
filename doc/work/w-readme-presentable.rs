@@ -4,7 +4,7 @@ use dacc_work::WorkOrigin;
 
 dacc_work::work!("w-readme-presentable",
     title: NonEmptyStr::new("The landing page reads for a newcomer"),
-    slice: crate::slice::s_maintenance,
+    slice: crate::slice::s_landing_page,
     origin: WorkOrigin::Toil {
         justification: NonEmptyStr::new("the landing page was dense prose a newcomer had to read through; it needed a shorter, scannable shape, an example that both creates a resource and configures it, the core ideas as links, and a comparison with the tools a reader arrives from"),
     },
