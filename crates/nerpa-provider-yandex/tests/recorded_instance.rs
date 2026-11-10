@@ -246,11 +246,11 @@ fn create_instance_pins_the_real_wire() {
 /// - PATCH URL has no `?updateMask=...` query string
 /// - `{"updateMask":"resourcesSpec"}` travels in the PATCH instance body
 /// - `{"updateMask":"size"}` travels in the PATCH disk body
-#[test]
 #[allow(
     clippy::too_many_lines,
     reason = "a recorded test: the lines are the recorded exchanges"
 )]
+#[test]
 fn update_instance_pins_stop_patch_start_and_disk_grow() {
     let instance = address("yandex:instance.nerpa-rc-instance");
 
