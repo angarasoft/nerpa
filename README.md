@@ -4,179 +4,151 @@
   <img src="assets/logo.png" alt="nerpa" width="360">
 </p>
 
-One binary that holds cloud resources and the contents of the machines they run
-on in a single graph — and plans both together, in one pass.
+<p align="center"><b>One binary that holds cloud resources and the machines they run on in a single graph — and plans both together, in one pass.</b></p>
 
-[![CI](https://github.com/nerpa-run/nerpa/actions/workflows/ci.yml/badge.svg)](https://github.com/nerpa-run/nerpa/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.99.1-orange.svg)](rust-toolchain.toml)
+<p align="center">
+<a href="https://github.com/nerpa-run/nerpa/actions/workflows/ci.yml"><img src="https://github.com/nerpa-run/nerpa/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License"></a>
+<a href="rust-toolchain.toml"><img src="https://img.shields.io/badge/rust-1.99.1-orange.svg" alt="Rust"></a>
+</p>
 
-`nerpa` plans infrastructure and configuration together, in one pass, and
-applies the result over a transport that carries an identity rather than a
-static key. It is built for a world where the operator is often not a person:
-the plan is a typed document before it is a page of text, and a change can be
-made to require a signature from somebody other than whoever proposed it.
+nerpa plans infrastructure and configuration as one typed document, then applies
+it over a transport that carries an identity rather than a static key. It is
+built for a world where the operator is often not a person: a plan is a signed
+artifact before it is a page of text, and a change can be made to require a
+signature from somebody other than whoever proposed it.
 
-> **Status: 0.4.0, unreleased — grants, WASM providers, and the run as a
-> library.** `nerpa apply` converges templated files, packages and services
-> across a fleet of machines reached over `ssh` (Alpine, Gentoo, Rocky),
-> delivering its own executor to each; a second run has nothing to do, and a
-> machine that is switched off is reported by name rather than stopping the
-> run. What cannot be changed later holds: a secret never reaches the state
-> file or the plan, a rename declared with `moved` keeps its identity, and a
-> recorded configuration's plan cannot change without a declared change. The
-> cloud is in — a real environment moves across from Terraform without
-> recreating a resource — see the [roadmap](ROADMAP.md).
+> **Status — 0.4.0, unreleased.** `nerpa apply` converges templated files,
+> packages and services across a fleet reached over `ssh`, delivering its own
+> executor to each; a second run has nothing to do, and a machine that is off is
+> reported by name rather than stopping the run. Cloud is in: a Yandex Cloud
+> instance is created, resized and polled through its API, inside the same plan
+> as the machine it becomes. See the [roadmap](ROADMAP.md).
 
-## Quick start
+## Example — a machine and the file on it
 
 ```console
 $ cat main.star
-node("localhost")
-etc = resource("os:directory.etc@localhost", {"path": "/tmp/demo/etc"})
-resource("os:file.app@localhost", {
-    "path": "/tmp/demo/etc/app.conf",
-    "content": "listen 80;\n",
-    "mode": "0640",
+# A VM, in the control domain. Declaring it registers the node "db".
+resource("yandex:instance.db", {
+    "zone_id": "ru-central1-a",
+    "platform_id": "standard-v3",
+    "cores": 2,
+    "memory_gb": 4,
+    "subnet_id": "e9b8kn2...",
+    "boot_disk_image_id": "fd8...ubuntu-2404",
+})
+
+# A file on that same VM, in the target domain. It lands on "db".
+resource("os:file.motd@db", {
+    "path": "/etc/motd",
+    "content": "managed by nerpa\n",
+    "mode": "0644",
 })
 
 $ nerpa plan --as alice@example.com
   2 changes: 2 to create
-  touches 1 node: localhost
-as alice@example.com over run until further notice
+  touches 1 node: db
 
-stage 1 · target: localhost
-  [create   ] os:directory.etc@localhost
-               ~ path           — → "/tmp/demo/etc"
-  [create   ] os:file.app@localhost
-               ~ content
-                 becomes:
-                   │ listen 80;
-               ~ mode           — → "0640"
-               ~ path           — → "/tmp/demo/etc/app.conf"
+stage 1 · control
+  [create   ] yandex:instance.db
+               ~ cores              — → 2
+               ~ memory_gb          — → 4
+               ~ zone_id            — → "ru-central1-a"
+               ~ platform_id        — → "standard-v3"
+               ~ subnet_id          — → "e9b8kn2..."
+               ~ boot_disk_image_id — → "fd8...ubuntu-2404"
 
-plan 4545395e0afc
+stage 2 · target: db
+  [create   ] os:file.motd@db
+               ~ content             becomes: managed by nerpa
+               ~ mode               — → "0644"
+               ~ path               — → "/etc/motd"
 
-$ nerpa apply --as alice@example.com
-  2 changes: 2 to create
-  touches 1 node: localhost
-as alice@example.com over run until further notice
-
-stage 1 · target: localhost
-  [create   ] os:directory.etc@localhost
-               ~ path           — → "/tmp/demo/etc"
-  [create   ] os:file.app@localhost
-               ~ content
-                 becomes:
-                   │ listen 80;
-               ~ mode           — → "0640"
-               ~ path           — → "/tmp/demo/etc/app.conf"
-
-plan 4545395e0afc
-
-applied 2 changes
-
-$ nerpa plan --as alice@example.com
-nothing to do: the world already matches the configuration
+plan 7c1f0b2a9e04
 ```
 
-Every run says who is acting in it (`--as`), and every run is a line in a
-journal beside the state file for whoever reads afterwards. The journal is an
-append-only hash chain — an entry rewritten, reordered or removed breaks it —
-and `nerpa journal verify` walks from the first entry and says whether it
-still holds.
+One graph, one plan: the VM is created before the file, because the file on `db`
+cannot exist until the node does — nerpa reads that from the graph, not from a
+provisioner hook. Run it again and there is nothing to do; the world already
+matches.
 
-Where a deployment keeps who writes a change and who may make it apart, the
-fleet names the approvers:
-
-```toml
-[approval]
-approvers = "/etc/nerpa/approvers"
-```
-
-The plan is proposed and then signed by somebody else, who needs nothing but
-an ssh key of their own:
+That number under the plan is a digest of everything the plan says and was read
+from, so an unchanged world reproduces it and a moved one does not. A plan can be
+proposed by one person and signed by another, who needs nothing but an ssh key:
 
 ```console
-$ nerpa plan --as alice@example.com --json > plan.json
-$ nerpa sign --as carol@example.com --with-key ~/.ssh/plan-key plan.json
+$ nerpa plan  --as alice@example.com --json > plan.json
+$ nerpa sign  --as carol@example.com --with-key ~/.ssh/plan-key plan.json
 $ nerpa apply --as alice@example.com --approval plan.json.approval
 ```
 
-Whoever proposed a plan cannot sign it, and an apply over a plan that moved
-since the signature is refused, naming what moved.
+Whoever proposed a plan cannot sign it, and an apply over a plan that moved since
+the signature is refused, naming what moved. Every run says who is acting
+(`--as`) and lands in an append-only, hash-chained journal.
 
-That number under the plan is a digest of everything the plan says and
-everything it was read from. A second run against an unchanged world produces it
-again; a world that moved underneath produces a different one, which is what
-makes approving a plan mean something.
+## Core ideas
 
-## What it is not
+- **One graph, two domains.** A resource's state is read either through an API
+  (`control` — a VM, a subnet) or only by running code on one machine (`target`
+  — a package, a file). Naming that difference puts a VM and the packages on it
+  in one graph, with real edges between them. →
+  [execution domains](docs/book/chapters/execution-domains.md)
+- **Configuration is a Starlark program**, evaluated with no I/O, no clock and
+  no network, so the same source always yields the same graph — which is what
+  makes a plan worth signing. →
+  [a single planning pass](docs/book/chapters/a-single-planning-pass.md)
+- **The set of resources is known before anything runs.** Values that do not
+  exist yet are opaque handles you can pass around but not branch on, so planning
+  is one pass over the whole graph. →
+  [facts as values](docs/book/chapters/facts-as-values.md)
+- **Identity, not keys.** A run carries who acts, not a static credential;
+  secrets travel as references and never reach the state file or the plan. →
+  [zero trust](docs/book/chapters/zero-trust.md),
+  [secrets](docs/book/chapters/secrets.md)
+- **The engine carries its own executor** to each machine over the transport,
+  and a provider that reaches a cloud API stays synchronous and inside its
+  crate. →
+  [the executor and transports](docs/book/chapters/the-executor-and-transports.md),
+  [providers](docs/book/chapters/providers.md)
 
-**nerpa is not a Terraform provider host, and is not trying to become one.**
+New to it? Start with the [book](docs/book/index.md).
 
-Terraform's providers are Go binaries with full process rights: any network, the
-filesystem, `exec`. They receive credentials as values, from a registry you do
-not control. Accepting them as a runtime would mean accepting all of that, which
-is the opposite of what this tool claims to be. Their *schemas*, on the other
-hand, are JSON — a complete machine-readable description of every resource type
-that somebody else spent years getting right. nerpa takes the schemas and leaves
-the binaries.
+## Next to Terraform and Ansible
 
-Terraform therefore appears on the input side only: `.tf` converts, `tfstate`
-imports, and neither takes part in a run afterwards.
+**Terraform** plans your cloud and stops at the machine's door: what runs
+*inside* the VM is a `provisioner` nobody defends, or a second tool run by hand
+afterward. nerpa's plan crosses that door — the VM and the packages, files and
+services on it are one graph with real edges, so a machine and its configuration
+are a single plan and a single apply. And there is no `count`, so an index cannot
+shift and quietly propose destroying a live resource.
 
-It is also not a Kubernetes replacement, not a CMDB, and not a monitoring
-system.
+**Ansible** is the closer cousin: both are agentless, reach a fleet over `ssh`
+through your own ssh config and jump hosts, and converge files, packages and
+services so a second run has nothing to do. The difference is the plan. Ansible
+runs an imperative task list whose `--check` can report a change it could not
+actually verify; nerpa evaluates the configuration with no I/O and produces a
+typed diff with a hash — an unchanged world reproduces it, and you can require a
+second person to sign it. The same graph also holds the cloud resources Ansible
+would reach through separate modules and a separate inventory.
 
-## Why
-
-Provisioning and configuration have been two tools for fifteen years, and the
-seam between them is where the work goes: external data sources, provisioners
-nobody defends, two state mechanisms, two languages, and a plan that stops being
-true at the boundary. Both halves also carry a decade of accumulated answers to
-questions that no longer need asking.
-
-nerpa is an attempt at the same job with those answers removed rather than
-improved on. There is no `count`, so an index cannot shift and propose
-destroying a live resource. There are no workspaces, no separate module
-language, no initialisation step, and no twenty-two levels of variable
-precedence. A dry run does not lie about what it could not check.
-
-The one distinction the rest is built on is where a resource's state can be
-read: through an API, or only by running code on one particular machine. Naming
-that difference is what lets a VM and the packages installed on it sit in one
-graph, with real edges between them.
-
-## How it works
-
-Configuration is a Starlark program. It is evaluated with no I/O, no clock and
-no network, so the same source always produces the same graph — which is what
-makes a plan worth signing. Values that do not exist yet are opaque handles that
-can be passed around but not branched on, so the *set* of resources is always
-known before anything happens, even when individual values are not.
-
-Planning is therefore a single pass over the whole graph. Stages exist, but they
-belong to execution: a VM is created before it is configured because the graph
-says so, not because the planner had to go back and think again.
+It is not a Kubernetes replacement, a CMDB, or a monitoring system.
 
 ## How it is governed
 
 nerpa's decisions, specifications, invariants and work plan are compiled Rust
-code in [`doc/`](doc/) — decisions as `adr!`, specifications as `rfc!`,
-invariants as typed records whose code anchors are checked both ways. A reference
-to a record that no longer exists does not compile, so the trail that explains
-*why* a change was made cannot rot silently. The honest surface of what is proven
-versus what is believed lives in [SECURITY.md](SECURITY.md); the commit rules in
-[CONTRIBUTING.md](CONTRIBUTING.md).
+code in [`doc/`](doc/): a reference to a record that no longer exists does not
+compile, so the trail that explains *why* a change was made cannot rot silently.
+What is proven versus merely believed lives in [SECURITY.md](SECURITY.md).
 
 ## Documentation
 
 | What you want | Where it lives |
 | --- | --- |
-| Decisions, specs, invariants and work | [doc/](doc/) — the compiled registry |
+| Concepts, end to end | [the book](docs/book/index.md) |
 | The roadmap, and what is done | [ROADMAP.md](ROADMAP.md) |
 | What the system is, as contracts | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Decisions, specs, invariants and work | [doc/](doc/) — the compiled registry |
 | Which document answers which question | [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md) |
 | Where each kind of knowledge lives | [docs/MAP.md](docs/MAP.md) |
 | How a commit is written | [docs/COMMITS.md](docs/COMMITS.md) |
@@ -190,21 +162,13 @@ versus what is believed lives in [SECURITY.md](SECURITY.md); the commit rules in
 $ cargo test
 ```
 
-The toolchain is pinned in `rust-toolchain.toml`; `rustup` will fetch it on the
+The toolchain is pinned in `rust-toolchain.toml`; `rustup` fetches it on the
 first build.
 
 ## License
 
-Apache-2.0. Use it, ship it, build products on it, run it as a service — none of
-that owes anybody anything.
-
-That is a deliberate choice rather than an oversight. The provider ecosystem this
-tool is designed around has to be written by people who are not the author, and
-nobody writes a plugin while wondering whether it has become a derivative work.
-
-Said plainly so that nobody has to guess later: the engine is Apache-2.0 and
-stays that way. A coordination plane — grants, third-party approval, the audit
-chain, policy for several operators at once — is planned as a separate,
-separately licensed component, because that is what an organisation pays for and
-a single engineer does not need. Contributions are taken under a CLA so that
-this split remains possible; see [CONTRIBUTING.md](CONTRIBUTING.md).
+Apache-2.0 — use it, ship it, build products on it, run it as a service. The
+engine stays Apache-2.0. A coordination plane for several operators at once —
+grants, third-party approval, the audit chain — is planned as a separate,
+separately licensed component; contributions are taken under a CLA so that split
+stays possible. See [CONTRIBUTING.md](CONTRIBUTING.md).
