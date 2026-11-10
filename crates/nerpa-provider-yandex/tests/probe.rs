@@ -30,36 +30,17 @@ use nerpa_core::observed::Observed;
 use nerpa_core::provider::{Machines, Provider, Reading};
 use nerpa_provider_yandex::{Api, ApiError, Auth, Http, Response, Yandex};
 
+// A shared log sink: every helper that writes to it holds the same Arc.
+type Log = Arc<Mutex<std::fs::File>>;
+
+/// Wraps the real HTTP client and logs every exchange in the structured block
+/// format.  The `Authorization` header value is replaced with `<redacted>` so
+/// that the IAM token never reaches the log file.
 struct Capturing {
     real: Http,
+    log: Log,
+    /// The raw token, kept only in memory and never written anywhere.
     authorization: Arc<Mutex<String>>,
-}
-
-impl Api for Capturing {
-    fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Response, ApiError> {
-        self.remember(headers);
-        self.real.get(url, headers)
-    }
-
-    fn post(&self, url: &str, headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError> {
-        self.remember(headers);
-        self.real.post(url, headers, body)
-    }
-
-    fn patch(&self, url: &str, headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError> {
-        self.remember(headers);
-        self.real.patch(url, headers, body)
-    }
-
-    fn put(&self, url: &str, headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError> {
-        self.remember(headers);
-        self.real.put(url, headers, body)
-    }
-
-    fn delete(&self, url: &str, headers: &[(&str, &str)]) -> Result<Response, ApiError> {
-        self.remember(headers);
-        self.real.delete(url, headers)
-    }
 }
 
 impl Capturing {
@@ -70,12 +51,71 @@ impl Capturing {
             }
         }
     }
+
+    fn write_exchange(
+        &self,
+        method: &str,
+        url: &str,
+        request_body: Option<&str>,
+        result: &Result<Response, ApiError>,
+    ) {
+        let req_body = request_body.unwrap_or("-");
+        let (status_line, resp_body) = match result {
+            Ok(r) => (r.status.to_string(), r.body.clone()),
+            Err(e) => ("ERR".to_owned(), e.to_string()),
+        };
+        let mut guard = self.log.lock().unwrap();
+        writeln!(guard, "=== EXCHANGE").unwrap();
+        writeln!(guard, "METHOD {method}").unwrap();
+        writeln!(guard, "URL {url}").unwrap();
+        writeln!(guard, "REQUEST-BODY {req_body}").unwrap();
+        writeln!(guard, "RESPONSE-STATUS {status_line}").unwrap();
+        writeln!(guard, "RESPONSE-BODY {resp_body}").unwrap();
+        writeln!(guard, "=== END EXCHANGE").unwrap();
+    }
+}
+
+impl Api for Capturing {
+    fn get(&self, url: &str, headers: &[(&str, &str)]) -> Result<Response, ApiError> {
+        self.remember(headers);
+        let result = self.real.get(url, headers);
+        self.write_exchange("GET", url, None, &result);
+        result
+    }
+
+    fn post(&self, url: &str, headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError> {
+        self.remember(headers);
+        let result = self.real.post(url, headers, body);
+        self.write_exchange("POST", url, Some(body), &result);
+        result
+    }
+
+    fn patch(&self, url: &str, headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError> {
+        self.remember(headers);
+        let result = self.real.patch(url, headers, body);
+        self.write_exchange("PATCH", url, Some(body), &result);
+        result
+    }
+
+    fn put(&self, url: &str, headers: &[(&str, &str)], body: &str) -> Result<Response, ApiError> {
+        self.remember(headers);
+        let result = self.real.put(url, headers, body);
+        self.write_exchange("PUT", url, Some(body), &result);
+        result
+    }
+
+    fn delete(&self, url: &str, headers: &[(&str, &str)]) -> Result<Response, ApiError> {
+        self.remember(headers);
+        let result = self.real.delete(url, headers);
+        self.write_exchange("DELETE", url, None, &result);
+        result
+    }
 }
 
 // The operation is polled until the cloud says it is done; its final shape —
 // the response, the metadata, the error — is what the caller needs.
 fn poll_until_done(
-    wire: &Http,
+    wire: &dyn Api,
     operations: &str,
     headers: &[(&str, &str)],
     operation_id: &str,
@@ -105,7 +145,7 @@ fn id_of(operation: &serde_json::Value, metadata_field: &str) -> String {
 }
 
 fn find_by_name(
-    wire: &Http,
+    wire: &dyn Api,
     headers: &[(&str, &str)],
     folder: &str,
     base: &str,
@@ -131,7 +171,7 @@ fn find_by_name(
 }
 
 fn list_kind(
-    wire: &Http,
+    wire: &dyn Api,
     headers: &[(&str, &str)],
     folder: &str,
     base: &str,
@@ -154,7 +194,7 @@ fn first_id_of(list: &serde_json::Value, kind: &str) -> String {
 }
 
 fn status_of(
-    wire: &Http,
+    wire: &dyn Api,
     headers: &[(&str, &str)],
     compute: &str,
     instance_id: &str,
@@ -175,6 +215,14 @@ fn probe_the_real_create() {
     let vpc = "https://vpc.api.cloud.yandex.net/vpc/v1";
     let operations = "https://operation.api.cloud.yandex.net/operations";
     let authorization = Arc::new(Mutex::new(String::new()));
+    let log = Arc::new(Mutex::new(
+        std::fs::File::create("/tmp/probe-rc.log").expect("a log file"),
+    ));
+    let capturing = Capturing {
+        real: Http::new(Duration::from_secs(60)),
+        log: Arc::clone(&log),
+        authorization: Arc::clone(&authorization),
+    };
     let provider = Yandex::new(
         &folder,
         compute,
@@ -185,6 +233,7 @@ fn probe_the_real_create() {
         auth,
         Box::new(Capturing {
             real: Http::new(Duration::from_secs(60)),
+            log: Arc::clone(&log),
             authorization: Arc::clone(&authorization),
         }),
     );
@@ -199,13 +248,12 @@ fn probe_the_real_create() {
     let token = authorization.lock().unwrap().clone();
     assert!(!token.is_empty(), "the token was not resolved");
     let headers = [("Authorization", token.as_str())];
-    let wire = Http::new(Duration::from_secs(60));
-    let log = Arc::new(Mutex::new(
-        std::fs::File::create("/tmp/probe-rc.log").expect("a log file"),
-    ));
-    let note = |line: String| {
-        println!("{line}");
-        writeln!(log.lock().expect("the log"), "{line}").expect("the log takes it");
+    let note = {
+        let log = Arc::clone(&log);
+        move |line: String| {
+            println!("{line}");
+            writeln!(log.lock().expect("the log"), "{line}").expect("the log takes it");
+        }
     };
     let clip = |text: &str, at: usize| -> String { text.chars().take(at).collect() };
     let said = |answer: &Result<Response, ApiError>| {
@@ -226,6 +274,9 @@ fn probe_the_real_create() {
             .and_then(|operation| operation["id"].as_str().map(str::to_owned))
             .unwrap_or_default()
     };
+    // All HTTP calls go through `capturing` from here on, which logs every
+    // exchange in the structured block format and never writes the token.
+    let wire = &capturing;
     // The public Ubuntu image the develop line's real scenarios used, and the
     // zone they declared.
     let image = "fd8em71f8oo1hdpali1k";
@@ -237,7 +288,7 @@ fn probe_the_real_create() {
 
     // What is already there is logged first, for the cloud's network quota is
     // small: a refusal falls back to reusing what the folder has.
-    let networks_here = list_kind(&wire, &headers, &folder, vpc, "networks");
+    let networks_here = list_kind(wire, &headers, &folder, vpc, "networks");
     note(format!(
         "PROBE networks here => {}",
         clip(&networks_here.to_string(), 500)
@@ -248,7 +299,7 @@ fn probe_the_real_create() {
     let operation_id = operation_of(answer);
     let network_created = !operation_id.is_empty();
     let mut network_id = if network_created {
-        let done = poll_until_done(&wire, operations, &headers, &operation_id, &note);
+        let done = poll_until_done(wire, operations, &headers, &operation_id, &note);
         note(format!(
             "PROBE network operation => {}",
             clip(&done.to_string(), 400)
@@ -258,7 +309,7 @@ fn probe_the_real_create() {
         first_id_of(&networks_here, "networks")
     };
     if network_id.is_empty() && network_created {
-        network_id = find_by_name(&wire, &headers, &folder, vpc, "networks", network);
+        network_id = find_by_name(wire, &headers, &folder, vpc, "networks", network);
     }
     note(format!(
         "PROBE network id => {network_id} (created {network_created})"
@@ -269,7 +320,7 @@ fn probe_the_real_create() {
 
     // The subnet the interface's address lives in: the same fallback, and
     // the reuse must be in the chosen network and the declared zone.
-    let subnets_here = list_kind(&wire, &headers, &folder, vpc, "subnets");
+    let subnets_here = list_kind(wire, &headers, &folder, vpc, "subnets");
     note(format!(
         "PROBE subnets here => {}",
         clip(&subnets_here.to_string(), 600)
@@ -287,7 +338,7 @@ fn probe_the_real_create() {
     let operation_id = operation_of(answer);
     let subnet_created = !operation_id.is_empty();
     let mut subnet_id = if subnet_created {
-        let done = poll_until_done(&wire, operations, &headers, &operation_id, &note);
+        let done = poll_until_done(wire, operations, &headers, &operation_id, &note);
         note(format!(
             "PROBE subnet operation => {}",
             clip(&done.to_string(), 400)
@@ -307,7 +358,7 @@ fn probe_the_real_create() {
             .to_owned()
     };
     if subnet_id.is_empty() && subnet_created {
-        subnet_id = find_by_name(&wire, &headers, &folder, vpc, "subnets", subnet);
+        subnet_id = find_by_name(wire, &headers, &folder, vpc, "subnets", subnet);
     }
     note(format!(
         "PROBE subnet id => {subnet_id} (created {subnet_created})"
@@ -339,16 +390,16 @@ fn probe_the_real_create() {
     note(format!("PROBE instance create => {}", said(&answer)));
     let operation_id = operation_of(answer);
     let instance_id = if operation_id.is_empty() {
-        find_by_name(&wire, &headers, &folder, compute, "instances", instance)
+        find_by_name(wire, &headers, &folder, compute, "instances", instance)
     } else {
-        let done = poll_until_done(&wire, operations, &headers, &operation_id, &note);
+        let done = poll_until_done(wire, operations, &headers, &operation_id, &note);
         note(format!(
             "PROBE instance operation => {}",
             clip(&done.to_string(), 400)
         ));
         let id = id_of(&done, "instanceId");
         if id.is_empty() {
-            find_by_name(&wire, &headers, &folder, compute, "instances", instance)
+            find_by_name(wire, &headers, &folder, compute, "instances", instance)
         } else {
             id
         }
@@ -390,7 +441,7 @@ fn probe_the_real_create() {
     note(format!("PROBE stop => {}", said(&answer)));
     let operation_id = operation_of(answer);
     if !operation_id.is_empty() {
-        let done = poll_until_done(&wire, operations, &headers, &operation_id, &note);
+        let done = poll_until_done(wire, operations, &headers, &operation_id, &note);
         note(format!(
             "PROBE stop operation => {}",
             clip(&done.to_string(), 300)
@@ -398,7 +449,7 @@ fn probe_the_real_create() {
     }
     note(format!(
         "PROBE instance after stop => status {:?}",
-        status_of(&wire, &headers, compute, &instance_id)
+        status_of(wire, &headers, compute, &instance_id)
     ));
 
     // The changes a stopped instance takes: the resources, and the boot disk
@@ -458,7 +509,7 @@ fn probe_the_real_create() {
     note(format!("PROBE start => {}", said(&answer)));
     let operation_id = operation_of(answer);
     if !operation_id.is_empty() {
-        let done = poll_until_done(&wire, operations, &headers, &operation_id, &note);
+        let done = poll_until_done(wire, operations, &headers, &operation_id, &note);
         note(format!(
             "PROBE start operation => {}",
             clip(&done.to_string(), 300)
@@ -466,7 +517,7 @@ fn probe_the_real_create() {
     }
     note(format!(
         "PROBE instance after start => status {:?}",
-        status_of(&wire, &headers, compute, &instance_id)
+        status_of(wire, &headers, compute, &instance_id)
     ));
 
     // The cleanup: the instance, then what the probe made — what the folder
@@ -475,7 +526,7 @@ fn probe_the_real_create() {
     note(format!("PROBE delete instance => {}", said(&answer)));
     let operation_id = operation_of(answer);
     if !operation_id.is_empty() {
-        let done = poll_until_done(&wire, operations, &headers, &operation_id, &note);
+        let done = poll_until_done(wire, operations, &headers, &operation_id, &note);
         note(format!(
             "PROBE delete instance operation => {}",
             clip(&done.to_string(), 300)
@@ -486,7 +537,7 @@ fn probe_the_real_create() {
         note(format!("PROBE delete subnet => {}", said(&answer)));
         let operation_id = operation_of(answer);
         if !operation_id.is_empty() {
-            let done = poll_until_done(&wire, operations, &headers, &operation_id, &note);
+            let done = poll_until_done(wire, operations, &headers, &operation_id, &note);
             note(format!(
                 "PROBE delete subnet operation => {}",
                 clip(&done.to_string(), 300)
@@ -498,7 +549,7 @@ fn probe_the_real_create() {
         note(format!("PROBE delete network => {}", said(&answer)));
         let operation_id = operation_of(answer);
         if !operation_id.is_empty() {
-            let done = poll_until_done(&wire, operations, &headers, &operation_id, &note);
+            let done = poll_until_done(wire, operations, &headers, &operation_id, &note);
             note(format!(
                 "PROBE delete network operation => {}",
                 clip(&done.to_string(), 300)
