@@ -6,6 +6,13 @@
 //! both ways) and its boot disk grown, the instance is read back after each
 //! transition, and what the probe made is deleted at the end. Every step
 //! lands in /tmp/probe-rc.log immediately. Delete once the wire is known.
+//!
+//! The credential is chosen from the environment in this order:
+//! 1. `YC_KEY_FILE` set and non-empty → a service-account key file.
+//! 2. `YC_IAM_TOKEN` set and non-empty → a static IAM token.
+//! 3. Neither set → the active `yc` CLI profile (`~/.config/yandex-cloud/config.yaml`).
+//!
+//! `YC_FOLDER_ID` is always required.
 
 // Tests are allowed to be blunt. See docs/CODING_STANDARDS.md.
 #![allow(
@@ -206,11 +213,16 @@ fn status_of(
 }
 
 #[test]
-#[ignore = "a live probe: set YC_FOLDER_ID and YC_KEY_FILE, then run with --ignored --nocapture"]
+#[ignore = "a live probe: set YC_FOLDER_ID, then run with --ignored --nocapture; credential: YC_KEY_FILE (service-account key), YC_IAM_TOKEN (static token), or else the active yc CLI profile"]
 fn probe_the_real_create() {
     let folder = std::env::var("YC_FOLDER_ID").expect("YC_FOLDER_ID");
-    let key_file = std::env::var("YC_KEY_FILE").expect("YC_KEY_FILE");
-    let auth = Auth::service_account_key_file(&key_file).expect("a usable key file");
+    let auth = if let Some(key_file) = std::env::var("YC_KEY_FILE").ok().filter(|v| !v.is_empty()) {
+        Auth::service_account_key_file(&key_file).expect("a usable key file")
+    } else if let Some(token) = std::env::var("YC_IAM_TOKEN").ok().filter(|v| !v.is_empty()) {
+        Auth::IamToken(token)
+    } else {
+        Auth::YcProfile
+    };
     let compute = "https://compute.api.cloud.yandex.net/compute/v1";
     let vpc = "https://vpc.api.cloud.yandex.net/vpc/v1";
     let operations = "https://operation.api.cloud.yandex.net/operations";
