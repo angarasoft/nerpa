@@ -2108,3 +2108,7 @@ at = "2026-11-10T06:38:33Z"
 commit = "d77405c9170e695cc80fae2794e636a474ea9a76"
 tree = "862276db5399bee7cc31343331b6902f507e1003"
 red_before = "a_node_a_resource_creates_is_refused_when_the_fleet_names_no_route_to_it"
+[[events]]
+event = "closed"
+slice = "s-born-node-refused"
+at = "2026-11-10T06:38:33Z"
