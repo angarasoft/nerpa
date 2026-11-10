@@ -62,6 +62,11 @@ pub(crate) struct WireInterface {
 /// What an instance is made of.
 #[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct WireResources {
+    /// The fraction of a physical core this instance may use. The real API
+    /// always returns it, but test fixtures and older responses may omit it;
+    /// `default` makes an absent field deserialize as 0 rather than error.
+    #[serde(rename = "coreFraction", with = "int64", default)]
+    pub(crate) core_fraction: i64,
     #[serde(with = "int64")]
     pub(crate) cores: i64,
     #[serde(with = "int64")]
@@ -186,7 +191,9 @@ pub(crate) struct WireBootDiskSpec {
     pub(crate) mode: String,
     #[serde(rename = "autoDelete")]
     pub(crate) auto_delete: bool,
-    pub(crate) disk: WireBootDiskSpecDisk,
+    /// The real API's field name is `diskSpec` — `disk` is refused.
+    #[serde(rename = "diskSpec")]
+    pub(crate) disk_spec: WireBootDiskSpecDisk,
 }
 
 /// The disk spec a create carries: the image it is made from, and the size
@@ -208,23 +215,49 @@ pub(crate) struct WireBootDiskSpecDisk {
 pub(crate) struct WireInterfaceSpec {
     #[serde(rename = "subnetId")]
     pub(crate) subnet_id: String,
+    /// The public address the interface is born with: a NAT address in the
+    /// declared zone. The real API requires this spec to assign a public IP.
+    #[serde(rename = "primaryV4AddressSpec")]
+    pub(crate) primary_v4_address_spec: WirePrimaryV4AddressSpec,
 }
 
-/// What an update call is asked with: the parts that may change in place.
-/// The update mask travels in the URL naming the resources; the cloud
-/// touches what the mask says and no more.
+/// The IPv4 address an interface is born with.
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct WirePrimaryV4AddressSpec {
+    #[serde(rename = "oneToOneNatSpec")]
+    pub(crate) one_to_one_nat_spec: WireOneToOneNatSpec,
+}
+
+/// The NAT spec that assigns a public address to an interface.
+#[derive(Debug, Deserialize, Serialize)]
+pub(crate) struct WireOneToOneNatSpec {
+    /// Always `"IPV4"` for the instances this provider makes.
+    #[serde(rename = "ipVersion")]
+    pub(crate) ip_version: String,
+}
+
+/// What an update call is asked with: the parts that may change in place,
+/// and the mask that names them. The mask travels in the body — the real
+/// API refuses it as a query parameter with HTTP 400.
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct PatchInstance {
     #[serde(rename = "resourcesSpec")]
     pub(crate) resources_spec: WireResources,
+    /// The fields to update, in the body — not in the URL query.
+    #[serde(rename = "updateMask")]
+    pub(crate) update_mask: String,
 }
 
-/// What a disk grow call is asked with: the size the disk grows to, for a
-/// disk only grows.
+/// What a disk grow call is asked with: the size the disk grows to and the
+/// mask naming it. The mask travels in the body — the real API refuses it
+/// as a query parameter with HTTP 400.
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct PatchDisk {
     #[serde(with = "int64")]
     pub(crate) size: i64,
+    /// The field to update, in the body — not in the URL query.
+    #[serde(rename = "updateMask")]
+    pub(crate) update_mask: String,
 }
 
 /// An operation, as the API answers a make, change or removal with: the

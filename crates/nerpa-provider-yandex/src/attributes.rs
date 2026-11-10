@@ -11,8 +11,8 @@ use nerpa_core::value::Value;
 use crate::wire::{
     CreateBucket, Versioning, WireAnonymous, WireBootDiskSpec, WireBootDiskSpecDisk, WireBucket,
     WireDisk, WireExpiration, WireInstance, WireInterfaceSpec, WireNoncurrentExpiration,
-    WireNoncurrentTransition, WireResources, WireRule, WireRuleFilter, WireSubnet, WireTag,
-    WireTransition, WireWebsite,
+    WireNoncurrentTransition, WireOneToOneNatSpec, WirePrimaryV4AddressSpec, WireResources,
+    WireRule, WireRuleFilter, WireSubnet, WireTag, WireTransition, WireWebsite,
 };
 
 /// One gibibyte: Yandex Cloud counts memory in bytes, a person counts in GiB.
@@ -85,6 +85,8 @@ pub(crate) fn resources(
     address: &Address,
 ) -> Result<WireResources, ProviderError> {
     Ok(WireResources {
+        // The real API requires coreFraction; 100 is the standard (non-burstable) level.
+        core_fraction: 100,
         cores: required_integer(desired, "cores", address)?,
         memory: required_integer(desired, "memory_gb", address)?
             .checked_mul(GIB)
@@ -111,7 +113,7 @@ pub(crate) fn boot_disk(
     Ok(WireBootDiskSpec {
         mode: "READ_WRITE".to_owned(),
         auto_delete: true,
-        disk: WireBootDiskSpecDisk {
+        disk_spec: WireBootDiskSpecDisk {
             image_id: required_text(desired, "boot_disk_image_id", address)?,
             size: desired_disk_size(desired, address)?,
         },
@@ -130,6 +132,11 @@ pub(crate) fn interface_specs(
 ) -> Result<Vec<WireInterfaceSpec>, ProviderError> {
     Ok(vec![WireInterfaceSpec {
         subnet_id: required_text(desired, "subnet_id", address)?,
+        primary_v4_address_spec: WirePrimaryV4AddressSpec {
+            one_to_one_nat_spec: WireOneToOneNatSpec {
+                ip_version: "IPV4".to_owned(),
+            },
+        },
     }])
 }
 

@@ -130,6 +130,15 @@ impl Yandex {
         }
     }
 
+    /// Sets the interval between two operation polls. The default is two
+    /// seconds; a test that replays recorded exchanges sets it to zero so the
+    /// replays run without delay.
+    #[must_use]
+    pub fn with_poll(mut self, poll: Duration) -> Self {
+        self.poll = poll;
+        self
+    }
+
     /// The IAM token, resolved once and reused until it expires.
     fn token(&self, address: &Address) -> Result<String, ProviderError> {
         self.token_cache
@@ -452,15 +461,13 @@ impl Yandex {
             }
             let patch = PatchInstance {
                 resources_spec: desired,
+                update_mask: "resourcesSpec".to_owned(),
             };
             let body = serde_json::to_string(&patch).map_err(|error| ProviderError::World {
                 address: change.address.clone(),
                 problem: error.to_string(),
             })?;
-            let url = format!(
-                "{}/instances/{}?updateMask=resourcesSpec",
-                self.compute, instance.id
-            );
+            let url = format!("{}/instances/{}", self.compute, instance.id);
             let answer = world(change.address, self.api.patch(&url, headers, &body))?;
             self.await_operation(headers, change.address, &answer)?;
             if running {
@@ -468,13 +475,15 @@ impl Yandex {
             }
         }
         if let Some((disk_id, size)) = grow {
-            let body = serde_json::to_string(&PatchDisk { size }).map_err(|error| {
-                ProviderError::World {
-                    address: change.address.clone(),
-                    problem: error.to_string(),
-                }
+            let body = serde_json::to_string(&PatchDisk {
+                size,
+                update_mask: "size".to_owned(),
+            })
+            .map_err(|error| ProviderError::World {
+                address: change.address.clone(),
+                problem: error.to_string(),
             })?;
-            let url = format!("{}/disks/{disk_id}?updateMask=size", self.compute);
+            let url = format!("{}/disks/{disk_id}", self.compute);
             let answer = world(change.address, self.api.patch(&url, headers, &body))?;
             self.await_operation(headers, change.address, &answer)?;
         }

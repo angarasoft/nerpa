@@ -278,8 +278,8 @@ impl Memory {
         let create: CreateInstance =
             serde_json::from_str(body).map_err(|error| ApiError::Transport(error.to_string()))?;
         let name = create.name;
-        let image = create.boot_disk_spec.disk.image_id;
-        let size = create.boot_disk_spec.disk.size;
+        let image = create.boot_disk_spec.disk_spec.image_id;
+        let size = create.boot_disk_spec.disk_spec.size;
         let instance = WireInstance {
             id: format!("id-{name}"),
             name: name.clone(),
