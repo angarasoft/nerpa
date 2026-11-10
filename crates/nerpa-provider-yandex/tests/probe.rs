@@ -390,7 +390,7 @@ fn probe_the_real_create() {
         "bootDiskSpec": {
             "mode": "READ_WRITE",
             "autoDelete": true,
-            "disk": {"size": "10737418240", "imageId": image}
+            "diskSpec": {"size": "10737418240", "imageId": image}
         },
         "networkInterfaceSpecs": [{
             "subnetId": subnet_id,
